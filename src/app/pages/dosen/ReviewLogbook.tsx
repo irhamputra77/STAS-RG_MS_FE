@@ -193,7 +193,7 @@ export default function ReviewLogbook() {
           <div className="flex-1 overflow-y-auto divide-y divide-border">
             {students.map(m => {
               const mEntries = entriesState.filter(e => e.mahasiswaId === m.id);
-              const unreviewed = mEntries.filter(e => !comments[e.id]).length;
+              const unreviewed = mEntries.filter(e => !e.comments || e.comments.length === 0).length;
               const isActive = selectedStudent?.id === m.id;
               return (
                 <button key={m.id} onClick={() => { setSelectedStudent(m); setSelectedEntry(null); }}

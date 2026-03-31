@@ -1,182 +1,427 @@
-import React, { useEffect, useState } from "react";
+import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
-import { Plus, X, Check } from "lucide-react";
+import { Plus, X, Check, Upload, FileText } from "lucide-react";
 import { apiGet, apiPost, getStoredUser } from "../lib/api";
 
 type LeaveStatus = "Disetujui" | "Ditolak" | "Menunggu";
-interface LeaveRecord { id: string; tanggalPengajuan: string; periodeMulai: string; periodeSelesai: string; durasi: number; alasan: string; catatan: string; status: LeaveStatus; reviewedBy?: string; reviewedAt?: string; }
+type RequestType = "cuti" | "izin" | "sakit";
+
+interface LeaveRecord {
+  id: string;
+  jenis: RequestType;
+  tanggalPengajuan: string;
+  periodeMulai: string;
+  periodeSelesai: string;
+  durasi: number;
+  alasan: string;
+  buktiPendukung?: string;
+  status: LeaveStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+const REQUEST_TYPE_OPTIONS: Array<{ value: RequestType; label: string }> = [
+  { value: "cuti", label: "Cuti" },
+  { value: "izin", label: "Izin" },
+  { value: "sakit", label: "Sakit" },
+];
+
+const REQUEST_TYPE_LABEL: Record<RequestType, string> = {
+  cuti: "Cuti",
+  izin: "Izin",
+  sakit: "Sakit",
+};
+
+const REQUEST_TYPE_BADGE: Record<RequestType, string> = {
+  cuti: "bg-indigo-100 text-indigo-700 border border-indigo-200",
+  izin: "bg-amber-100 text-amber-700 border border-amber-200",
+  sakit: "bg-rose-100 text-rose-700 border border-rose-200",
+};
+
+const initialFormState = {
+  jenis: "cuti" as RequestType,
+  periodeMulai: "",
+  periodeSelesai: "",
+  alasan: "",
+  buktiPendukung: null as File | null,
+};
 
 export default function LeaveRequest() {
   const user = getStoredUser();
   const [leaveData, setLeaveData] = useState<LeaveRecord[]>([]);
-  const [cutiRule, setCutiRule] = useState<{ maxSemesterDays: number; maxMonthDays: number; minAttendancePct: number } | null>(null);
+  const [cutiRule, setCutiRule] = useState<{
+    maxSemesterDays: number;
+    maxMonthDays: number;
+    minAttendancePct: number;
+  } | null>(null);
   const [error, setError] = useState("");
   const [requestModal, setRequestModal] = useState(false);
-  const [formData, setFormData] = useState({
-    periodeMulai: "",
-    periodeSelesai: "",
-    alasan: "",
-    catatan: ""
-  });
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState(initialFormState);
 
   useEffect(() => {
     const load = async () => {
       try {
         const [rows, settings] = await Promise.all([
           apiGet<Array<any>>(`/leave-requests${user?.id ? `?studentId=${user.id}` : ""}`),
-          apiGet<any>("/health/leave-rules")
+          apiGet<any>("/health/leave-rules"),
         ]);
-        const mapped: LeaveRecord[] = rows.map((item) => ({
-          id: item.id, tanggalPengajuan: item.tanggal_pengajuan, periodeMulai: item.periode_start,
-          periodeSelesai: item.periode_end, durasi: item.durasi || 1, alasan: item.alasan,
-          catatan: item.catatan || "", status: item.status, reviewedBy: item.reviewed_by_name, reviewedAt: item.reviewed_at
+
+        const mapped: LeaveRecord[] = (rows || []).map((item) => ({
+          id: item.id,
+          jenis: (item.jenis_pengajuan || item.jenis || "cuti") as RequestType,
+          tanggalPengajuan: item.tanggal_pengajuan,
+          periodeMulai: item.periode_start,
+          periodeSelesai: item.periode_end,
+          durasi: item.durasi || 1,
+          alasan: item.alasan,
+          buktiPendukung:
+            item.bukti_pendukung_name ||
+            item.buktiPendukung ||
+            item.file_name ||
+            item.attachment_name ||
+            "",
+          status: item.status,
+          reviewedBy: item.reviewed_by_name,
+          reviewedAt: item.reviewed_at,
         }));
+
         setLeaveData(mapped);
         setCutiRule({
           maxSemesterDays: Number(settings?.maxSemesterDays || 0),
           maxMonthDays: Number(settings?.maxMonthDays || 0),
-          minAttendancePct: Number(settings?.minAttendancePct || 0)
+          minAttendancePct: Number(settings?.minAttendancePct || 0),
         });
-      } catch (err: any) { setError(err?.message || "Gagal memuat data cuti."); }
+      } catch (err: any) {
+        setError(err?.message || "Gagal memuat data pengajuan.");
+      }
     };
+
     load();
   }, [user?.id]);
 
+  const resetForm = () => {
+    setFormData(initialFormState);
+    setError("");
+  };
+
   const calculateDuration = (start: string, end: string): number => {
     if (!start || !end) return 0;
+
     const startDate = new Date(start);
     const endDate = new Date(end);
-    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    const diffTime = endDate.getTime() - startDate.getTime();
+
+    if (diffTime < 0) return 0;
+
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   };
 
+  const duration = useMemo(
+    () => calculateDuration(formData.periodeMulai, formData.periodeSelesai),
+    [formData.periodeMulai, formData.periodeSelesai]
+  );
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setFormData((prev) => ({ ...prev, buktiPendukung: file }));
+  };
+
   const handleSubmitLeaveRequest = async () => {
-    if (!formData.periodeMulai || !formData.periodeSelesai || !formData.alasan.trim()) {
-      setError("Tanggal mulai, tanggal selesai, dan alasan harus diisi.");
+    setError("");
+
+    if (!formData.jenis || !formData.periodeMulai || !formData.periodeSelesai || !formData.alasan.trim()) {
+      setError("Jenis pengajuan, tanggal mulai, tanggal selesai, dan alasan harus diisi.");
       return;
     }
 
-    try {
-      const durasi = calculateDuration(formData.periodeMulai, formData.periodeSelesai);
-      if (durasi <= 0) {
-        setError("Durasi cuti tidak valid.");
-        return;
-      }
+    if (!formData.buktiPendukung) {
+      setError("Bukti pendukung wajib diunggah.");
+      return;
+    }
 
-      if (cutiRule?.maxMonthDays && durasi > cutiRule.maxMonthDays) {
+    if (duration <= 0) {
+      setError("Tanggal selesai tidak boleh lebih awal dari tanggal mulai.");
+      return;
+    }
+
+    if (formData.jenis === "cuti") {
+      if (cutiRule?.maxMonthDays && duration > cutiRule.maxMonthDays) {
         setError(`Maksimal cuti per bulan adalah ${cutiRule.maxMonthDays} hari.`);
         return;
       }
 
-      if (cutiRule?.maxSemesterDays && durasi > cutiRule.maxSemesterDays) {
+      if (cutiRule?.maxSemesterDays && duration > cutiRule.maxSemesterDays) {
         setError(`Maksimal cuti per semester adalah ${cutiRule.maxSemesterDays} hari.`);
         return;
       }
+    }
 
-      await apiPost<{ message: string }>("/leave-requests", {
-        id: `LR${Date.now()}`,
-        studentId: user?.id || "S001",
-        periodeStart: formData.periodeMulai,
-        periodeEnd: formData.periodeSelesai,
-        durasi,
-        alasan: formData.alasan,
-        catatan: formData.catatan || null,
-        tanggalPengajuan: new Date().toISOString().split('T')[0]
-      });
+    const requestId = `LR${Date.now()}`;
+
+    try {
+      setSubmitting(true);
+
+      const payload = new FormData();
+      payload.append("id", requestId);
+      payload.append("studentId", user?.id || "S001");
+      payload.append("jenis", formData.jenis);
+      payload.append("periodeStart", formData.periodeMulai);
+      payload.append("periodeEnd", formData.periodeSelesai);
+      payload.append("durasi", String(duration));
+      payload.append("alasan", formData.alasan.trim());
+      payload.append("tanggalPengajuan", new Date().toISOString().split("T")[0]);
+      payload.append("buktiPendukung", formData.buktiPendukung);
+
+      await apiPost<{ message: string }>("/leave-requests", payload as any);
 
       const newLeave: LeaveRecord = {
-        id: `LR${Date.now()}`,
+        id: requestId,
+        jenis: formData.jenis,
         tanggalPengajuan: new Date().toLocaleDateString("id-ID"),
         periodeMulai: formData.periodeMulai,
         periodeSelesai: formData.periodeSelesai,
-        durasi,
+        durasi: duration,
         alasan: formData.alasan,
-        catatan: formData.catatan,
-        status: "Menunggu"
+        buktiPendukung: formData.buktiPendukung.name,
+        status: "Menunggu",
       };
-      setLeaveData([newLeave, ...leaveData]);
+
+      setLeaveData((prev) => [newLeave, ...prev]);
       setRequestModal(false);
-      setFormData({ periodeMulai: "", periodeSelesai: "", alasan: "", catatan: "" });
+      resetForm();
     } catch (err: any) {
-      setError(err?.message || "Gagal mengajukan cuti.");
+      setError(err?.message || "Gagal mengajukan data.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const StatusBadge = ({ status }: { status: LeaveStatus }) => {
-    const colors = { Disetujui: "bg-emerald-100 text-emerald-700", Ditolak: "bg-red-100 text-red-600", Menunggu: "bg-amber-100 text-amber-700" };
-    return <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${colors[status]}`}>{status}</span>;
+    const colors = {
+      Disetujui: "bg-emerald-100 text-emerald-700",
+      Ditolak: "bg-red-100 text-red-600",
+      Menunggu: "bg-amber-100 text-amber-700",
+    };
+
+    return (
+      <span
+        className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${colors[status]}`}
+      >
+        {status}
+      </span>
+    );
+  };
+
+  const TypeBadge = ({ jenis }: { jenis: RequestType }) => {
+    return (
+      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${REQUEST_TYPE_BADGE[jenis]}`}>
+        {REQUEST_TYPE_LABEL[jenis]}
+      </span>
+    );
   };
 
   return (
-    <Layout title="Pengajuan Cuti">
-      <div className="flex flex-col gap-5 p-6 max-w-4xl">
-        {error && <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">{error}</div>}
-        {cutiRule && (
-          <div className="px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700">
-            Batas cuti aktif: {cutiRule.maxSemesterDays} hari/semester, {cutiRule.maxMonthDays} hari/bulan, minimum kehadiran {cutiRule.minAttendancePct}%.
+    <Layout title="Pengajuan Cuti, Izin, dan Sakit">
+      <div className="flex flex-col gap-4 sm:gap-5 p-4 sm:p-6 max-w-4xl">
+        {error && (
+          <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
+            {error}
           </div>
         )}
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">Riwayat Pengajuan Cuti</h2>
-          <button onClick={() => setRequestModal(true)} className="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-[10px] transition-colors flex items-center gap-2">
-            <Plus size={14} /> Ajukan Cuti Baru
+
+        {cutiRule && (
+          <div className="px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 leading-relaxed">
+            Aturan cuti aktif: {cutiRule.maxSemesterDays} hari/semester, {cutiRule.maxMonthDays} hari/bulan,
+            minimum kehadiran {cutiRule.minAttendancePct}%. Aturan ini hanya diterapkan untuk pengajuan jenis <b>cuti</b>.
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold">Riwayat Pengajuan</h2>
+            <p className="text-sm text-muted-foreground mt-1">Form pengajuan kini mendukung cuti, izin, dan sakit.</p>
+          </div>
+
+          <button
+            onClick={() => {
+              resetForm();
+              setRequestModal(true);
+            }}
+            className="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+          >
+            <Plus size={14} /> Ajukan Pengajuan Baru
           </button>
         </div>
-        <div className="bg-white border border-border rounded-lg p-6 shadow-sm">
-          <p className="text-xs font-black text-muted-foreground mb-3 uppercase tracking-wide">Riwayat ({leaveData.length} entri)</p>
+
+        <div className="bg-white border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+          <p className="text-xs font-black text-muted-foreground mb-3 uppercase tracking-wide">
+            Riwayat ({leaveData.length} entri)
+          </p>
+
           {leaveData.length === 0 ? (
-            <p className="text-muted-foreground italic">Tidak ada pengajuan cuti.</p>
+            <p className="text-muted-foreground italic">Tidak ada riwayat pengajuan.</p>
           ) : (
             <div className="space-y-3">
-              {leaveData.map(leave => (
-                <div key={leave.id} className="flex items-center justify-between border-b pb-4 last:border-0">
-                  <div className="flex-1">
-                    <p className="font-bold">{leave.tanggalPengajuan}</p>
-                    <p className="text-sm text-muted-foreground">{leave.periodeMulai} - {leave.periodeSelesai} ({leave.durasi} hari)</p>
-                    <p className="text-sm mt-1">{leave.alasan}</p>
+              {leaveData.map((leave) => (
+                <div
+                  key={leave.id}
+                  className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b pb-4 last:border-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      <p className="font-bold break-words">{leave.tanggalPengajuan}</p>
+                      <TypeBadge jenis={leave.jenis} />
+                    </div>
+
+                    <p className="text-sm text-muted-foreground">
+                      {leave.periodeMulai} - {leave.periodeSelesai} ({leave.durasi} hari)
+                    </p>
+                    <p className="text-sm mt-1 break-words">{leave.alasan}</p>
+
+                    {leave.buktiPendukung && (
+                      <div className="mt-2 inline-flex max-w-full items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700">
+                        <FileText size={14} className="shrink-0" />
+                        <span className="truncate">{leave.buktiPendukung}</span>
+                      </div>
+                    )}
                   </div>
-                  <StatusBadge status={leave.status} />
+
+                  <div className="sm:pl-4 self-start">
+                    <StatusBadge status={leave.status} />
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Request Leave Modal */}
         {requestModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setRequestModal(false)}>
-            <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[480px]" onClick={e => e.stopPropagation()}>
-              <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-                <h3 className="font-black text-foreground">Ajukan Cuti Baru</h3>
-                <button onClick={() => setRequestModal(false)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={16} /></button>
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => {
+              setRequestModal(false);
+              resetForm();
+            }}
+          >
+            <div
+              className="bg-white rounded-[20px] shadow-2xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-border flex items-center justify-between">
+                <h3 className="font-black text-foreground">Ajukan Cuti / Izin / Sakit</h3>
+                <button
+                  onClick={() => {
+                    setRequestModal(false);
+                    resetForm();
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <div className="p-6 flex flex-col gap-4">
+
+              <div className="p-5 sm:p-6 flex flex-col gap-4">
                 <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Mulai</label>
-                  <input type="date" value={formData.periodeMulai} onChange={e => setFormData({...formData, periodeMulai: e.target.value})} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
+                  <label className="text-xs font-black text-foreground block mb-1.5">Jenis Pengajuan</label>
+                  <select
+                    value={formData.jenis}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, jenis: e.target.value as RequestType }))}
+                    className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all bg-white"
+                  >
+                    {REQUEST_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Selesai</label>
-                  <input type="date" value={formData.periodeSelesai} onChange={e => setFormData({...formData, periodeSelesai: e.target.value})} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Mulai</label>
+                    <input
+                      type="date"
+                      value={formData.periodeMulai}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, periodeMulai: e.target.value }))}
+                      className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Selesai</label>
+                    <input
+                      type="date"
+                      value={formData.periodeSelesai}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, periodeSelesai: e.target.value }))}
+                      className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
+                    />
+                  </div>
                 </div>
+
                 {formData.periodeMulai && formData.periodeSelesai && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-[10px]">
-                    <p className="text-xs font-bold text-blue-700">Durasi: <span className="font-black">{calculateDuration(formData.periodeMulai, formData.periodeSelesai)} hari</span></p>
+                    <p className="text-xs font-bold text-blue-700">
+                      Durasi Pengajuan: <span className="font-black">{duration} hari</span>
+                    </p>
                   </div>
                 )}
+
                 <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Alasan Cuti</label>
-                  <textarea value={formData.alasan} onChange={e => setFormData({...formData, alasan: e.target.value})} rows={3} placeholder="Jelaskan alasan pengajuan cuti..." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all resize-none" />
+                  <label className="text-xs font-black text-foreground block mb-1.5">Alasan Pengajuan</label>
+                  <textarea
+                    value={formData.alasan}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, alasan: e.target.value }))}
+                    rows={4}
+                    placeholder="Jelaskan alasan pengajuan Anda..."
+                    className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all resize-none"
+                  />
                 </div>
+
                 <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Catatan Tambahan (Opsional)</label>
-                  <textarea value={formData.catatan} onChange={e => setFormData({...formData, catatan: e.target.value})} rows={2} placeholder="Informasi atau rujukan lainnya..." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all resize-none" />
+                  <label className="text-xs font-black text-foreground block mb-1.5">Upload Bukti Pendukung</label>
+
+                  <label className="w-full min-h-[108px] border border-dashed border-slate-300 rounded-[14px] bg-slate-50 hover:bg-slate-100 transition-colors flex flex-col items-center justify-center gap-2 px-4 py-5 text-center cursor-pointer">
+                    <Upload size={18} className="text-slate-500" />
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">Klik untuk memilih file</p>
+                      <p className="text-xs text-slate-500 mt-1">PDF, JPG, JPEG, PNG, DOC, atau DOCX</p>
+                    </div>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {formData.buktiPendukung && (
+                    <div className="mt-3 flex items-center gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      <FileText size={15} className="shrink-0" />
+                      <span className="truncate">{formData.buktiPendukung.name}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="px-6 pb-6 flex gap-3">
-                <button onClick={() => { setRequestModal(false); setFormData({ periodeMulai: "", periodeSelesai: "", alasan: "", catatan: "" }); }} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
-                <button onClick={handleSubmitLeaveRequest} className="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2">
-                  <Check size={14} strokeWidth={3} /> Ajukan
+
+              <div className="px-5 sm:px-6 pb-5 sm:pb-6 flex flex-col-reverse sm:flex-row gap-3">
+                <button
+                  onClick={() => {
+                    setRequestModal(false);
+                    resetForm();
+                  }}
+                  className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors"
+                  disabled={submitting}
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleSubmitLeaveRequest}
+                  disabled={submitting}
+                  className="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check size={14} strokeWidth={3} />
+                  {submitting ? "Mengajukan..." : "Ajukan"}
                 </button>
               </div>
             </div>

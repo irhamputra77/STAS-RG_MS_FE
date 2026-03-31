@@ -12,7 +12,8 @@ import MyResearch from "./pages/MyResearch";
 import Settings from "./pages/Settings";
 import OperatorDashboard from "./pages/operator/OperatorDashboard";
 import DatabaseMahasiswa from "./pages/operator/DatabaseMahasiswa";
-import DatabaseRisetDosen from "./pages/operator/DatabaseRisetDosen";
+import DatabaseRiset from "./pages/operator/DatabaseRiset";
+import DatabaseDosen from "./pages/operator/DatabaseDosen";
 import LogbookMonitor from "./pages/operator/LogbookMonitor";
 import PersetujuanCuti from "./pages/operator/PersetujuanCuti";
 import LayananSurat from "./pages/operator/LayananSurat";
@@ -52,7 +53,8 @@ export const router = createBrowserRouter([
           { index: true,          element: <Navigate to="/operator/dashboard" replace /> },
           { path: "dashboard",    element: <OperatorDashboard /> },
           { path: "mahasiswa",    element: <DatabaseMahasiswa /> },
-          { path: "riset-dosen",  element: <DatabaseRisetDosen /> },
+          { path: "riset",        element: <DatabaseRiset /> },
+          { path: "dosen",        element: <DatabaseDosen /> },
           { path: "logbook",      element: <LogbookMonitor /> },
           { path: "cuti",         element: <PersetujuanCuti /> },
           { path: "surat",        element: <LayananSurat /> },

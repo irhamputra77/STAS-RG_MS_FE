@@ -1,30 +1,24 @@
 import React from "react";
+import { useLocation, useNavigate } from "react-router";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { SharedBoardView } from "../../components/SharedBoardView";
-import { apiGet } from "../../lib/api";
 
 export default function ProgressBoard() {
-  const [projectIds, setProjectIds] = React.useState<string[]>([]);
-
-  React.useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const rows = await apiGet<Array<any>>(`/research`);
-        setProjectIds(rows.map((item) => item.id));
-      } catch {
-      }
-    };
-
-    loadProjects();
-  }, []);
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Get projectIds from navigation state (passed from DatabaseRiset)
+  const projectIds = (location.state?.projectIds as string[]) || [];
 
   return (
     <OperatorLayout title="Progress Board">
       <SharedBoardView
         projectIds={projectIds}
-        accentBg="bg-[#6C47FF]"
-        accentText="text-[#6C47FF]"
-        accentHover="hover:text-[#6C47FF]"
+        backLabel="← Kembali ke Database Riset"
+        onBack={() => navigate("/operator/riset")}
+        accentBg="bg-[#0AB600]"
+        accentText="text-[#0AB600]"
+        accentHover="hover:text-[#0AB600]"
       />
     </OperatorLayout>
   );

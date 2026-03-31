@@ -91,9 +91,8 @@ function MilestoneBanner({
             <button
               onClick={() => onToggle(i)}
               title={m.done ? `Tandai "${m.label}" belum selesai` : `Tandai "${m.label}" selesai`}
-              className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all hover:scale-110 hover:shadow-md focus:outline-none ${
-                m.done ? `${progressColor} border-transparent text-white` : "bg-white border-[#A8E895] hover:border-[#0AB600]"
-              }`}
+              className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all hover:scale-110 hover:shadow-md focus:outline-none ${m.done ? `${progressColor} border-transparent text-white` : "bg-white border-[#A8E895] hover:border-[#0AB600]"
+                }`}
             >
               {m.done ? (
                 <svg viewBox="0 0 12 12" className="w-2.5 h-2.5">
@@ -108,11 +107,10 @@ function MilestoneBanner({
             </span>
           </div>
           {i < arr.length - 1 && (
-            <div className={`h-0.5 flex-1 mx-1 mb-4 transition-all ${
-              m.done && arr[i + 1].done ? progressColor
+            <div className={`h-0.5 flex-1 mx-1 mb-4 transition-all ${m.done && arr[i + 1].done ? progressColor
               : m.done ? `${progressColor} opacity-30`
-              : "bg-[#D8F5D0]"
-            }`} />
+                : "bg-[#D8F5D0]"
+              }`} />
           )}
         </div>
       ))}
@@ -130,13 +128,13 @@ function MilestoneBanner({
 
 function getTagColor(tag: string) {
   switch (tag) {
-    case "Backend":     return "bg-teal-100 text-teal-700";
-    case "Penulis TA":  return "bg-cyan-100 text-cyan-700";
-    case "Hardware":    return "bg-slate-200 text-slate-700";
+    case "Backend": return "bg-teal-100 text-teal-700";
+    case "Penulis TA": return "bg-cyan-100 text-cyan-700";
+    case "Hardware": return "bg-slate-200 text-slate-700";
     case "Dokumentasi": return "bg-amber-100 text-amber-700";
-    case "Jurnal":      return "bg-blue-100 text-blue-700";
-    case "Done":        return "bg-emerald-100 text-emerald-700";
-    default:            return "bg-muted text-muted-foreground";
+    case "Jurnal": return "bg-blue-100 text-blue-700";
+    case "Done": return "bg-emerald-100 text-emerald-700";
+    default: return "bg-muted text-muted-foreground";
   }
 }
 
@@ -162,8 +160,8 @@ export function SharedBoardView({
   strictProjectFilter = false,
   backLabel,
   onBack,
-  accentBg   = "bg-[#0AB600]",
-  accentText  = "text-[#0AB600]",
+  accentBg = "bg-[#0AB600]",
+  accentText = "text-[#0AB600]",
   accentHover = "hover:text-[#0AB600]",
 }: SharedBoardViewProps) {
   const currentUser = getStoredUser();
@@ -320,20 +318,20 @@ export function SharedBoardView({
   };
 
   // Modal state
-  const [selectedTask, setSelectedTask]             = useState<any | null>(null);
-  const [activeTab, setActiveTab]                   = useState<"detail" | "lampiran" | "komentar">("detail");
-  const [isAddTaskOpen, setIsAddTaskOpen]           = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen]       = useState(false);
-  const [isEditBoardOpen, setIsEditBoardOpen]       = useState(false);
-  const [showDeleteWarning, setShowDeleteWarning]   = useState(false);
-  const [isMilestoneOpen, setIsMilestoneOpen]       = useState(false);
-  const [subtasks, setSubtasks]                     = useState([""]);
-  const [newMilestoneLabel, setNewMilestoneLabel]   = useState("");
-  const [editingMsIndex, setEditingMsIndex]         = useState<number | null>(null);
-  const [editingMsLabel, setEditingMsLabel]         = useState("");
-  const [taskComments, setTaskComments]             = useState<Array<any>>([]);
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
+  const [activeTab, setActiveTab] = useState<"detail" | "lampiran" | "komentar">("detail");
+  const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isEditBoardOpen, setIsEditBoardOpen] = useState(false);
+  const [showDeleteWarning, setShowDeleteWarning] = useState(false);
+  const [isMilestoneOpen, setIsMilestoneOpen] = useState(false);
+  const [subtasks, setSubtasks] = useState([""]);
+  const [newMilestoneLabel, setNewMilestoneLabel] = useState("");
+  const [editingMsIndex, setEditingMsIndex] = useState<number | null>(null);
+  const [editingMsLabel, setEditingMsLabel] = useState("");
+  const [taskComments, setTaskComments] = useState<Array<any>>([]);
   const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
-  const [newCommentText, setNewCommentText]         = useState("");
+  const [newCommentText, setNewCommentText] = useState("");
 
   if (loading) {
     return (
@@ -359,9 +357,9 @@ export function SharedBoardView({
     );
   }
 
-  const teamMembers       = teamMembersMap[activeId] || [];
-  const ketuaMember       = teamMembers.find((m) => m.initials === project.ketuaInitials);
-  const activeMsLabel     = getActiveMilestoneLabel(milestones);
+  const teamMembers = teamMembersMap[activeId] || [];
+  const ketuaMember = teamMembers.find((m) => m.initials === project.ketuaInitials);
+  const activeMsLabel = getActiveMilestoneLabel(milestones);
   const milestoneProgress = getMilestoneProgress(milestones);
 
   const getAssigneeColor = (initials: string) =>
@@ -370,13 +368,13 @@ export function SharedBoardView({
     teamMembers.find((m) => m.initials === initials)?.name ?? initials;
 
   const columns = [
-    { id: "todo",   title: "TO DO",  bg: "bg-slate-50",      iconColor: "bg-slate-300",   textColor: "text-slate-600",   pillBg: "bg-slate-200 text-slate-700"  },
-    { id: "doing",  title: "DOING",  bg: "bg-blue-50/50",    iconColor: "bg-blue-400",    textColor: "text-blue-600",    pillBg: "bg-blue-100 text-blue-700"    },
-    { id: "review", title: "REVIEW", bg: "bg-amber-50/50",   iconColor: "bg-amber-400",   textColor: "text-amber-600",   pillBg: "bg-amber-100 text-amber-700"  },
-    { id: "done",   title: "DONE",   bg: "bg-emerald-50/50", iconColor: "bg-emerald-400", textColor: "text-emerald-600", pillBg: "bg-emerald-100 text-emerald-700" },
+    { id: "todo", title: "TO DO", bg: "bg-slate-50", iconColor: "bg-slate-300", textColor: "text-slate-600", pillBg: "bg-slate-200 text-slate-700" },
+    { id: "doing", title: "DOING", bg: "bg-blue-50/50", iconColor: "bg-blue-400", textColor: "text-blue-600", pillBg: "bg-blue-100 text-blue-700" },
+    { id: "review", title: "REVIEW", bg: "bg-amber-50/50", iconColor: "bg-amber-400", textColor: "text-amber-600", pillBg: "bg-amber-100 text-amber-700" },
+    { id: "done", title: "DONE", bg: "bg-emerald-50/50", iconColor: "bg-emerald-400", textColor: "text-emerald-600", pillBg: "bg-emerald-100 text-emerald-700" },
   ];
 
-  const openTask  = async (task: any) => {
+  const openTask = async (task: any) => {
     setSelectedTask(task);
     setActiveTab("detail");
     setShowDeleteWarning(false);
@@ -394,7 +392,7 @@ export function SharedBoardView({
     }
   };
   const closeTask = () => { setSelectedTask(null); setShowDeleteWarning(false); };
-  const addSubtaskRow    = () => setSubtasks([...subtasks, ""]);
+  const addSubtaskRow = () => setSubtasks([...subtasks, ""]);
   const removeSubtaskRow = (i: number) => setSubtasks(subtasks.filter((_, idx) => idx !== i));
 
   const deleteTask = () => {
@@ -559,9 +557,9 @@ export function SharedBoardView({
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-1.5">
                   {[
-                    { label: "Ketua",     value: ketuaMember?.name },
-                    { label: "Periode",   value: project.period },
-                    { label: "Mitra",     value: project.mitra.split(" Hibah")[0] },
+                    { label: "Ketua", value: ketuaMember?.name },
+                    { label: "Periode", value: project.period },
+                    { label: "Mitra", value: project.mitra.split(" Hibah")[0] },
                     { label: "Milestone", value: activeMsLabel },
                   ].map((item, i, arr) => (
                     <React.Fragment key={item.label}>
@@ -750,11 +748,10 @@ export function SharedBoardView({
             <div className="p-6 border-b border-border bg-white shrink-0">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wide ${
-                    selectedTask.status === "DONE" ? "bg-emerald-100 text-emerald-700" :
+                  <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wide ${selectedTask.status === "DONE" ? "bg-emerald-100 text-emerald-700" :
                     selectedTask.status === "DOING" ? "bg-blue-100 text-blue-700" :
-                    selectedTask.status === "REVIEW" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"
-                  }`}>{selectedTask.status}</span>
+                      selectedTask.status === "REVIEW" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"
+                    }`}>{selectedTask.status}</span>
                   <span className={`px-2.5 py-1 rounded text-[10px] font-bold ${getTagColor(selectedTask.tag)}`}>{selectedTask.tag}</span>
                   <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">{selectedTask.sp} SP</span>
                 </div>
@@ -900,9 +897,8 @@ export function SharedBoardView({
                                 {comment.createdAt ? new Date(comment.createdAt).toLocaleString("id-ID") : "-"}
                               </span>
                             </div>
-                            <div className={`p-3.5 rounded-2xl text-sm text-foreground shadow-sm leading-relaxed ${
-                              isOwn ? "bg-[#F8F5FF] border border-[#E9E0FF] rounded-tr-none" : "bg-white border border-border rounded-tl-none"
-                            }`}>
+                            <div className={`p-3.5 rounded-2xl text-sm text-foreground shadow-sm leading-relaxed ${isOwn ? "bg-[#F8F5FF] border border-[#E9E0FF] rounded-tr-none" : "bg-white border border-border rounded-tl-none"
+                              }`}>
                               {comment.text}
                             </div>
                           </div>

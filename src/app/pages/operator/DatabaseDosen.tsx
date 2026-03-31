@@ -121,7 +121,7 @@ export default function DatabaseDosen() {
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 flex-1 flex-wrap">
-            <div className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-[12px] w-60 focus-within:ring-2 focus-within:ring-amber-300 transition-all">
+            <div className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-[12px] w-60 focus-within:ring-2 focus-within:ring-green-300 transition-all">
               <Search size={15} className="text-muted-foreground shrink-0" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama, NIP, email..." className="bg-transparent outline-none text-sm w-full placeholder:text-muted-foreground" />
             </div>
@@ -134,7 +134,7 @@ export default function DatabaseDosen() {
               </select>
             ))}
           </div>
-          <button onClick={() => { setEditTarget(null); setForm({ id: "", name: "", nip: "", password: "", email: "", jabatan: "", departemen: "", keahlian: "", status: "Aktif" }); setModal("add"); }} className="flex items-center gap-2 h-9 px-4 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] shadow-sm transition-colors">
+          <button onClick={() => { setEditTarget(null); setForm({ id: "", name: "", nip: "", password: "", email: "", jabatan: "", departemen: "", keahlian: "", status: "Aktif" }); setModal("add"); }} className="flex items-center gap-2 h-9 px-4 bg-[#0AB600] hover:bg-[#099800] text-white text-sm font-black rounded-[10px] shadow-sm transition-colors">
             <Plus size={15} strokeWidth={3} /> Tambah Dosen
           </button>
         </div>
@@ -150,7 +150,7 @@ export default function DatabaseDosen() {
               </tr></thead>
               <tbody className="divide-y divide-border">
                 {filtered.map(d => (
-                  <tr key={d.id} onClick={() => setSelected(selected?.id === d.id ? null : d)} className={`cursor-pointer hover:bg-slate-50 transition-colors ${selected?.id === d.id ? "bg-amber-50/30" : ""}`}>
+                  <tr key={d.id} onClick={() => setSelected(selected?.id === d.id ? null : d)} className={`cursor-pointer hover:bg-slate-50 transition-colors ${selected?.id === d.id ? "bg-green-50/30" : ""}`}>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${d.color}`}>{d.initials}</div>
@@ -180,7 +180,7 @@ export default function DatabaseDosen() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1">
                         <button onClick={e => { e.stopPropagation(); setSelected(d); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-[#F8F5FF] hover:text-[#6C47FF] transition-colors"><Eye size={13} /></button>
-                        <button onClick={e => { e.stopPropagation(); setEditTarget(d); setForm({ id: d.id, name: d.name, nip: d.nip, password: "", email: d.email, jabatan: d.jabatan, departemen: d.departemen, keahlian: d.keahlian.join(", "), status: d.status }); setModal("edit"); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-amber-50 hover:text-amber-600 transition-colors"><Pencil size={13} /></button>
+                        <button onClick={e => { e.stopPropagation(); setEditTarget(d); setForm({ id: d.id, name: d.name, nip: d.nip, password: "", email: d.email, jabatan: d.jabatan, departemen: d.departemen, keahlian: d.keahlian.join(", "), status: d.status }); setModal("edit"); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-green-50 hover:text-green-600 transition-colors"><Pencil size={13} /></button>
                       </div>
                     </td>
                   </tr>
@@ -195,7 +195,7 @@ export default function DatabaseDosen() {
           {/* Detail Panel */}
           {selected && (
             <div className="w-[280px] shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-gradient-to-r from-amber-50 to-white">
+              <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-gradient-to-r from-green-50 to-white">
                 <h3 className="text-sm font-black text-foreground">Profil Dosen</h3>
                 <button onClick={() => setSelected(null)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={14} /></button>
               </div>
@@ -239,7 +239,7 @@ export default function DatabaseDosen() {
                     status: selected.status
                   });
                   setModal("edit");
-                }} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Dosen</button>
+                }} className="w-full h-9 bg-[#0AB600] hover:bg-[#099800] text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Dosen</button>
               </div>
             </div>
           )}
@@ -266,7 +266,7 @@ export default function DatabaseDosen() {
               ].map(f => (
                 <div key={f.label} className={f.col}>
                   <label className="text-xs font-black text-foreground block mb-1.5">{f.label}</label>
-                  <input type={f.key === "password" ? "password" : "text"} value={f.val} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all" />
+                  <input type={f.key === "password" ? "password" : "text"} value={f.val} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
                 </div>
               ))}
               <div className="col-span-2">
@@ -279,7 +279,7 @@ export default function DatabaseDosen() {
             </div>
             <div className="px-6 pb-6 flex gap-3">
               <button onClick={() => setModal(null)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
-              <button disabled={saving} onClick={handleSaveDosen} className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-black rounded-[10px] transition-colors">{saving ? "Menyimpan..." : "Simpan"}</button>
+              <button disabled={saving} onClick={handleSaveDosen} className="flex-1 h-10 bg-[#0AB600] hover:bg-[#099800] disabled:bg-green-400 text-white text-sm font-black rounded-[10px] transition-colors">{saving ? "Menyimpan..." : "Simpan"}</button>
             </div>
           </div>
         </div>
