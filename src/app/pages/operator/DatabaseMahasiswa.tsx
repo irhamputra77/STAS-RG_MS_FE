@@ -68,6 +68,13 @@ export default function DatabaseMahasiswa() {
   const loadStudents = async () => {
     setError("");
     try {
+      // Cek role user yang login
+      const raw = localStorage.getItem("stas_user");
+      if (raw) {
+        const user = JSON.parse(raw);
+        console.log("[DEBUG] Current user:", user);
+      }
+      
       const rows = await apiGet<Array<any>>("/students");
       const logRows = await apiGet<Array<any>>("/logbooks");
       const mapped: MahasiswaRecord[] = rows.map((item, index) => ({
@@ -94,6 +101,7 @@ export default function DatabaseMahasiswa() {
       setMahasiswaList(mapped);
       setLogEntries(logRows || []);
     } catch (err: any) {
+      console.error("[ERROR] Failed to load students:", err);
       setError(err?.message || "Gagal memuat data mahasiswa.");
     }
   };
@@ -156,7 +164,6 @@ export default function DatabaseMahasiswa() {
     setError("");
     try {
       const payload = {
-        id: modal === "add" ? `M${Date.now()}` : form.id,
         nim: form.nim.trim(),
         name: form.name.trim(),
         initials: toInitials(form.name),
@@ -170,16 +177,26 @@ export default function DatabaseMahasiswa() {
         pembimbing: form.pembimbing.trim()
       };
 
+      console.log("[DEBUG] Sending payload:", payload);
+      console.log("[DEBUG] Modal mode:", modal);
+
+      let result;
       if (modal === "add") {
-        await apiPost<{ message: string }>("/students", payload);
+        console.log("[DEBUG] Calling POST /students");
+        result = await apiPost<{ message: string }>("/students", payload);
       } else {
-        await apiPut<{ message: string }>(`/students/${form.id}`, payload);
+        console.log("[DEBUG] Calling PUT /students/" + form.id);
+        result = await apiPut<{ message: string }>(`/students/${form.id}`, payload);
       }
+
+      console.log("[DEBUG] API response:", result);
+      alert(`Berhasil! ${result?.message || "Data tersimpan"}`);
 
       await loadStudents();
       setModal(null);
       setSelected(null);
     } catch (err: any) {
+      console.error("[ERROR] Failed to save student:", err);
       setError(err?.message || "Gagal menyimpan data mahasiswa.");
     } finally {
       setSaving(false);
