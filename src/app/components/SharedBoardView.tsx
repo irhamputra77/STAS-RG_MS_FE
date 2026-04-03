@@ -333,6 +333,13 @@ export function SharedBoardView({
   const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
   const [newCommentText, setNewCommentText] = useState("");
 
+  // Add member modal state
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [availableCandidates, setAvailableCandidates] = useState<Array<{ user_id: string; name: string; initials: string; member_type: string }>>([]);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [newMemberPeran, setNewMemberPeran] = useState("Anggota");
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+
   if (loading) {
     return (
       <div className="-m-8 flex min-h-[calc(100vh-60px)] items-center justify-center bg-slate-50/30 p-8">
@@ -358,7 +365,7 @@ export function SharedBoardView({
   }
 
   const teamMembers = teamMembersMap[activeId] || [];
-  const ketuaMember = teamMembers.find((m) => m.initials === project.ketuaInitials);
+  const ketuaMember = teamMembers.find((m) => m.role.toLowerCase().includes("ketua"));
   const activeMsLabel = getActiveMilestoneLabel(milestones);
   const milestoneProgress = getMilestoneProgress(milestones);
 
@@ -366,6 +373,166 @@ export function SharedBoardView({
     teamMembers.find((m) => m.initials === initials)?.color ?? "bg-slate-300 text-white";
   const getMemberName = (initials: string) =>
     teamMembers.find((m) => m.initials === initials)?.name ?? initials;
+
+  // ─── Add Member Functions ───────────────────────────────────────────────────
+
+  const loadCandidates = async () => {
+    setLoadingCandidates(true);
+    try {
+      const [studentsData, lecturersData] = await Promise.all([
+        apiGet<Array<any>>("/students").catch(() => []),
+        apiGet<Array<any>>("/lecturers").catch(() => [])
+      ]);
+
+      const currentMemberIds = new Set(teamMembers.map(m => m.id));
+
+      const candidates = [
+        ...(studentsData || []).map((s: any) => ({
+          user_id: s.user_id,
+          name: s.name,
+          initials: s.initials,
+          member_type: "Mahasiswa"
+        })),
+        ...(lecturersData || []).map((l: any) => ({
+          user_id: l.user_id,
+          name: l.name,
+          initials: l.initials,
+          member_type: "Dosen"
+        }))
+      ].filter((c: any) => !currentMemberIds.has(c.user_id));
+
+      setAvailableCandidates(candidates);
+      setSelectedCandidateIds([]);
+      setNewMemberPeran("Anggota");
+    } catch (err) {
+      console.error("Failed to load candidates:", err);
+    } finally {
+      setLoadingCandidates(false);
+    }
+  };
+
+  const openAddMemberModal = async () => {
+    await loadCandidates();
+    setIsAddMemberOpen(true);
+  };
+
+  const toggleCandidate = (userId: string) => {
+    setSelectedCandidateId(prev => prev === userId ? null : userId);
+  };
+
+  const handleAddMembers = async () => {
+    if (!selectedCandidateId) return;
+    
+    const candidate = availableCandidates.find(c => c.user_id === selectedCandidateId);
+    const hasKetua = teamMembers.some(m => m.role.toLowerCase().includes("ketua"));
+    
+    // Validate Ketua role
+    if (newMemberPeran === "Ketua") {
+      if (hasKetua) {
+        alert("Sudah ada Ketua di riset ini. Hanya boleh ada 1 Ketua.");
+        return;
+      }
+      if (candidate?.member_type !== "Dosen") {
+        alert("Ketua tim wajib Dosen. Mahasiswa tidak bisa menjadi Ketua.");
+        return;
+      }
+    }
+    
+    console.log("[Add Member] Payload:", {
+      userId: selectedCandidateId,
+      memberType: candidate?.member_type,
+      peran: newMemberPeran,
+      status: "Aktif"
+    });
+    
+    try {
+      await apiPost(`/research/${activeId}/members`, {
+        userId: selectedCandidateId,
+        memberType: candidate?.member_type || "Mahasiswa",
+        peran: newMemberPeran,
+        status: "Aktif"
+      });
+
+      // Reload members dari API
+      const members = await apiGet<Array<any>>(`/research/${activeId}/members`);
+      console.log("[Add Member] API Response:", members);
+      
+      const updatedTeamMembers: TeamMember[] = (members || []).map((member, index) => {
+        const fallbackInitials = String(member?.name || "TM")
+          .split(" ")
+          .map((chunk: string) => chunk[0] || "")
+          .join("")
+          .slice(0, 2)
+          .toUpperCase() || "TM";
+        const mappedMember = {
+          id: member.user_id,
+          name: member.name || "Anggota Tim",
+          initials: member.initials || fallbackInitials,
+          role: member.peran || member.member_type || "Anggota",
+          color: member.member_type === "Dosen"
+            ? "bg-blue-500 text-white"
+            : index % 2 === 0
+              ? "bg-[#8B6FFF] text-white"
+              : "bg-emerald-500 text-white"
+        };
+        console.log("[Add Member] Mapped member:", mappedMember);
+        return mappedMember;
+      });
+
+      console.log("[Add Member] Updated team members:", updatedTeamMembers);
+      
+      // Update map dan trigger re-render
+      setTeamMembersMap(prev => {
+        const newMap = { ...prev, [activeId]: updatedTeamMembers };
+        console.log("[Add Member] New teamMembersMap:", newMap);
+        return newMap;
+      });
+      
+      setIsAddMemberOpen(false);
+      setSelectedCandidateId(null);
+      setNewMemberPeran("Anggota");
+    } catch (err: any) {
+      console.error("[Add Member] Error:", err);
+      alert(err?.message || "Gagal menambah anggota");
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    const member = teamMembers.find(m => m.id === userId);
+    if (!member) return;
+
+    if (!confirm(`Hapus ${member.name} dari tim riset?`)) return;
+
+    try {
+      await apiDelete(`/research/${activeId}/members/${userId}`);
+
+      // Reload members
+      const members = await apiGet<Array<any>>(`/research/${activeId}/members`);
+      const updatedTeamMembers: TeamMember[] = (members || []).map((m, index) => {
+        const fallbackInitials = String(m?.name || "TM")
+          .split(" ")
+          .map((chunk: string) => chunk[0] || "")
+          .join("")
+          .slice(0, 2)
+          .toUpperCase() || "TM";
+        return {
+          id: m.user_id,
+          name: m.name || "Anggota Tim",
+          initials: m.initials || fallbackInitials,
+          role: m.peran || m.member_type || "Anggota",
+          color: m.member_type === "Dosen"
+            ? "bg-blue-500 text-white"
+            : index % 2 === 0
+              ? "bg-[#8B6FFF] text-white"
+              : "bg-emerald-500 text-white"
+        };
+      });
+      setTeamMembersMap(prev => ({ ...prev, [activeId]: updatedTeamMembers }));
+    } catch (err: any) {
+      console.error("Failed to remove member:", err);
+      alert(err?.message || "Gagal menghapus anggota");
+    }
+  };
 
   const columns = [
     { id: "todo", title: "TO DO", bg: "bg-slate-50", iconColor: "bg-slate-300", textColor: "text-slate-600", pillBg: "bg-slate-200 text-slate-700" },
@@ -1037,7 +1204,9 @@ export function SharedBoardView({
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-slate-700">Ketua Tim</label>
-                  <input type="text" defaultValue={ketuaMember?.name} className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all" />
+                  <div className="w-full px-4 py-2.5 rounded-xl border border-border bg-slate-50 text-sm font-semibold text-slate-600">
+                    {ketuaMember?.name || "Belum ditentukan"}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-slate-700">Periode</label>
@@ -1048,16 +1217,24 @@ export function SharedBoardView({
                 <label className="text-xs font-bold text-slate-700">Anggota Tim</label>
                 <div className="flex flex-col gap-2">
                   {teamMembers.map((member, i) => (
-                    <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 group hover:border-[#6C47FF]/30 hover:bg-[#F8F5FF] transition-all">
+                    <div key={member.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 group hover:border-[#6C47FF]/30 hover:bg-[#F8F5FF] transition-all">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${getAssigneeColor(member.initials)}`}>{member.initials}</div>
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-xs font-bold text-slate-800">{member.name}</span>
                         <span className="text-[10px] font-medium text-slate-400">{member.role}</span>
                       </div>
-                      <button className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-1"><X size={13} strokeWidth={3} /></button>
+                      <button
+                        onClick={() => handleRemoveMember(member.id)}
+                        className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-1"
+                      >
+                        <X size={13} strokeWidth={3} />
+                      </button>
                     </div>
                   ))}
-                  <button className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-xs font-bold text-slate-500 hover:text-[#6C47FF] hover:border-[#6C47FF] hover:bg-[#6C47FF]/5 transition-all mt-1">
+                  <button
+                    onClick={openAddMemberModal}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-xs font-bold text-slate-500 hover:text-[#6C47FF] hover:border-[#6C47FF] hover:bg-[#6C47FF]/5 transition-all mt-1"
+                  >
                     <Plus size={12} strokeWidth={3} /> Tambah Anggota
                   </button>
                 </div>
@@ -1157,6 +1334,118 @@ export function SharedBoardView({
                 </button>
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">💡 Klik lingkaran untuk toggle · Double-click nama untuk ubah</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Add Member Modal ══ */}
+      {isAddMemberOpen && (
+        <div className="fixed inset-0 z-[130] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center pt-[10vh] p-4 sm:p-6" onClick={() => setIsAddMemberOpen(false)}>
+          <div className="bg-white w-full max-w-[480px] max-h-[80vh] rounded-[20px] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-lg font-black text-foreground">Tambah Anggota Tim</h2>
+                <p className="text-[11px] font-bold text-muted-foreground">{project.shortTitle}</p>
+              </div>
+              <button onClick={() => setIsAddMemberOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"><X size={16} strokeWidth={2.5} /></button>
+            </div>
+            <div className="p-5 md:p-6 flex flex-col gap-4 overflow-y-auto">
+              {/* Role Selection */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-slate-700">Peran</label>
+                <select
+                  value={newMemberPeran}
+                  onChange={e => setNewMemberPeran(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
+                >
+                  {(() => {
+                    const hasKetua = teamMembers.some(m => m.role.toLowerCase().includes("ketua"));
+                    const selectedCandidate = availableCandidates.find(c => c.user_id === selectedCandidateId);
+                    const isMahasiswa = selectedCandidate?.member_type === "Mahasiswa";
+                    const allRoles = ["Ketua", "Pembimbing", "Anggota Inti", "Backend Dev", "Frontend Dev", "Hardware Dev", "Data Analyst", "Asisten Peneliti", "Fullstack Dev"];
+                    
+                    // Filter out "Ketua" if already exists or if candidate is Mahasiswa
+                    const filteredRoles = allRoles.filter(role => {
+                      if (role === "Ketua") {
+                        return !hasKetua && !isMahasiswa;
+                      }
+                      return true;
+                    });
+
+                    return filteredRoles.map(p => <option key={p}>{p}</option>);
+                  })()}
+                </select>
+                {teamMembers.some(m => m.role.toLowerCase().includes("ketua")) && (
+                  <p className="text-[10px] text-amber-600 font-medium">⚠️ Ketua sudah ditentukan. Hanya bisa diubah, tidak bisa menambah Ketua baru.</p>
+                )}
+                {selectedCandidateId && availableCandidates.find(c => c.user_id === selectedCandidateId)?.member_type === "Mahasiswa" && (
+                  <p className="text-[10px] text-amber-600 font-medium">⚠️ Mahasiswa tidak bisa menjadi Ketua. Ketua wajib Dosen.</p>
+                )}
+              </div>
+
+              {/* Candidate List */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-slate-700">Pilih Anggota</label>
+                {loadingCandidates ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground">Memuat kandidat...</div>
+                ) : availableCandidates.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground">Semua user sudah menjadi anggota</div>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                    {availableCandidates.map((candidate) => {
+                      const isSelected = selectedCandidateId === candidate.user_id;
+                      return (
+                        <label
+                          key={candidate.user_id}
+                          onClick={() => setSelectedCandidateId(candidate.user_id)}
+                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                            isSelected
+                              ? "border-[#6C47FF] bg-[#F8F5FF]"
+                              : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="candidate-selection"
+                            checked={isSelected}
+                            onChange={() => setSelectedCandidateId(candidate.user_id)}
+                            className="accent-[#6C47FF] shrink-0"
+                          />
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                            candidate.member_type === "Dosen" ? "bg-blue-500 text-white" : "bg-emerald-500 text-white"
+                          }`}>
+                            {candidate.initials}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{candidate.name}</p>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                              candidate.member_type === "Dosen" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"
+                            }`}>
+                              {candidate.member_type}
+                            </span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-5 md:px-6 border-t border-border/50 bg-slate-50/50 flex justify-end gap-3">
+              <button
+                onClick={() => setIsAddMemberOpen(false)}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleAddMembers}
+                disabled={!selectedCandidateId}
+                className={`${accentBg} hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all`}
+              >
+                Tambahkan
+              </button>
             </div>
           </div>
         </div>

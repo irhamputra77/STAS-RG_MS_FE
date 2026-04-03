@@ -84,7 +84,7 @@ export default function DatabaseRiset() {
           apiGet<Array<any>>("/students")
         ]);
         setResearch(rData || []);
-        setStudents((sData || []).map((item: any) => ({ id: item.id, name: item.name, initials: item.initials })));
+        setStudents((sData || []).map((item: any) => ({ id: item.user_id, name: item.name, initials: item.initials })));
         setLecturers(
           (lData || []).map((item: any) => ({
             ...item,
@@ -145,7 +145,7 @@ export default function DatabaseRiset() {
 
   const selectedMemberIdsSet = new Set((members[selected?.id || ""] || []).map((member: any) => member.user_id));
   const allAddable = [
-    ...lecturers.map((item) => ({ user_id: item.id, name: item.name, initials: item.initials || item.name?.charAt(0), member_type: "Dosen" })),
+    ...lecturers.map((item) => ({ user_id: item.user_id, name: item.name, initials: item.initials || item.name?.charAt(0), member_type: "Dosen" })),
     ...students.map((item) => ({ user_id: item.id, name: item.name, initials: item.initials || item.name?.charAt(0), member_type: "Mahasiswa" }))
   ].filter((item) => !selectedMemberIdsSet.has(item.user_id));
 
@@ -198,6 +198,19 @@ export default function DatabaseRiset() {
     }
   };
 
+  const handleDeleteResearch = async (risetId: string, risetTitle: string) => {
+    if (!confirm(`Hapus riset "${risetTitle}"?\n\nSemua data terkait (anggota, milestone, logbook) akan ikut terhapus.`)) return;
+    
+    try {
+      await apiDelete(`/research/${risetId}`);
+      const updatedResearch = await apiGet<ResearchProject[]>("/research");
+      setResearch(updatedResearch || []);
+      setSelected(null);
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus riset.");
+    }
+  };
+
   const handleCreateResearch = async () => {
     if (!formData.title.trim() || !formData.supervisorId) {
       setError("Judul riset dan supervisor wajib diisi.");
@@ -211,6 +224,10 @@ export default function DatabaseRiset() {
       const periodText = formData.startDate && formData.endDate
         ? `${new Date(formData.startDate).toLocaleDateString("id-ID")} - ${new Date(formData.endDate).toLocaleDateString("id-ID")}`
         : null;
+
+      // Find supervisor's user_id for membership
+      const supervisorLecturer = lecturers.find(l => l.id === formData.supervisorId);
+      const supervisorUserId = supervisorLecturer?.user_id;
 
       const payload = {
         id: risetId,
@@ -229,14 +246,31 @@ export default function DatabaseRiset() {
       await apiPost("/research", payload);
 
       // Add supervisor and students as members
-      const memberPromises = [formData.supervisorId, ...formData.studentIds].map(userId => 
-        apiPost(`/research/${risetId}/members`, {
-          userId,
-          memberType: formData.studentIds.includes(userId) ? "Mahasiswa" : "Dosen",
-          peran: formData.studentIds.includes(userId) ? "Anggota" : "Pembimbing",
-          status: "Aktif"
-        })
-      );
+      const memberPromises = [];
+      
+      // Add supervisor as member (use user_id, not lecturer id)
+      if (supervisorUserId) {
+        memberPromises.push(
+          apiPost(`/research/${risetId}/members`, {
+            userId: supervisorUserId,
+            memberType: "Dosen",
+            peran: "Pembimbing",
+            status: "Aktif"
+          })
+        );
+      }
+
+      // Add students as members
+      for (const studentId of formData.studentIds) {
+        memberPromises.push(
+          apiPost(`/research/${risetId}/members`, {
+            userId: studentId,
+            memberType: "Mahasiswa",
+            peran: "Anggota",
+            status: "Aktif"
+          })
+        );
+      }
       await Promise.all(memberPromises);
 
       const milestonePromises = formData.milestones
@@ -415,7 +449,18 @@ export default function DatabaseRiset() {
               <div className="p-5">
                 {detailTab === "info" && (
                   <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${statusColor(selected.status)}`}>{selected.status}</span><button className="flex items-center gap-1 text-[10px] font-black text-[#0AB600] hover:bg-green-50 px-2 py-1 rounded-[8px] transition-colors"><Pencil size={11} /> Edit</button></div>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${statusColor(selected.status)}`}>{selected.status}</span>
+                      <div className="flex gap-1">
+                        <button className="flex items-center gap-1 text-[10px] font-black text-[#0AB600] hover:bg-green-50 px-2 py-1 rounded-[8px] transition-colors"><Pencil size={11} /> Edit</button>
+                        <button
+                          onClick={() => handleDeleteResearch(selected.id, selected.title)}
+                          className="flex items-center gap-1 text-[10px] font-black text-red-500 hover:bg-red-50 px-2 py-1 rounded-[8px] transition-colors"
+                        >
+                          <Trash2 size={11} /> Hapus
+                        </button>
+                      </div>
+                    </div>
                     <h3 className="font-black text-foreground leading-snug">{selected.title}</h3>
                     <p className="text-xs text-foreground">{selected.description}</p>
                     {[["Supervisor Ketua", selected.supervisor_name], ["Periode", selected.period_text], ["Mitra", selected.mitra], ["Pendanaan", selected.funding], ["Kategori", selected.category]].map(([l, v]) => (
