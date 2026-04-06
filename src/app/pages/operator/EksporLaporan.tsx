@@ -112,7 +112,7 @@ export default function EksporLaporan() {
         filters.customDateTo = dateToCustom;
       }
 
-      const response = await apiPost<any>("/exports/generate", { format, selectedData, filters });
+      const response = await apiPost<any>("/exports/generate", { format, selectedData });
       const downloadUrl = response?.downloadUrl || `${window.location.origin}/api/exports/download?id=${response?.id}&format=${format}`;
       setCustomDownloadUrl(downloadUrl);
       setCustomDone(true);

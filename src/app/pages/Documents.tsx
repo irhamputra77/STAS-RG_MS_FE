@@ -97,7 +97,7 @@ export default function Documents() {
       try {
         const studentId = user?.id;
         const [rows, certRows, projectRows] = await Promise.all([
-          apiGet<Array<any>>(`/letter-requests${studentId ? `?studentId=${studentId}` : ""}`),
+          apiGet<Array<any>>("/letter-requests"),
           apiGet<Array<any>>(`/certificates${studentId ? `?studentId=${studentId}` : ""}`),
           studentId ? apiGet<Array<any>>(`/research/assigned?userId=${encodeURIComponent(studentId)}`) : Promise.resolve([])
         ]);

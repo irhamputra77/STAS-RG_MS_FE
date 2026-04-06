@@ -19,6 +19,20 @@ type WarningData = {
   lowHours: string[];
 };
 
+type DashboardSummary = {
+  totalMahasiswa: number;
+  totalRisetAktif: number;
+  cutiMenunggu: number;
+  suratMenunggu: number;
+  logbookTerbaru: Array<any>;
+};
+
+type AttendanceMonitorToday = {
+  presentIds?: string[];
+  leaveIds?: string[];
+  absentIds?: string[];
+};
+
 // ─── Send Warning Helper ──────────────────────────────────────────────────────
 function MiniStatCard({ icon, label, value, color, href, urgent }: { icon: React.ReactNode; label: string; value: number | string; color: string; href: string; urgent?: boolean }) {
   return (
@@ -58,7 +72,7 @@ export default function OperatorDashboard() {
     absentToday: [],
     lowHours: []
   });
-  const [summary, setSummary] = useState<{ totalMahasiswa: number; totalRisetAktif: number; cutiMenunggu: number; suratMenunggu: number; logbookTerbaru: Array<any> } | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
   const todayLabel = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
@@ -76,15 +90,94 @@ export default function OperatorDashboard() {
     const loadDashboard = async () => {
       setError("");
       try {
-        const [summaryRes, studentsRes, leaveRes, lettersRes, auditRes, researchRes, warningsRes] = await Promise.all([
-          apiGet<{ totalMahasiswa: number; totalRisetAktif: number; cutiMenunggu: number; suratMenunggu: number; logbookTerbaru: Array<any> }>("/dashboard/summary"),
-          apiGet<Array<any>>("/students"),
-          apiGet<Array<any>>("/leave-requests?status=Menunggu"),
-          apiGet<Array<any>>("/letter-requests?status=Menunggu"),
-          apiGet<Array<any>>("/audit-logs?limit=5"),
-          apiGet<Array<any>>("/research"),
-          apiGet<WarningData>("/dashboard/warnings")
-        ]);
+        const requests = [
+          {
+            key: "summary",
+            label: "ringkasan dashboard",
+            request: apiGet<DashboardSummary>("/dashboard/summary"),
+          },
+          {
+            key: "students",
+            label: "data mahasiswa",
+            request: apiGet<Array<any>>("/students"),
+          },
+          {
+            key: "leave",
+            label: "pengajuan cuti",
+            request: apiGet<Array<any>>("/leave-requests?status=Menunggu"),
+          },
+          {
+            key: "letters",
+            label: "pengajuan surat",
+            request: apiGet<Array<any>>("/letter-requests?status=Menunggu"),
+          },
+          {
+            key: "audit",
+            label: "audit log",
+            request: apiGet<Array<any>>("/audit-logs?limit=5"),
+          },
+          {
+            key: "research",
+            label: "data riset",
+            request: apiGet<Array<any>>("/research"),
+          },
+          {
+            key: "warnings",
+            label: "logbook",
+            request: apiGet<Array<any>>("/logbooks"),
+          },
+          {
+            key: "attendance",
+            label: "monitor kehadiran hari ini",
+            request: apiGet<AttendanceMonitorToday>("/attendance/monitor/today"),
+          },
+        ] as const;
+
+        const settled = await Promise.allSettled(requests.map((item) => item.request));
+        const failures = settled.flatMap((result, index) =>
+          result.status === "rejected"
+            ? `${requests[index].label}: ${result.reason?.message || "gagal dimuat"}`
+            : []
+        );
+
+        const summaryRes =
+          settled[0].status === "fulfilled"
+            ? settled[0].value
+            : null;
+        const studentsRes =
+          settled[1].status === "fulfilled"
+            ? settled[1].value
+            : [];
+        const leaveRes =
+          settled[2].status === "fulfilled"
+            ? settled[2].value
+            : [];
+        const lettersRes =
+          settled[3].status === "fulfilled"
+            ? settled[3].value
+            : [];
+        const auditRes =
+          settled[4].status === "fulfilled"
+            ? settled[4].value
+            : [];
+        const researchRes =
+          settled[5].status === "fulfilled"
+            ? settled[5].value
+            : [];
+        const warningsRes =
+          settled[6].status === "fulfilled"
+            ? settled[6].value
+            : [];
+        const attendanceRes =
+          settled[7].status === "fulfilled"
+            ? settled[7].value
+            : {};
+
+        if (failures.length === requests.length) {
+          setError("Semua data dashboard gagal dimuat. Periksa koneksi API atau endpoint backend.");
+        } else if (failures.length > 0) {
+          setError(`Sebagian data dashboard belum tersedia: ${failures.join(" | ")}`);
+        }
 
         const mappedStudents: MahasiswaRecord[] = studentsRes.map((item: any, index: number) => ({
           id: item.id,
@@ -171,17 +264,38 @@ export default function OperatorDashboard() {
           milestones: []
         }));
 
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = yesterday.toISOString().slice(0, 10);
+        const yesterdayLogbookStudentIds = new Set(
+          (warningsRes || [])
+            .filter((item: any) => {
+              const dateValue = String(item?.date || item?.tanggal || "").slice(0, 10);
+              return dateValue === yesterdayKey;
+            })
+            .map((item: any) => String(item?.student_id || item?.studentId || ""))
+            .filter(Boolean)
+        );
+
+        const derivedWarnings: WarningData = {
+          missingLogbook: mappedStudents
+            .filter((student) => student.status === "Aktif" && !yesterdayLogbookStudentIds.has(String(student.id)))
+            .map((student) => String(student.id)),
+          absentToday: Array.isArray(attendanceRes?.absentIds)
+            ? attendanceRes.absentIds.map((item) => String(item))
+            : [],
+          lowHours: mappedStudents
+            .filter((student) => student.jamMingguTarget > 0 && student.jamMingguIni < student.jamMingguTarget)
+            .map((student) => String(student.id))
+        };
+
         setSummary(summaryRes);
         setStudents(mappedStudents);
         setPendingCuti(mappedLeave);
         setPendingSurat(mappedLetters.slice(0, 2));
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
-        setWarnings(warningsRes || {
-          missingLogbook: [],
-          absentToday: [],
-          lowHours: []
-        });
+        setWarnings(derivedWarnings);
         setResignationRequests([]);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat dashboard operator.");
@@ -206,7 +320,6 @@ export default function OperatorDashboard() {
     try {
       await apiPost<{ message: string; id: string }>("/notifications", {
         recipientUserId: mahasiswaId,
-        senderUserId: user?.id || null,
         type: "pengumuman",
         title: msg.title,
         body: msg.body

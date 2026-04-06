@@ -38,6 +38,18 @@ const REQUEST_TYPE_BADGE: Record<RequestType, string> = {
   sakit: "bg-rose-100 text-rose-700 border border-rose-200",
 };
 
+function parseRequestType(item: any): RequestType {
+  const rawJenis = String(item?.jenis_pengajuan || item?.jenis || "").toLowerCase();
+  if (rawJenis === "izin" || rawJenis === "sakit" || rawJenis === "cuti") {
+    return rawJenis as RequestType;
+  }
+
+  const note = String(item?.catatan || "").toLowerCase();
+  if (note.includes("jenis pengajuan: izin")) return "izin";
+  if (note.includes("jenis pengajuan: sakit")) return "sakit";
+  return "cuti";
+}
+
 const initialFormState = {
   jenis: "cuti" as RequestType,
   periodeMulai: "",
@@ -63,13 +75,15 @@ export default function LeaveRequest() {
     const load = async () => {
       try {
         const [rows, settings] = await Promise.all([
-          apiGet<Array<any>>(`/leave-requests${user?.id ? `?studentId=${user.id}` : ""}`),
-          apiGet<any>("/health/leave-rules"),
+          apiGet<Array<any>>("/leave-requests"),
+          apiGet<any>("/system-settings"),
         ]);
 
-        const mapped: LeaveRecord[] = (rows || []).map((item) => ({
+        const mapped: LeaveRecord[] = (rows || [])
+          .filter((item) => !user?.id || item.student_id === user.id || item.studentId === user.id)
+          .map((item) => ({
           id: item.id,
-          jenis: (item.jenis_pengajuan || item.jenis || "cuti") as RequestType,
+          jenis: parseRequestType(item),
           tanggalPengajuan: item.tanggal_pengajuan,
           periodeMulai: item.periode_start,
           periodeSelesai: item.periode_end,
@@ -88,9 +102,9 @@ export default function LeaveRequest() {
 
         setLeaveData(mapped);
         setCutiRule({
-          maxSemesterDays: Number(settings?.maxSemesterDays || 0),
-          maxMonthDays: Number(settings?.maxMonthDays || 0),
-          minAttendancePct: Number(settings?.minAttendancePct || 0),
+          maxSemesterDays: Number(settings?.cuti?.maxSemesterDays || 0),
+          maxMonthDays: Number(settings?.cuti?.maxMonthDays || 0),
+          minAttendancePct: Number(settings?.cuti?.minAttendancePct || 0),
         });
       } catch (err: any) {
         setError(err?.message || "Gagal memuat data pengajuan.");
@@ -162,18 +176,16 @@ export default function LeaveRequest() {
     try {
       setSubmitting(true);
 
-      const payload = new FormData();
-      payload.append("id", requestId);
-      payload.append("studentId", user?.id || "S001");
-      payload.append("jenis", formData.jenis);
-      payload.append("periodeStart", formData.periodeMulai);
-      payload.append("periodeEnd", formData.periodeSelesai);
-      payload.append("durasi", String(duration));
-      payload.append("alasan", formData.alasan.trim());
-      payload.append("tanggalPengajuan", new Date().toISOString().split("T")[0]);
-      payload.append("buktiPendukung", formData.buktiPendukung);
-
-      await apiPost<{ message: string }>("/leave-requests", payload as any);
+      await apiPost<{ message: string }>("/leave-requests", {
+        id: requestId,
+        studentId: user?.id || "S001",
+        periodeStart: formData.periodeMulai,
+        periodeEnd: formData.periodeSelesai,
+        durasi: duration,
+        alasan: formData.alasan.trim(),
+        tanggalPengajuan: new Date().toISOString().split("T")[0],
+        catatan: `Jenis pengajuan: ${formData.jenis}. Lampiran frontend: ${formData.buktiPendukung.name}`
+      });
 
       const newLeave: LeaveRecord = {
         id: requestId,

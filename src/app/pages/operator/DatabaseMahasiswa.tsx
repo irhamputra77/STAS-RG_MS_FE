@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { OperatorLayout } from "../../components/OperatorLayout";
-import { Search, Plus, Download, X, Pencil, ChevronRight, BookOpen, UserCheck, FlaskConical } from "lucide-react";
-import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2 } from "lucide-react";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
 
 type MahasiswaRecord = any;
 
@@ -59,6 +59,7 @@ export default function DatabaseMahasiswa() {
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     id: "",
     nim: "",
@@ -230,6 +231,25 @@ export default function DatabaseMahasiswa() {
     }
   };
 
+  const handleDelete = async (student: MahasiswaRecord, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const confirmed = window.confirm(`Hapus data mahasiswa "${student.name}"?`);
+    if (!confirmed) return;
+
+    setDeletingId(student.id);
+    setError("");
+    try {
+      await apiDelete(`/students/${student.id}`);
+      await loadStudents();
+      if (selected?.id === student.id) setSelected(null);
+      if (modal === "edit" && form.id === student.id) setModal(null);
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus data mahasiswa.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <OperatorLayout title="Database Mahasiswa">
       <div className="flex flex-col gap-5 pb-4">
@@ -326,6 +346,14 @@ export default function DatabaseMahasiswa() {
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={e => openEdit(m, e)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-amber-50 hover:text-amber-600 transition-colors" title="Edit"><Pencil size={14} /></button>
+                          <button
+                            onClick={e => handleDelete(m, e)}
+                            disabled={deletingId === m.id}
+                            className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                            title="Hapus"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -405,7 +433,16 @@ export default function DatabaseMahasiswa() {
                 </div>
               </div>
               <div className="px-5 pb-4">
-                <button onClick={e => openEdit(selected, e)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Mahasiswa</button>
+                <div className="flex gap-2">
+                  <button onClick={e => openEdit(selected, e)} className="flex-1 h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Mahasiswa</button>
+                  <button
+                    onClick={() => handleDelete(selected)}
+                    disabled={deletingId === selected.id}
+                    className="flex-1 h-9 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white text-xs font-black rounded-[10px] transition-colors"
+                  >
+                    {deletingId === selected.id ? "Menghapus..." : "Hapus Data"}
+                  </button>
+                </div>
               </div>
             </div>
           )}
