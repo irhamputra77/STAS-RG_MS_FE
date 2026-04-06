@@ -3,6 +3,7 @@ import { OperatorLayout } from "../../components/OperatorLayout";
 import { Check, X, Eye, CalendarCheck, AlertTriangle, Download, Clock } from "lucide-react";
 import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
 
+type RequestType = "cuti" | "izin" | "sakit";
 type LeaveRequestAll = any;
 
 type Status = "Menunggu" | "Disetujui" | "Ditolak";
@@ -12,7 +13,27 @@ const STATUS_STYLE: Record<Status, string> = {
   "Ditolak": "bg-red-100 text-red-600 border border-red-200",
 };
 
+const REQUEST_TYPE_LABEL: Record<RequestType, string> = {
+  cuti: "Cuti",
+  izin: "Izin",
+  sakit: "Sakit",
+};
+
+const REQUEST_TYPE_BADGE: Record<RequestType, string> = {
+  cuti: "bg-indigo-100 text-indigo-700 border border-indigo-200",
+  izin: "bg-amber-100 text-amber-700 border border-amber-200",
+  sakit: "bg-rose-100 text-rose-700 border border-rose-200",
+};
+
 type ToastState = { msg: string; type: "success" | "error" } | null;
+
+function TypeBadge({ jenis }: { jenis: RequestType }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${REQUEST_TYPE_BADGE[jenis]}`}>
+      {REQUEST_TYPE_LABEL[jenis]}
+    </span>
+  );
+}
 
 export default function PersetujuanCuti() {
   const user = getStoredUser();
@@ -35,6 +56,7 @@ export default function PersetujuanCuti() {
           mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
+          jenis: (item.jenis_pengajuan || item.jenis || "cuti") as RequestType,
           riset: item.project_name || "-",
           periodeStart: item.periode_start,
           periodeEnd: item.periode_end,
@@ -136,7 +158,7 @@ export default function PersetujuanCuti() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead><tr className="bg-slate-50 border-b border-border">
-                  {["Mahasiswa", "Riset", "Periode Cuti", "Durasi", "Alasan", "Pengajuan", "Status", "Aksi"].map(h => (
+                  {["Mahasiswa", "Jenis", "Riset", "Periode Cuti", "Durasi", "Alasan", "Pengajuan", "Status", "Aksi"].map(h => (
                     <th key={h} className="px-5 py-3 text-xs font-black text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr></thead>
@@ -152,6 +174,7 @@ export default function PersetujuanCuti() {
                           </div>
                         </div>
                       </td>
+                      <td className="px-5 py-3.5"><TypeBadge jenis={l.jenis} /></td>
                       <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded ${l.riset === "Riset A" ? "bg-[#F8F5FF] text-[#6C47FF]" : "bg-emerald-50 text-emerald-700"}`}>{l.riset}</span></td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground whitespace-nowrap">{l.periodeStart}{l.periodeEnd !== l.periodeStart ? ` – ${l.periodeEnd}` : ""}</td>
                       <td className="px-5 py-3.5 text-xs font-bold text-foreground">{l.durasi}h</td>
@@ -195,13 +218,33 @@ export default function PersetujuanCuti() {
                   <span className={`inline-block mt-1 text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_STYLE[detail.status]}`}>{detail.status}</span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                {[["Riset", detail.riset], ["Durasi", `${detail.durasi} hari`], ["Mulai", detail.periodeStart], ["Selesai", detail.periodeEnd], ["Pengajuan", detail.tanggalPengajuan]].map(([l, v]) => (
-                  <div key={l} className="bg-slate-50 border border-border rounded-[10px] p-3">
-                    <p className="font-black text-muted-foreground mb-0.5">{l}</p>
-                    <p className="font-black text-foreground">{v}</p>
+              <div className="flex flex-col gap-3 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-50 border border-border rounded-[10px] p-3">
+                    <p className="font-black text-muted-foreground mb-1.5">Jenis</p>
+                    <TypeBadge jenis={detail.jenis} />
                   </div>
-                ))}
+                  <div className="bg-slate-50 border border-border rounded-[10px] p-3">
+                    <p className="font-black text-muted-foreground mb-0.5">Riset</p>
+                    <p className="font-black text-foreground">{detail.riset}</p>
+                  </div>
+                  <div className="bg-slate-50 border border-border rounded-[10px] p-3">
+                    <p className="font-black text-muted-foreground mb-0.5">Durasi</p>
+                    <p className="font-black text-foreground">{detail.durasi} hari</p>
+                  </div>
+                  <div className="bg-slate-50 border border-border rounded-[10px] p-3">
+                    <p className="font-black text-muted-foreground mb-0.5">Pengajuan</p>
+                    <p className="font-black text-foreground">{detail.tanggalPengajuan}</p>
+                  </div>
+                  <div className="bg-slate-50 border border-border rounded-[10px] p-3">
+                    <p className="font-black text-muted-foreground mb-0.5">Mulai</p>
+                    <p className="font-black text-foreground">{detail.periodeStart}</p>
+                  </div>
+                  <div className="bg-slate-50 border border-border rounded-[10px] p-3">
+                    <p className="font-black text-muted-foreground mb-0.5">Selesai</p>
+                    <p className="font-black text-foreground">{detail.periodeEnd}</p>
+                  </div>
+                </div>
               </div>
               <div>
                 <p className="text-xs font-black text-muted-foreground mb-1.5">Alasan</p>
