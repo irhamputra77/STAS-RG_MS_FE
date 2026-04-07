@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ChevronLeft, Edit2, AlertTriangle, Check, X,
-  UploadCloud, Download, Send, FileText,
+  UploadCloud, Download, Send, FileText, Link,
   Image as ImageIcon, Folder, Plus, Trash2, MessageSquare,
   Paperclip, GitBranch, ExternalLink,
 } from "lucide-react";
@@ -390,6 +390,31 @@ export function SharedBoardView({
     loadBoard();
   }, [activeId, teamMembersMap]);
 
+  const project = availableProjects.find((row) => row.id === activeId) ?? availableProjects[0];
+  const milestones = milestonesMap[activeId] ?? [];
+  const tasks = tasksMap[activeId] ?? EMPTY_BOARD_COLUMNS;
+
+  // Initialize attachment link when project changes
+  React.useEffect(() => {
+    if (project?.attachment_link) {
+      setAttachmentLink(project.attachment_link);
+    }
+  }, [project?.id]);
+
+  const toggleMilestone = async (i: number) => {
+    const current = milestones[i];
+    if (!current) return;
+    if (current.id) {
+      await apiPatch(`/research/${activeId}/milestones/${current.id}`, { done: !current.done });
+    }
+    setMilestonesMap((prev) => ({
+      ...prev,
+      [activeId]: (prev[activeId] || []).map((item, index) =>
+        index === i ? { ...item, done: !item.done } : item
+      )
+    }));
+  };
+
   // Modal state
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<"detail" | "komentar">("detail");
@@ -428,32 +453,6 @@ export function SharedBoardView({
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [newMemberPeran, setNewMemberPeran] = useState("Anggota");
   const [loadingCandidates, setLoadingCandidates] = useState(false);
-
-  // Computed values (AFTER all hooks)
-  const project = availableProjects.find((row) => row.id === activeId) ?? availableProjects[0];
-  const milestones = milestonesMap[activeId] ?? [];
-  const tasks = tasksMap[activeId] ?? EMPTY_BOARD_COLUMNS;
-
-  // Initialize attachment link when project changes
-  React.useEffect(() => {
-    if (project?.attachment_link) {
-      setAttachmentLink(project.attachment_link);
-    }
-  }, [project?.id]);
-
-  const toggleMilestone = async (i: number) => {
-    const current = milestones[i];
-    if (!current) return;
-    if (current.id) {
-      await apiPatch(`/research/${activeId}/milestones/${current.id}`, { done: !current.done });
-    }
-    setMilestonesMap((prev) => ({
-      ...prev,
-      [activeId]: (prev[activeId] || []).map((item, index) =>
-        index === i ? { ...item, done: !item.done } : item
-      )
-    }));
-  };
 
   if (loading) {
     return (
@@ -533,6 +532,29 @@ export function SharedBoardView({
 
   const toggleCandidate = (userId: string) => {
     setSelectedCandidateId(prev => prev === userId ? null : userId);
+  };
+
+  // ─── Attachment Link Functions ──────────────────────────────────────────────
+
+  const saveAttachmentLink = async () => {
+    setSavingAttachment(true);
+    try {
+      await apiPut(`/research/${activeId}`, { attachmentLink: attachmentLink.trim() || null });
+      setIsEditingAttachment(false);
+      // Update availableProjects state agar UI langsung ter-update
+      setAvailableProjects(prev =>
+        prev.map(p =>
+          p.id === activeId
+            ? { ...p, attachment_link: attachmentLink.trim() || undefined }
+            : p
+        )
+      );
+    } catch (err: any) {
+      console.error("Failed to save attachment link:", err);
+      alert(err?.message || "Gagal menyimpan link lampiran");
+    } finally {
+      setSavingAttachment(false);
+    }
   };
 
   const handleAddMembers = async () => {
@@ -824,29 +846,6 @@ export function SharedBoardView({
       ...prev,
       [activeId]: (prev[activeId] || []).filter((_, idx) => idx !== index)
     }));
-  };
-
-  // ─── Attachment Link Functions ──────────────────────────────────────────────
-
-  const saveAttachmentLink = async () => {
-    setSavingAttachment(true);
-    try {
-      await apiPut(`/research/${activeId}`, { attachmentLink: attachmentLink.trim() || null });
-      setIsEditingAttachment(false);
-      // Update availableProjects state agar UI langsung ter-update
-      setAvailableProjects(prev =>
-        prev.map(p =>
-          p.id === activeId
-            ? { ...p, attachment_link: attachmentLink.trim() || undefined }
-            : p
-        )
-      );
-    } catch (err: any) {
-      console.error("Failed to save attachment link:", err);
-      alert(err?.message || "Gagal menyimpan link lampiran");
-    } finally {
-      setSavingAttachment(false);
-    }
   };
 
   const sendTaskComment = async () => {
