@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { OperatorLayout } from "../../components/OperatorLayout";
-import { apiGet, apiPost, apiPut } from "../../lib/api";
-import { Search, Plus, X, Eye, Pencil, FlaskConical, Users } from "lucide-react";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
+import { Search, Plus, X, Eye, Pencil, FlaskConical, Trash2 } from "lucide-react";
 
 interface DosenRecord {
   id: string; name: string; nip: string; email: string; departemen: string; jabatan: string;
@@ -21,6 +21,7 @@ export default function DatabaseDosen() {
   const [dosens, setDosens] = useState<DosenRecord[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     id: "",
     name: "",
@@ -97,6 +98,28 @@ export default function DatabaseDosen() {
       setError(err?.message || "Gagal menyimpan data dosen.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteDosen = async (dosen: DosenRecord, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const confirmed = window.confirm(`Hapus data dosen "${dosen.name}"?`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(dosen.id);
+      setError("");
+      await apiDelete(`/lecturers/${dosen.id}`);
+      if (selected?.id === dosen.id) setSelected(null);
+      if (editTarget?.id === dosen.id) {
+        setEditTarget(null);
+        setModal(null);
+      }
+      await reloadDosens();
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus data dosen.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -181,6 +204,14 @@ export default function DatabaseDosen() {
                       <div className="flex items-center gap-1">
                         <button onClick={e => { e.stopPropagation(); setSelected(d); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-[#F8F5FF] hover:text-[#6C47FF] transition-colors"><Eye size={13} /></button>
                         <button onClick={e => { e.stopPropagation(); setEditTarget(d); setForm({ id: d.id, name: d.name, nip: d.nip, password: "", email: d.email, jabatan: d.jabatan, departemen: d.departemen, keahlian: d.keahlian.join(", "), status: d.status }); setModal("edit"); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-green-50 hover:text-green-600 transition-colors"><Pencil size={13} /></button>
+                        <button
+                          onClick={e => handleDeleteDosen(d, e)}
+                          disabled={deletingId === d.id}
+                          className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                          title="Hapus"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -225,21 +256,30 @@ export default function DatabaseDosen() {
                 </div>
               </div>
               <div className="px-5 pb-5">
-                <button onClick={() => {
-                  setEditTarget(selected);
-                  setForm({
-                    id: selected.id,
-                    name: selected.name,
-                    nip: selected.nip,
-                    password: "",
-                    email: selected.email,
-                    jabatan: selected.jabatan,
-                    departemen: selected.departemen,
-                    keahlian: selected.keahlian.join(", "),
-                    status: selected.status
-                  });
-                  setModal("edit");
-                }} className="w-full h-9 bg-[#0AB600] hover:bg-[#099800] text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Dosen</button>
+                <div className="flex gap-2">
+                  <button onClick={() => {
+                    setEditTarget(selected);
+                    setForm({
+                      id: selected.id,
+                      name: selected.name,
+                      nip: selected.nip,
+                      password: "",
+                      email: selected.email,
+                      jabatan: selected.jabatan,
+                      departemen: selected.departemen,
+                      keahlian: selected.keahlian.join(", "),
+                      status: selected.status
+                    });
+                    setModal("edit");
+                  }} className="flex-1 h-9 bg-[#0AB600] hover:bg-[#099800] text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Dosen</button>
+                  <button
+                    onClick={() => handleDeleteDosen(selected)}
+                    disabled={deletingId === selected.id}
+                    className="flex-1 h-9 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white text-xs font-black rounded-[10px] transition-colors"
+                  >
+                    {deletingId === selected.id ? "Menghapus..." : "Hapus Data"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

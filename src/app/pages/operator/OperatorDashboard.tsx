@@ -13,6 +13,25 @@ type LeaveRequestAll = any;
 type LetterRequestAll = any;
 type AuditLogEntry = any;
 type ResearchFull = any;
+type WarningData = {
+  missingLogbook: string[];
+  absentToday: string[];
+  lowHours: string[];
+};
+
+type DashboardSummary = {
+  totalMahasiswa: number;
+  totalRisetAktif: number;
+  cutiMenunggu: number;
+  suratMenunggu: number;
+  logbookTerbaru: Array<any>;
+};
+
+type AttendanceMonitorToday = {
+  presentIds?: string[];
+  leaveIds?: string[];
+  absentIds?: string[];
+};
 
 // ─── Send Warning Helper ──────────────────────────────────────────────────────
 function MiniStatCard({ icon, label, value, color, href, urgent }: { icon: React.ReactNode; label: string; value: number | string; color: string; href: string; urgent?: boolean }) {
@@ -48,9 +67,12 @@ export default function OperatorDashboard() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [researches, setResearches] = useState<ResearchFull[]>([]);
   const [resignationRequests, setResignationRequests] = useState<any[]>([]);
-  const [notIsiLogbookKemarin, setNotIsiLogbookKemarin] = useState<string[]>([]);
-  const [tidakHadirHariIni, setTidakHadirHariIni] = useState<string[]>([]);
-  const [summary, setSummary] = useState<{ totalMahasiswa: number; totalRisetAktif: number; cutiMenunggu: number; suratMenunggu: number; logbookTerbaru: Array<any> } | null>(null);
+  const [warnings, setWarnings] = useState<WarningData>({
+    missingLogbook: [],
+    absentToday: [],
+    lowHours: []
+  });
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
   const todayLabel = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
@@ -68,16 +90,94 @@ export default function OperatorDashboard() {
     const loadDashboard = async () => {
       setError("");
       try {
-        const [summaryRes, studentsRes, leaveRes, lettersRes, auditRes, researchRes, logRows, attendanceMonitor] = await Promise.all([
-          apiGet<{ totalMahasiswa: number; totalRisetAktif: number; cutiMenunggu: number; suratMenunggu: number; logbookTerbaru: Array<any> }>("/dashboard/summary"),
-          apiGet<Array<any>>("/students"),
-          apiGet<Array<any>>("/leave-requests?status=Menunggu"),
-          apiGet<Array<any>>("/letter-requests?status=Menunggu"),
-          apiGet<Array<any>>("/audit-logs?limit=5"),
-          apiGet<Array<any>>("/research"),
-          apiGet<Array<any>>("/logbooks"),
-          apiGet<{ absentIds: string[] }>("/attendance/monitor/today")
-        ]);
+        const requests = [
+          {
+            key: "summary",
+            label: "ringkasan dashboard",
+            request: apiGet<DashboardSummary>("/dashboard/summary"),
+          },
+          {
+            key: "students",
+            label: "data mahasiswa",
+            request: apiGet<Array<any>>("/students"),
+          },
+          {
+            key: "leave",
+            label: "pengajuan cuti",
+            request: apiGet<Array<any>>("/leave-requests?status=Menunggu"),
+          },
+          {
+            key: "letters",
+            label: "pengajuan surat",
+            request: apiGet<Array<any>>("/letter-requests?status=Menunggu"),
+          },
+          {
+            key: "audit",
+            label: "audit log",
+            request: apiGet<Array<any>>("/audit-logs?limit=5"),
+          },
+          {
+            key: "research",
+            label: "data riset",
+            request: apiGet<Array<any>>("/research"),
+          },
+          {
+            key: "warnings",
+            label: "logbook",
+            request: apiGet<Array<any>>("/logbooks"),
+          },
+          {
+            key: "attendance",
+            label: "monitor kehadiran hari ini",
+            request: apiGet<AttendanceMonitorToday>("/attendance/monitor/today"),
+          },
+        ] as const;
+
+        const settled = await Promise.allSettled(requests.map((item) => item.request));
+        const failures = settled.flatMap((result, index) =>
+          result.status === "rejected"
+            ? `${requests[index].label}: ${result.reason?.message || "gagal dimuat"}`
+            : []
+        );
+
+        const summaryRes =
+          settled[0].status === "fulfilled"
+            ? settled[0].value
+            : null;
+        const studentsRes =
+          settled[1].status === "fulfilled"
+            ? settled[1].value
+            : [];
+        const leaveRes =
+          settled[2].status === "fulfilled"
+            ? settled[2].value
+            : [];
+        const lettersRes =
+          settled[3].status === "fulfilled"
+            ? settled[3].value
+            : [];
+        const auditRes =
+          settled[4].status === "fulfilled"
+            ? settled[4].value
+            : [];
+        const researchRes =
+          settled[5].status === "fulfilled"
+            ? settled[5].value
+            : [];
+        const warningsRes =
+          settled[6].status === "fulfilled"
+            ? settled[6].value
+            : [];
+        const attendanceRes =
+          settled[7].status === "fulfilled"
+            ? settled[7].value
+            : {};
+
+        if (failures.length === requests.length) {
+          setError("Semua data dashboard gagal dimuat. Periksa koneksi API atau endpoint backend.");
+        } else if (failures.length > 0) {
+          setError(`Sebagian data dashboard belum tersedia: ${failures.join(" | ")}`);
+        }
 
         const mappedStudents: MahasiswaRecord[] = studentsRes.map((item: any, index: number) => ({
           id: item.id,
@@ -164,29 +264,38 @@ export default function OperatorDashboard() {
           milestones: []
         }));
 
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = yesterday.toISOString().slice(0, 10);
+        const yesterdayLogbookStudentIds = new Set(
+          (warningsRes || [])
+            .filter((item: any) => {
+              const dateValue = String(item?.date || item?.tanggal || "").slice(0, 10);
+              return dateValue === yesterdayKey;
+            })
+            .map((item: any) => String(item?.student_id || item?.studentId || ""))
+            .filter(Boolean)
+        );
+
+        const derivedWarnings: WarningData = {
+          missingLogbook: mappedStudents
+            .filter((student) => student.status === "Aktif" && !yesterdayLogbookStudentIds.has(String(student.id)))
+            .map((student) => String(student.id)),
+          absentToday: Array.isArray(attendanceRes?.absentIds)
+            ? attendanceRes.absentIds.map((item) => String(item))
+            : [],
+          lowHours: mappedStudents
+            .filter((student) => student.jamMingguTarget > 0 && student.jamMingguIni < student.jamMingguTarget)
+            .map((student) => String(student.id))
+        };
+
         setSummary(summaryRes);
         setStudents(mappedStudents);
         setPendingCuti(mappedLeave);
         setPendingSurat(mappedLetters.slice(0, 2));
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
-
-        const yesterdayDate = new Date();
-        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-        const yesterdayKey = yesterdayDate.toISOString().slice(0, 10);
-        const loggedYesterdaySet = new Set(
-          (logRows || [])
-            .filter((row: any) => String(row.date || "").slice(0, 10) === yesterdayKey)
-            .map((row: any) => row.student_id)
-        );
-
-        const missingLogbookIds = mappedStudents
-          .filter((student) => student.status === "Aktif")
-          .map((student) => student.id)
-          .filter((studentId) => !loggedYesterdaySet.has(studentId));
-
-        setNotIsiLogbookKemarin(missingLogbookIds);
-        setTidakHadirHariIni(attendanceMonitor?.absentIds || []);
+        setWarnings(derivedWarnings);
         setResignationRequests([]);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat dashboard operator.");
@@ -203,36 +312,51 @@ export default function OperatorDashboard() {
 
   const handleSendWarning = async (mahasiswaId: string, name: string, type: "logbook" | "absensi" | "jam") => {
     const messages = {
-      logbook:  { title: `Peringatan: Logbook Belum Diisi`, body: `${name}, Anda belum mengisi logbook untuk kemarin. Segera isi sebelum deadline hari ini.` },
-      absensi:  { title: `Peringatan: Ketidakhadiran`, body: `${name}, Anda tercatat tidak hadir hari ini. Hubungi operator jika ada keperluan.` },
-      jam:      { title: `Peringatan: Jam Kehadiran Kurang`, body: `${name}, jam kehadiran Anda minggu ini belum memenuhi target yang ditetapkan. Segera penuhi jam minimal.` },
+      logbook: { title: `Peringatan: Logbook Belum Diisi`, body: `${name}, Anda belum mengisi logbook untuk kemarin. Segera isi sebelum deadline hari ini.` },
+      absensi: { title: `Peringatan: Ketidakhadiran`, body: `${name}, Anda tercatat tidak hadir hari ini. Hubungi operator jika ada keperluan.` },
+      jam: { title: `Peringatan: Jam Kehadiran Kurang`, body: `${name}, jam kehadiran Anda minggu ini belum memenuhi target yang ditetapkan. Segera penuhi jam minimal.` },
     };
     const msg = messages[type];
     try {
       await apiPost<{ message: string; id: string }>("/notifications", {
         recipientUserId: mahasiswaId,
-        senderUserId: user?.id || null,
         type: "pengumuman",
         title: msg.title,
         body: msg.body
       });
+      
+      // Hapus dari daftar peringatan setelah berhasil dikirim
+      setWarnings(prev => {
+        const keyMap: Record<string, keyof WarningData> = {
+          logbook: 'missingLogbook',
+          absensi: 'absentToday',
+          jam: 'lowHours'
+        };
+        const key = keyMap[type];
+        return {
+          ...prev,
+          [key]: prev[key].filter(id => id !== mahasiswaId)
+        };
+      });
+      
       showWarningSent();
     } catch (err: any) {
       setError(err?.message || "Gagal mengirim peringatan ke mahasiswa.");
     }
   };
 
-  const aktifCount     = summary?.totalMahasiswa ?? students.filter(m => m.status === "Aktif").length;
-  const risetAktif     = summary?.totalRisetAktif ?? researches.filter(r => r.status === "Aktif").length;
-  const cutiMenunggu   = pendingCuti.length;
-  const suratMenunggu  = summary?.suratMenunggu ?? pendingSurat.length;
+  const aktifCount = summary?.totalMahasiswa ?? students.filter(m => m.status === "Aktif").length;
+  const risetAktif = summary?.totalRisetAktif ?? researches.filter(r => r.status === "Aktif").length;
+  const cutiMenunggu = pendingCuti.length;
+  const suratMenunggu = summary?.suratMenunggu ?? pendingSurat.length;
   const logbookHariIni = summary?.logbookTerbaru?.length ?? 0;
-  const resignCount    = resignationRequests.filter(r => r.statusOperator !== "Ditolak" && r.statusDosen !== "Dikonfirmasi").length;
+  const resignCount = resignationRequests.filter(r => r.statusOperator !== "Ditolak" && r.statusDosen !== "Dikonfirmasi").length;
 
-  const notLogbookMhs  = students.filter(m => notIsiLogbookKemarin.includes(m.id));
-  const tidakHadirMhs  = students.filter(m => tidakHadirHariIni.includes(m.id));
-  const risetLowHours  = students.filter(m => m.tipe === "Riset" && m.status === "Aktif" && (m.jamMingguIni || 0) < (m.jamMingguTarget || 6));
-  const magangLowHours = students.filter(m => m.tipe === "Magang" && m.status === "Aktif" && (m.jamMingguIni || 0) < (m.jamMingguTarget || 45));
+  const notLogbookMhs = students.filter(m => warnings.missingLogbook.includes(m.id));
+  const tidakHadirMhs = students.filter(m => warnings.absentToday.includes(m.id));
+  const lowHoursMhs = students.filter(m => warnings.lowHours.includes(m.id));
+  const risetLowHours = lowHoursMhs.filter(m => m.tipe === "Riset");
+  const magangLowHours = lowHoursMhs.filter(m => m.tipe === "Magang");
 
   const handleLeave = async (id: string, status: "Disetujui" | "Ditolak") => {
     try {
@@ -267,7 +391,7 @@ export default function OperatorDashboard() {
         {/* Stat Cards */}
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           <MiniStatCard icon={<Users size={22} className="text-blue-600" />} label="Mahasiswa Aktif" value={aktifCount} color="bg-blue-100" href="/operator/mahasiswa" />
-          <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset-dosen" />
+          <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset" />
           <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
           <MiniStatCard icon={<FileText size={22} className="text-blue-500" />} label="Surat Menunggu" value={suratMenunggu} color="bg-blue-100" href="/operator/surat" urgent />
           <MiniStatCard icon={<BookOpen size={22} className="text-emerald-600" />} label="Logbook Hari Ini" value={logbookHariIni} color="bg-emerald-100" href="/operator/logbook" />

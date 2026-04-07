@@ -21,7 +21,8 @@ export function useSystemBranding() {
 
     const load = async () => {
       try {
-        const brandingApi = await apiGet<any>("/health/branding");
+        const settings = await apiGet<any>("/system-settings");
+        const brandingApi = settings?.umum || settings || {};
         if (!active) return;
         setBranding({
           appName: brandingApi?.appName || DEFAULT_BRANDING.appName,
