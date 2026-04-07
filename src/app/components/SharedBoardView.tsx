@@ -10,7 +10,7 @@ import {
   Image as ImageIcon, Folder, Calendar, Plus, Trash2, MessageSquare,
   Paperclip, GitBranch, ExternalLink,
 } from "lucide-react";
-import { apiDelete, apiGet, apiPatch, apiPost, getStoredUser } from "../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
 
 type Milestone = {
   id?: number;
@@ -299,24 +299,6 @@ export function SharedBoardView({
     loadBoard();
   }, [activeId, teamMembersMap]);
 
-  const project = availableProjects.find((row) => row.id === activeId) ?? availableProjects[0];
-  const milestones = milestonesMap[activeId] ?? [];
-  const tasks = tasksMap[activeId] ?? EMPTY_BOARD_COLUMNS;
-
-  const toggleMilestone = async (i: number) => {
-    const current = milestones[i];
-    if (!current) return;
-    if (current.id) {
-      await apiPatch(`/research/${activeId}/milestones/${current.id}`, { done: !current.done });
-    }
-    setMilestonesMap((prev) => ({
-      ...prev,
-      [activeId]: (prev[activeId] || []).map((item, index) =>
-        index === i ? { ...item, done: !item.done } : item
-      )
-    }));
-  };
-
   // Modal state
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<"detail" | "lampiran" | "komentar">("detail");
@@ -333,12 +315,43 @@ export function SharedBoardView({
   const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
   const [newCommentText, setNewCommentText] = useState("");
 
+  // Attachment link state
+  const [attachmentLink, setAttachmentLink] = useState("");
+  const [isEditingAttachment, setIsEditingAttachment] = useState(false);
+  const [savingAttachment, setSavingAttachment] = useState(false);
+
   // Add member modal state
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [availableCandidates, setAvailableCandidates] = useState<Array<{ user_id: string; name: string; initials: string; member_type: string }>>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [newMemberPeran, setNewMemberPeran] = useState("Anggota");
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+
+  // Computed values (AFTER all hooks)
+  const project = availableProjects.find((row) => row.id === activeId) ?? availableProjects[0];
+  const milestones = milestonesMap[activeId] ?? [];
+  const tasks = tasksMap[activeId] ?? EMPTY_BOARD_COLUMNS;
+
+  // Initialize attachment link when project changes
+  React.useEffect(() => {
+    if (project?.attachment_link) {
+      setAttachmentLink(project.attachment_link);
+    }
+  }, [project?.id]);
+
+  const toggleMilestone = async (i: number) => {
+    const current = milestones[i];
+    if (!current) return;
+    if (current.id) {
+      await apiPatch(`/research/${activeId}/milestones/${current.id}`, { done: !current.done });
+    }
+    setMilestonesMap((prev) => ({
+      ...prev,
+      [activeId]: (prev[activeId] || []).map((item, index) =>
+        index === i ? { ...item, done: !item.done } : item
+      )
+    }));
+  };
 
   if (loading) {
     return (
@@ -616,6 +629,29 @@ export function SharedBoardView({
     }));
   };
 
+  // ─── Attachment Link Functions ──────────────────────────────────────────────
+
+  const saveAttachmentLink = async () => {
+    setSavingAttachment(true);
+    try {
+      await apiPut(`/research/${activeId}`, { attachmentLink: attachmentLink.trim() || null });
+      setIsEditingAttachment(false);
+      // Update availableProjects state agar UI langsung ter-update
+      setAvailableProjects(prev =>
+        prev.map(p =>
+          p.id === activeId
+            ? { ...p, attachment_link: attachmentLink.trim() || undefined }
+            : p
+        )
+      );
+    } catch (err: any) {
+      console.error("Failed to save attachment link:", err);
+      alert(err?.message || "Gagal menyimpan link lampiran");
+    } finally {
+      setSavingAttachment(false);
+    }
+  };
+
   const sendTaskComment = async () => {
     if (!selectedTask?.id || !currentUser?.id) return;
     const text = newCommentText.trim();
@@ -790,6 +826,48 @@ export function SharedBoardView({
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Attachment Link */}
+            <div className="px-5 py-4 border-t border-[#D8F5D0]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Lampiran</span>
+                <button
+                  onClick={() => { setAttachmentLink(project.attachment_link || ""); setIsEditingAttachment(!isEditingAttachment); }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all shadow-sm"
+                >
+                  <Link size={10} strokeWidth={3} /> {isEditingAttachment ? "Batal" : "Edit"}
+                </button>
+              </div>
+              {isEditingAttachment ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={attachmentLink}
+                    onChange={e => setAttachmentLink(e.target.value)}
+                    placeholder="https://drive.google.com/..."
+                    className="flex-1 px-3 py-2 bg-white border border-[#D8F5D0] rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20 focus:border-[#0AB600]"
+                  />
+                  <button
+                    onClick={saveAttachmentLink}
+                    disabled={savingAttachment}
+                    className="px-3 py-2 bg-[#0AB600] hover:bg-[#099800] disabled:opacity-50 text-white rounded-lg text-xs font-black transition-colors"
+                  >
+                    {savingAttachment ? "..." : "Simpan"}
+                  </button>
+                </div>
+              ) : project.attachment_link ? (
+                <a
+                  href={project.attachment_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-[#D8F5D0] rounded-lg text-xs text-[#0AB600] hover:bg-[#F0FFF0] transition-all break-all"
+                >
+                  <Link size={12} /> {project.attachment_link}
+                </a>
+              ) : (
+                <p className="text-xs text-slate-400 italic">Belum ada lampiran</p>
+              )}
             </div>
           </div>
 
