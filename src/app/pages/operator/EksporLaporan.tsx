@@ -69,9 +69,29 @@ export default function EksporLaporan() {
     if (done.includes(id)) return;
     setLoading(id);
     try {
-      const response = await apiPost<any>("/exports/generate", { format, selectedData: [id] });
-      const downloadUrl = response?.downloadUrl || `${window.location.origin}/api/exports/download?id=${response?.id}&format=${format}`;
-      setDownloadUrls((prev) => ({ ...prev, [id]: downloadUrl }));
+      const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+      const user = JSON.parse(localStorage.getItem("stas_user") || "{}");
+      
+      // Fetch directly from the specific backend endpoint
+      const response = await fetch(`${API_BASE}/exports/${id}`, {
+        headers: { 
+          "x-user-role": user.role || "operator", 
+          "x-user-id": user.id || "system" 
+        }
+      });
+
+      if (!response.ok) throw new Error(`Gagal mengambil data ${id}`);
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `export-${id}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
       setDone((prev) => [...prev, id]);
     } catch (err: any) {
       setError(err?.message || "Gagal menyiapkan ekspor");
@@ -98,26 +118,33 @@ export default function EksporLaporan() {
     setGenerating(true);
     setCustomDone(false);
     try {
-      const filters: any = {};
-      
-      // Add custom export filters
-      if (customStudentFilter) {
-        filters.customStudentId = customStudentFilter;
-      }
-      if (customResearchFilter) {
-        filters.customResearchId = customResearchFilter;
-      }
-      if (dateFromCustom || dateToCustom) {
-        filters.customDateFrom = dateFromCustom;
-        filters.customDateTo = dateToCustom;
+      const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+      const user = JSON.parse(localStorage.getItem("stas_user") || "{}");
+
+      // Process each selected type
+      for (const id of selectedData) {
+        // Fetch directly from the specific backend endpoint
+        const response = await fetch(`${API_BASE}/exports/${id}`, {
+          headers: {
+            "x-user-role": user.role || "operator",
+            "x-user-id": user.id || "system"
+          }
+        });
+
+        if (!response.ok) throw new Error(`Gagal mengambil data ${id}`);
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `export-${id}-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
       }
 
-      const response = await apiPost<any>("/exports/generate", { format, selectedData });
-      const downloadUrl = response?.downloadUrl || `${window.location.origin}/api/exports/download?id=${response?.id}&format=${format}`;
-      setCustomDownloadUrl(downloadUrl);
       setCustomDone(true);
-      // Auto download
-      handleDownload(downloadUrl, `laporan-custom-${Date.now()}.${format.toLowerCase()}`);
     } catch (err: any) {
       setError(err?.message || "Gagal generate laporan");
     } finally {
