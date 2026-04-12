@@ -14,12 +14,12 @@ const ROLE_DESTINATION: Record<UserRole, string> = {
 
 export default function Login() {
   const [identifier, setIdentifier] = useState("");
-  const [password, setPassword]     = useState("");
-  const [showPw, setShowPw]         = useState(false);
-  const [error, setError]           = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { login }  = useAuth();
-  const navigate   = useNavigate();
+  const { login } = useAuth();
+  const navigate = useNavigate();
   const branding = useSystemBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,7 +82,7 @@ export default function Login() {
               STAS-RG<br />Management<br />System
             </h2>
             <p className="text-white/80 text-base leading-relaxed max-w-[280px]">
-              Platform terpadu manajemen riset, akademik, dan kehadiran mahasiswa Telkom University.
+              Platform terpadu manajemen riset, akademik, dan kehadiran Anggota STAS-RG.
             </p>
             <div className="flex flex-wrap gap-2 mt-4">
               {["Riset", "Logbook", "Absensi GPS", "Laporan", "Multi-Role"].map(tag => (

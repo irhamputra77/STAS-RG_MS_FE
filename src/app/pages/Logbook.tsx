@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Layout } from "../components/Layout";
 import { apiDelete, apiGet, getStoredUser } from "../lib/api";
+import { mapLogbookAttachment } from "../lib/logbookAttachments";
 import { 
   Plus, CheckCircle2, Clock, Paperclip, ChevronLeft, ChevronRight, 
   FileText, Download, Target, AlertCircle, CheckCircle, Users,
@@ -63,6 +64,7 @@ export default function Logbook() {
         const mappedEntries = entries.map((entry) => {
           const date = new Date(entry.date);
           const comments = Array.isArray(entry.comments) ? entry.comments : [];
+          const attachment = mapLogbookAttachment(entry);
           return {
             id: entry.id,
             researchId: entry.project_id,
@@ -73,14 +75,14 @@ export default function Logbook() {
             preview: entry.description,
             tag: entry.project_name || "Tanpa Riset",
             tagColor: "primary",
-            hasAttachment: Boolean(entry.has_attachment),
-            attachmentCount: entry.has_attachment ? 1 : 0,
+            hasAttachment: Boolean(attachment),
+            attachmentCount: attachment ? 1 : 0,
             description: entry.description,
             output: entry.output || "-",
             kendala: entry.kendala || "-",
             comments,
             commentsCount: Number(entry.comments_count) || comments.length,
-            attachments: entry.has_attachment ? [{ name: "Lampiran", size: "-" }] : []
+            attachments: attachment ? [attachment] : []
           };
         });
 
@@ -300,7 +302,7 @@ export default function Logbook() {
                     </span>
                     {entry.hasAttachment && (
                       <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                        <Paperclip size={12} /> {entry.attachmentCount} lampiran
+                        <Paperclip size={12} /> {entry.attachments?.[0]?.name || `${entry.attachmentCount} lampiran`}
                       </span>
                     )}
                     <span className="text-[10px] text-muted-foreground">•</span>
@@ -315,7 +317,7 @@ export default function Logbook() {
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate('/logbook/new'); // Navigate to form, in reality passing ID
+                      navigate(`/logbook/new?edit=${encodeURIComponent(entry.id)}`);
                     }}
                     className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                     title="Edit Entri"
@@ -369,7 +371,7 @@ export default function Logbook() {
                   <button 
                     onClick={() => {
                       setSelectedEntry(null);
-                      navigate('/logbook/new'); // In reality, this would navigate to edit specific ID
+                      navigate(`/logbook/new?edit=${encodeURIComponent(selectedEntry.id)}`);
                     }}
                     className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
                     title="Edit Entri"
@@ -464,12 +466,34 @@ export default function Logbook() {
                               </div>
                               <div className="flex flex-col min-w-0">
                                 <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate">{file.name}</span>
-                                <span className="text-[10px] text-muted-foreground">{file.size}</span>
+                                <span className="text-[10px] text-muted-foreground">{file.sizeLabel || file.size}</span>
                               </div>
                             </div>
-                            <button className="w-8 h-8 rounded-full hover:bg-white text-muted-foreground hover:text-primary flex items-center justify-center transition-colors shrink-0 shadow-sm border border-transparent hover:border-border">
-                              <Download size={14} />
-                            </button>
+                            {file.url ? (
+                              <div className="flex items-center gap-2 shrink-0">
+                                <a
+                                  href={file.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="rounded-full border border-transparent p-2 text-muted-foreground shadow-sm transition-colors hover:border-border hover:bg-white hover:text-primary"
+                                  title="Preview lampiran"
+                                >
+                                  <ChevronRight size={14} />
+                                </a>
+                                <a
+                                  href={file.url}
+                                  download={file.name}
+                                  className="rounded-full border border-transparent p-2 text-muted-foreground shadow-sm transition-colors hover:border-border hover:bg-white hover:text-primary"
+                                  title="Unduh lampiran"
+                                >
+                                  <Download size={14} />
+                                </a>
+                              </div>
+                            ) : (
+                              <button className="w-8 h-8 rounded-full hover:bg-white text-muted-foreground flex items-center justify-center transition-colors shrink-0 shadow-sm border border-transparent">
+                                <Download size={14} />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>

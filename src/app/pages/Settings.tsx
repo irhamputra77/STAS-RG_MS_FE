@@ -1,15 +1,15 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { Layout } from "../components/Layout";
 import {
   User, Info, Lock, Bell, LogOut, Eye, EyeOff, Check,
   Camera, Shield, AlertTriangle, ChevronRight, X,
   BookOpen, FlaskConical, MessageSquare, FileCheck, Calendar,
 } from "lucide-react";
-import { apiGet, apiPatch, apiPut, getStoredUser } from "../lib/api";
+import { apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TYPES
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type Tab = "profil" | "akun" | "password" | "notifikasi" | "pengunduran";
 
@@ -21,9 +21,9 @@ function getInitials(name?: string | null) {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SHARED UI ATOMS
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -81,9 +81,9 @@ function SaveButton({ label = "Simpan Perubahan", onClick, danger }: { label?: s
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TAB: PROFIL & FOTO
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabProfil() {
   const user = getStoredUser();
@@ -189,9 +189,9 @@ function TabProfil() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TAB: INFORMASI AKUN
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function InfoRow({ label, value, badge }: { label: string; value: string; badge?: { text: string; color: string } }) {
   return (
@@ -216,7 +216,7 @@ function TabAkun() {
       {/* Read-only badge */}
       <div className="flex items-center gap-2 mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-[12px] self-start w-fit">
         <Shield size={14} className="text-amber-600 shrink-0" />
-        <span className="text-xs font-black text-amber-700">Data bersifat read-only — hanya dapat diubah oleh admin</span>
+        <span className="text-xs font-black text-amber-700">Data bersifat read-only â€” hanya dapat diubah oleh admin</span>
       </div>
 
       <div className="bg-white border border-border rounded-[16px] px-6 divide-y-0">
@@ -225,7 +225,7 @@ function TabAkun() {
         <InfoRow
           label="Status Mahasiswa"
           value="Aktif"
-          badge={{ text: "● Aktif", color: "bg-emerald-50 text-emerald-700 border border-emerald-200" }}
+          badge={{ text: "â— Aktif", color: "bg-emerald-50 text-emerald-700 border border-emerald-200" }}
         />
         <InfoRow label="Email Institusi" value="-" />
         <InfoRow label="Perguruan Tinggi" value="-" />
@@ -241,9 +241,9 @@ function TabAkun() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TAB: GANTI PASSWORD
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabAkunDynamic() {
   const user = getStoredUser();
@@ -284,7 +284,7 @@ function TabAkunDynamic() {
         <InfoRow
           label="Status Mahasiswa"
           value={status}
-          badge={{ text: `• ${status}`, color: statusColor }}
+          badge={{ text: `â€¢ ${status}`, color: statusColor }}
         />
         <InfoRow label="Email Institusi" value={profile?.email || "-"} />
         <InfoRow label="Perguruan Tinggi" value="-" />
@@ -315,7 +315,7 @@ function PasswordInput({
           type={show ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? "••••••••"}
+          placeholder={placeholder ?? "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"}
           className="w-full px-4 py-3 pr-12 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
         />
         <button
@@ -439,9 +439,9 @@ function TabPassword() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TAB: NOTIFIKASI
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -560,22 +560,30 @@ function TabNotifikasi() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TAB: PENGUNDURAN DIRI
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabPengunduran() {
   const user = getStoredUser();
   const [advisorName, setAdvisorName] = useState("dosen pembimbing Anda");
+  const [studentRecordId, setStudentRecordId] = useState("");
   const [reason, setReason] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [requests, setRequests] = useState<any[]>([]);
 
   React.useEffect(() => {
     const loadAdvisor = async () => {
       if (!user?.id) return;
       try {
         const profile = await apiGet<any>(`/profile/${encodeURIComponent(user.id)}`);
+        const resolvedStudentId = String(profile?.id || profile?.student_id || "").trim();
+        if (resolvedStudentId) {
+          setStudentRecordId(resolvedStudentId);
+        }
         if (profile?.pembimbing) {
           setAdvisorName(profile.pembimbing);
         }
@@ -585,18 +593,128 @@ function TabPengunduran() {
     loadAdvisor();
   }, [user?.id]);
 
+  React.useEffect(() => {
+    const loadRequests = async () => {
+      if (!studentRecordId) return;
+      try {
+        const rows = await apiGet<Array<any>>(`/withdrawal-requests?studentId=${encodeURIComponent(studentRecordId)}`);
+        setRequests(Array.isArray(rows) ? rows : []);
+      } catch (error: any) {
+        setMessage(error?.message || "Gagal memuat status pengunduran diri.");
+      }
+    };
+
+    loadRequests();
+  }, [studentRecordId]);
+
   const consequences = [
     "Akun Anda akan dinonaktifkan secara permanen",
     "Semua data logbook, riset, dan dokumen tidak dapat diakses",
     "Anda akan dikeluarkan dari semua proyek riset yang sedang berjalan",
-    "Proses tidak dapat dibatalkan setelah disetujui oleh pembimbing",
-    "Pengajuan ini akan diteruskan ke bagian akademik dan dosen pembimbing",
+    "Pengajuan akan ditinjau operator terlebih dahulu sebelum diteruskan",
+    "Keputusan final baru berlaku setelah disetujui dosen pembimbing",
   ];
+
+  const activeRequest = requests.find((item) => ["Menunggu", "Menunggu Dosen"].includes(String(item?.final_status || "")));
+
+  const finalStatusBadgeClass = (status: string) => {
+    if (status === "Disetujui") return "bg-emerald-100 text-emerald-700 border border-emerald-200";
+    if (String(status).includes("Ditolak")) return "bg-red-100 text-red-600 border border-red-200";
+    if (status === "Menunggu Dosen") return "bg-blue-100 text-blue-700 border border-blue-200";
+    return "bg-amber-100 text-amber-700 border border-amber-200";
+  };
+
+  const submitWithdrawalRequest = async () => {
+    if (!studentRecordId) {
+      setMessage("Data mahasiswa tidak ditemukan. Silakan login ulang.");
+      return;
+    }
+    if (reason.trim().length < 50) {
+      setMessage("Alasan pengunduran diri minimal 50 karakter.");
+      return;
+    }
+
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await apiPost<{ message?: string; id?: string }>("/withdrawal-requests", {
+        studentId: studentRecordId,
+        reason: reason.trim()
+      });
+
+      const refreshed = await apiGet<Array<any>>(`/withdrawal-requests?studentId=${encodeURIComponent(studentRecordId)}`);
+      setRequests(Array.isArray(refreshed) ? refreshed : []);
+      setReason("");
+      setConfirmed(false);
+      setIsModalOpen(false);
+      setMessage(response?.message || "Pengajuan pengunduran diri berhasil dikirim.");
+    } catch (error: any) {
+      setMessage(error?.message || "Gagal mengirim pengajuan pengunduran diri.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div>
       <SectionTitle>Pengunduran Diri</SectionTitle>
       <SectionDesc>Ajukan permohonan pengunduran diri sebagai mahasiswa aktif dari sistem ini.</SectionDesc>
+
+      {message && (
+        <div className="mb-6 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+          {message}
+        </div>
+      )}
+
+      {requests.length > 0 && (
+        <div className="mb-6 rounded-[16px] border border-border bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-foreground">Status Pengajuan</p>
+              <p className="text-xs font-medium text-muted-foreground">Riwayat approval operator dan dosen pembimbing.</p>
+            </div>
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${finalStatusBadgeClass(String(requests[0]?.final_status || "Menunggu"))}`}>
+              {requests[0]?.final_status || "Menunggu"}
+            </span>
+          </div>
+
+          <div className="mb-4 flex items-center gap-1.5">
+            {[
+              { label: "Pengajuan", done: true },
+              { label: "Operator", done: ["Diteruskan"].includes(String(requests[0]?.status_operator || "")) },
+              { label: "Dosen Pembimbing", done: ["Disetujui"].includes(String(requests[0]?.status_dosen || "")) },
+            ].map((step, index, arr) => (
+              <div key={step.label} className="flex items-center gap-1">
+                <div className={`flex items-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-black ${step.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                  {step.done ? <Check size={10} strokeWidth={3} /> : <AlertTriangle size={10} strokeWidth={2.5} />}
+                  {step.label}
+                </div>
+                {index < arr.length - 1 && <ChevronRight size={12} className="text-muted-foreground" />}
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            {requests.map((item) => (
+              <div key={item.id} className="rounded-[12px] border border-border bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-foreground">{new Date(item.submitted_at).toLocaleDateString("id-ID")}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.reason}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${finalStatusBadgeClass(String(item.final_status || "Menunggu"))}`}>
+                    {item.final_status}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-muted-foreground">
+                  <p>Operator: <span className="font-bold text-foreground">{item.status_operator || "Menunggu"}</span>{item.operator_note ? ` · ${item.operator_note}` : ""}</p>
+                  <p>Dosen pembimbing: <span className="font-bold text-foreground">{item.status_dosen || "Menunggu"}</span>{item.advisor_note ? ` · ${item.advisor_note}` : ""}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Warning box */}
       <div className="mb-6 p-5 bg-red-50 border-2 border-red-200 rounded-[16px]">
@@ -605,7 +723,7 @@ function TabPengunduran() {
             <AlertTriangle size={20} />
           </div>
           <div>
-            <p className="text-sm font-black text-red-700">Zona Berbahaya — Tindakan Tidak Dapat Dibatalkan</p>
+            <p className="text-sm font-black text-red-700">Zona Berbahaya â€” Tindakan Tidak Dapat Dibatalkan</p>
             <p className="text-xs font-medium text-red-500 mt-0.5">Baca seluruh konsekuensi sebelum melanjutkan</p>
           </div>
         </div>
@@ -626,21 +744,38 @@ function TabPengunduran() {
           rows={5}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Jelaskan alasan Anda mengajukan pengunduran diri secara lengkap. Alasan ini akan dibaca oleh dosen pembimbing dan bagian akademik..."
+          placeholder="Jelaskan alasan Anda mengajukan pengunduran diri secara lengkap. Alasan ini akan dibaca oleh operator terlebih dahulu, lalu oleh dosen pembimbing..."
         />
-        <p className="text-[11px] text-muted-foreground mt-1.5">Min. 50 karakter · {reason.length} karakter diisi</p>
+        <p className="text-[11px] text-muted-foreground mt-1.5">Min. 50 karakter Â· {reason.length} karakter diisi</p>
       </div>
 
+      <div className="mb-6 rounded-[16px] border border-[#E9E0FF] bg-[#F8F5FF] p-5">
+        <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-[#6C47FF]">Alur Persetujuan</p>
+        <div className="flex flex-col gap-2.5">
+          {[
+            "1. Mahasiswa mengirim pengajuan pengunduran diri.",
+            "2. Operator meninjau kelengkapan lalu memutuskan diteruskan atau ditolak.",
+            "3. Jika diteruskan operator, dosen pembimbing memberi keputusan akhir.",
+          ].map((step) => (
+            <div key={step} className="flex items-start gap-2.5 text-sm font-medium text-[#4C3BB8]">
+              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#D8CEFF] bg-white">
+                <Check size={11} strokeWidth={3} />
+              </div>
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="p-4 bg-slate-50 border border-border rounded-[12px] mb-6">
         <p className="text-xs font-medium text-muted-foreground">
-          Setelah pengajuan dikirim, Anda masih dapat menggunakan akun hingga diverifikasi oleh pembimbing (maks. 3 hari kerja).
+          Setelah pengajuan dikirim, Anda masih dapat menggunakan akun hingga proses verifikasi operator dan dosen pembimbing selesai (maks. 3 hari kerja).
           Untuk pertanyaan, hubungi <span className="font-black text-foreground">akademik@univ.ac.id</span>.
         </p>
       </div>
 
       <SaveButton
-        label="Ajukan Pengunduran Diri"
-        onClick={() => setIsModalOpen(true)}
+        label={activeRequest ? "Pengajuan Sedang Diproses" : "Ajukan Pengunduran Diri"}
+        onClick={() => !activeRequest && setIsModalOpen(true)}
         danger
       />
 
@@ -667,8 +802,7 @@ function TabPengunduran() {
             {/* Body */}
             <div className="px-6 py-5 flex flex-col gap-4">
               <p className="text-sm font-medium text-foreground leading-relaxed">
-                Pengajuan pengunduran diri Anda akan dikirimkan kepada{" "}
-                <span className="font-black">{advisorName}</span> sebagai dosen pembimbing dan bagian akademik untuk diproses.
+                Pengajuan pengunduran diri Anda akan dikirimkan ke <span className="font-black">operator</span> terlebih dahulu untuk diverifikasi. Jika diteruskan, permintaan ini akan dikirim ke <span className="font-black">{advisorName}</span> sebagai dosen pembimbing untuk keputusan akhir.
               </p>
 
               {/* Confirmation checkbox */}
@@ -697,10 +831,10 @@ function TabPengunduran() {
               </button>
               <button
                 disabled={!confirmed}
-                onClick={() => { setIsModalOpen(false); setConfirmed(false); }}
+                onClick={submitWithdrawalRequest}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-[12px] text-sm font-black text-white bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-red-500/20"
               >
-                <LogOut size={15} /> Ya, Kirim Pengajuan
+                <LogOut size={15} /> {submitting ? "Mengirim..." : "Ya, Kirim ke Operator"}
               </button>
             </div>
           </div>
@@ -710,9 +844,9 @@ function TabPengunduran() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // MAIN PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ReactNode; danger?: boolean }[] = [
   { id: "profil",       label: "Profil & Foto",         icon: <User size={18} /> },
@@ -753,7 +887,7 @@ export default function Settings() {
 
         <div className="flex gap-6 items-start">
 
-          {/* ── Left: Tab Navigation ── */}
+          {/* â”€â”€ Left: Tab Navigation â”€â”€ */}
           <aside className="w-[220px] shrink-0 bg-white border border-border rounded-[18px] p-2 shadow-sm sticky top-0">
             <nav className="flex flex-col gap-0.5">
               {TAB_CONFIG.map((tab) => {
@@ -794,7 +928,7 @@ export default function Settings() {
             </div>
           </aside>
 
-          {/* ── Right: Content Panel ── */}
+          {/* â”€â”€ Right: Content Panel â”€â”€ */}
           <main className="flex-1 min-w-0 bg-white border border-border rounded-[18px] p-8 shadow-sm">
             {activeTab === "profil"      && <TabProfil />}
             {activeTab === "akun"        && <TabAkunDynamic />}
@@ -808,3 +942,4 @@ export default function Settings() {
     </Layout>
   );
 }
+

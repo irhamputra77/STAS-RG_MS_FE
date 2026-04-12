@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { Search, X, Download, BookOpen, Calendar, Paperclip, Eye, UserCheck } from "lucide-react";
 import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { mapLogbookAttachment } from "../../lib/logbookAttachments";
 
 const AVATAR_COLORS = [
   "bg-[#8B6FFF] text-white",
@@ -85,7 +86,9 @@ export default function LogbookMonitor() {
         }));
 
         const studentById = Object.fromEntries(mappedStudents.map((student) => [student.id, student]));
-        const mappedEntries = logRows.map((item) => ({
+        const normalizedEntries = logRows.map((item) => {
+          const attachment = mapLogbookAttachment(item);
+          return {
           id: item.id,
           mahasiswaId: item.student_id,
           mahasiswaNama: item.student_name,
@@ -98,15 +101,17 @@ export default function LogbookMonitor() {
           description: item.description,
           output: item.output || "-",
           kendala: item.kendala || "",
-          hasAttachment: Boolean(item.has_attachment),
+          hasAttachment: Boolean(attachment),
+          attachment,
           verificationStatus: item.verification_status || null,
           verificationNote: item.verification_note || "",
           verifiedByName: item.verified_by_name || "",
           verifiedAt: item.verified_at || null
-        }));
+          };
+        });
 
         setStudents(mappedStudents);
-        setEntries(mappedEntries);
+        setEntries(normalizedEntries);
         if (mappedStudents.length > 0) setSelectedStudent(mappedStudents[0]);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat monitor logbook.");
@@ -279,7 +284,11 @@ export default function LogbookMonitor() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${entry.riset === "Riset A" ? "bg-[#F8F5FF] text-[#6C47FF]" : "bg-emerald-50 text-emerald-700"}`}>{entry.riset}</span>
-                            {entry.hasAttachment && <span className="flex items-center gap-0.5 text-[10px] font-bold text-muted-foreground"><Paperclip size={9} /> Lampiran</span>}
+                            {entry.hasAttachment && (
+                              <span className="flex items-center gap-0.5 text-[10px] font-bold text-muted-foreground">
+                                <Paperclip size={9} /> {entry.attachment?.name || "Lampiran"}
+                              </span>
+                            )}
                           </div>
                           <h3 className="font-black text-foreground text-sm group-hover:text-amber-700 transition-colors leading-snug">{entry.title}</h3>
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{entry.description}</p>
@@ -329,11 +338,32 @@ export default function LogbookMonitor() {
                   <p className="text-sm text-foreground leading-relaxed">{selectedEntry.kendala}</p>
                 </div>
               )}
-              {selectedEntry.hasAttachment && (
+              {selectedEntry.attachment && (
                 <div className="p-3 bg-slate-50 border border-border rounded-[10px] flex items-center gap-3">
                   <Paperclip size={14} className="text-muted-foreground" />
-                  <span className="text-xs font-bold text-foreground flex-1">Lampiran terlampir</span>
-                  <button className="text-xs font-black text-amber-600 hover:underline flex items-center gap-1"><Download size={12} /> Unduh</button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-foreground truncate">{selectedEntry.attachment.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{selectedEntry.attachment.sizeLabel}</p>
+                  </div>
+                  {selectedEntry.attachment.url && (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={selectedEntry.attachment.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-black text-amber-600 hover:underline"
+                      >
+                        Preview
+                      </a>
+                      <a
+                        href={selectedEntry.attachment.url}
+                        download={selectedEntry.attachment.name}
+                        className="text-xs font-black text-amber-600 hover:underline flex items-center gap-1"
+                      >
+                        <Download size={12} /> Unduh
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
               {selectedEntry.verificationStatus && (

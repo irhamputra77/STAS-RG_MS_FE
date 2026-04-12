@@ -14,6 +14,26 @@ function getActiveMilestone(project: any) {
   return milestones.find((item: any) => !item.done)?.label || "Semua Selesai";
 }
 
+function normalizeBoardStatus(value?: string) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "TODO") return "TO DO";
+  if (normalized === "TO DO" || normalized === "DOING" || normalized === "REVIEW" || normalized === "DONE") {
+    return normalized;
+  }
+  return "TO DO";
+}
+
+function getTaskAssigneeIds(task: any) {
+  if (Array.isArray(task?.assignee_ids)) return task.assignee_ids.map((value: any) => String(value));
+  if (Array.isArray(task?.assigneeIds)) return task.assigneeIds.map((value: any) => String(value));
+  if (Array.isArray(task?.assignees)) {
+    return task.assignees
+      .map((assignee: any) => String(assignee?.user_id || assignee?.userId || ""))
+      .filter(Boolean);
+  }
+  return [];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,6 +121,8 @@ function MiniMilestones({ milestones, color }: { milestones: { label: string; do
 export default function Dashboard() {
   const user = getStoredUser();
   const [dashboardData, setDashboardData] = React.useState<any>(null);
+  const [boardProjectsData, setBoardProjectsData] = React.useState<any[]>([]);
+  const [boardSprintTasks, setBoardSprintTasks] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const loadDashboard = async () => {
@@ -115,7 +137,86 @@ export default function Dashboard() {
     loadDashboard();
   }, [user?.id]);
 
-  const researchProjectsData = dashboardData?.projects?.length ? dashboardData.projects : [];
+  React.useEffect(() => {
+    const loadBoardOverview = async () => {
+      if (!user?.id || !Array.isArray(dashboardData?.projects) || dashboardData.projects.length === 0) {
+        setBoardProjectsData(dashboardData?.projects || []);
+        setBoardSprintTasks([]);
+        return;
+      }
+
+      const settled = await Promise.allSettled(
+        dashboardData.projects.map((project: any) => apiGet<any>(`/research/${project.id}/board`))
+      );
+
+      const nextProjects = dashboardData.projects.map((project: any, index: number) => {
+        const boardResult = settled[index];
+        if (boardResult.status !== "fulfilled") {
+          return project;
+        }
+
+        const board = boardResult.value;
+        const allTasks = [
+          ...(board?.columns?.todo || []),
+          ...(board?.columns?.doing || []),
+          ...(board?.columns?.review || []),
+          ...(board?.columns?.done || [])
+        ];
+
+        const personalTasks = allTasks.filter((task: any) => {
+          const assigneeIds = getTaskAssigneeIds(task);
+          return assigneeIds.length === 0 || assigneeIds.includes(String(user.id));
+        });
+
+        const todoCount = personalTasks.filter((task: any) => normalizeBoardStatus(task?.status) === "TO DO").length;
+        const activeCount = personalTasks.filter((task: any) => normalizeBoardStatus(task?.status) !== "DONE").length;
+        const totalCount = personalTasks.length;
+
+        return {
+          ...project,
+          tugasTodo: todoCount,
+          tugasAktif: activeCount,
+          tugasTotalBoard: totalCount
+        };
+      });
+
+      const nextSprintTasks = settled.flatMap((boardResult, index) => {
+        if (boardResult.status !== "fulfilled") return [];
+        const project = dashboardData.projects[index];
+        const board = boardResult.value;
+        const allTasks = [
+          ...(board?.columns?.todo || []),
+          ...(board?.columns?.doing || []),
+          ...(board?.columns?.review || [])
+        ];
+
+        return allTasks
+          .filter((task: any) => {
+            const assigneeIds = getTaskAssigneeIds(task);
+            return assigneeIds.length === 0 || assigneeIds.includes(String(user.id));
+          })
+          .map((task: any) => ({
+            id: String(task?.id || `${project.id}-${task?.title || "task"}`),
+            title: task?.title || "Task",
+            status: normalizeBoardStatus(task?.status),
+            progress: task?.progress !== undefined && task?.progress !== null ? Number(task.progress) : undefined,
+            deadline: task?.deadline
+              ? new Date(task.deadline).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })
+              : "-",
+            overdue: Boolean(task?.deadline && !Number.isNaN(new Date(task.deadline).getTime()) && new Date(task.deadline).getTime() < Date.now()),
+            tag: task?.tag || project.shortTitle || "Riset",
+            projectId: project.id
+          }));
+      });
+
+      setBoardProjectsData(nextProjects);
+      setBoardSprintTasks(nextSprintTasks);
+    };
+
+    void loadBoardOverview();
+  }, [dashboardData?.projects, user?.id]);
+
+  const researchProjectsData = boardProjectsData.length ? boardProjectsData : dashboardData?.projects?.length ? dashboardData.projects : [];
 
   // ── Data dari halaman lain (sumber kebenaran tunggal) ──────────────────────
 
@@ -129,10 +230,10 @@ export default function Dashboard() {
   const logbookTarget = dashboardData?.stats?.logbookTarget ?? 0;
   const logbookPct = logbookTarget > 0 ? Math.round((logbookEntries / logbookTarget) * 100) : 0;
 
-  // Tasks dari Board / Research (Riset A 13/20 + Riset B 8/20)
-  const tasksDone = researchProjectsData.reduce((s: number, r: any) => s + (r.tugasSelesai || 0), 0);
-  const tasksTotal = researchProjectsData.reduce((s: number, r: any) => s + (r.tugasTotal || 0), 0);
-  const tasksPct = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0;
+  // Tasks dari progress board mahasiswa (khusus TO DO)
+  const tasksTodo = researchProjectsData.reduce((s: number, r: any) => s + (r.tugasTodo || 0), 0);
+  const tasksActive = researchProjectsData.reduce((s: number, r: any) => s + (r.tugasAktif || 0), 0);
+  const tasksPct = tasksActive > 0 ? Math.round((tasksTodo / tasksActive) * 100) : 0;
 
   // Leave (dari LeaveRequest.tsx — sisa 1/3)
   const sisaCuti = dashboardData?.stats?.sisaCuti ?? 0;
@@ -153,7 +254,7 @@ export default function Dashboard() {
   }));
 
   // Active sprint tasks (dari ScrumBoard — todo & doing)
-  const sprintTasks = dashboardData?.sprintTasks || [];
+  const sprintTasks = boardSprintTasks;
 
   const cutiRecent = dashboardData?.leaveRecent || [];
   const letterRecent = dashboardData?.letterRecent || [];
@@ -228,9 +329,9 @@ export default function Dashboard() {
           />
           <StatCard
             icon={<ClipboardCheck size={20} className="md:w-[22px] md:h-[22px] text-emerald-500" />}
-            label="Tugas Selesai"
-            value={<><span>{tasksDone}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{tasksTotal}</span></>}
-            sub="Sprint board aktif"
+            label="Tugas TO DO"
+            value={<><span>{tasksTodo}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{tasksActive}</span></>}
+            sub="Dari progress board aktif"
             barPct={tasksPct}
             barColor="bg-emerald-500"
             href="/research"
@@ -313,8 +414,8 @@ export default function Dashboard() {
                       </div>
                       {/* Progress bar */}
                       <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="text-[9px] md:text-[10px] font-black text-muted-foreground uppercase tracking-wide">Tugas</span>
-                        <span className="text-[10px] md:text-xs font-black text-foreground">{r.tugasSelesai}/{r.tugasTotal}</span>
+                        <span className="text-[9px] md:text-[10px] font-black text-muted-foreground uppercase tracking-wide">TO DO</span>
+                        <span className="text-[10px] md:text-xs font-black text-foreground">{r.tugasTodo || 0}/{r.tugasAktif || 0}</span>
                       </div>
                       <div className="w-full bg-slate-200 rounded-full h-1.5 mb-2 md:mb-3">
                         <div className={`${r.progressColor} h-1.5 rounded-full`} style={{ width: `${r.progress}%` }} />
@@ -381,7 +482,7 @@ export default function Dashboard() {
               <div className="px-4 md:px-5 py-2.5 md:py-3 border-t border-border bg-slate-50/50">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <p className="text-xs font-medium text-muted-foreground">
-                    <span className="font-black text-foreground">{tasksDone}</span> dari <span className="font-black text-foreground">{tasksTotal}</span> tugas selesai di semua riset
+                    <span className="font-black text-foreground">{tasksTodo}</span> dari <span className="font-black text-foreground">{tasksActive}</span> tugas aktif masih berada di kolom TO DO
                   </p>
                   <Link to="/research" className="text-xs font-black text-[#6C47FF] flex items-center gap-1 hover:gap-1.5 transition-all">
                     Kelola Board <ArrowRight size={12} strokeWidth={3} />

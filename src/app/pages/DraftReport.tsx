@@ -1,36 +1,48 @@
-import React, { useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
 import {
-  Plus,
-  X,
-  Eye,
-  Download,
-  Upload,
-  FileText,
   BookOpen,
-  ScrollText,
-  ClipboardList,
-  ChevronDown,
-  CheckCircle2,
-  Clock,
-  MessageSquare,
-  RotateCcw,
-  FileUp,
-  Info,
   Calendar,
+  Download,
+  Eye,
   HardDrive,
-  Tag,
-  User,
+  Info,
+  Link as LinkIcon,
+  Plus,
+  RotateCcw,
+  Upload,
+  X,
 } from "lucide-react";
-import { apiGet, getStoredUser } from "../lib/api";
+import { apiGet, apiPost, apiPut, getStoredUser, resolveApiAssetUrl } from "../lib/api";
+import { fetchDraftReportTypes, getCachedDraftReportTypes } from "../lib/draftReportTypes";
 
-type DraftType = "Laporan TA" | "Jurnal" | "Laporan Kemajuan";
 type DraftStatus = "Menunggu Review" | "Dalam Review" | "Disetujui";
+type DraftResponse = {
+  id?: string;
+  studentId?: string;
+  studentName?: string;
+  title?: string;
+  type?: string;
+  uploadDate?: string;
+  fileSize?: string;
+  format?: string;
+  status?: DraftStatus;
+  comment?: string | null;
+  riset?: string;
+  version?: string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size?: number | string | null;
+  mime_type?: string | null;
+  projectId?: string | null;
+};
 
-interface DraftRecord {
+type DraftRecord = {
   id: string;
+  studentId: string;
+  studentName: string;
   title: string;
-  type: DraftType;
+  type: string;
   uploadDate: string;
   fileSize: string;
   format: string;
@@ -38,468 +50,382 @@ interface DraftRecord {
   comment?: string;
   riset: string;
   version: string;
-}
-
-type FilterType = "Semua" | DraftType;
-
-const filterOptions: FilterType[] = ["Semua", "Laporan TA", "Jurnal", "Laporan Kemajuan"];
-
-const typeConfig: Record<DraftType, { bg: string; text: string; icon: React.ReactNode; border: string }> = {
-  "Laporan TA": {
-    bg: "bg-red-50",
-    text: "text-red-600",
-    border: "border-red-200",
-    icon: <ScrollText size={20} />,
-  },
-  Jurnal: {
-    bg: "bg-blue-50",
-    text: "text-blue-600",
-    border: "border-blue-200",
-    icon: <BookOpen size={20} />,
-  },
-  "Laporan Kemajuan": {
-    bg: "bg-amber-50",
-    text: "text-amber-600",
-    border: "border-amber-200",
-    icon: <ClipboardList size={20} />,
-  },
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSizeBytes: number | null;
+  mimeType: string | null;
+  projectId: string | null;
 };
 
-const statusConfig: Record<DraftStatus, { cls: string; icon: React.ReactNode; dot: string }> = {
-  "Menunggu Review": {
-    cls: "bg-amber-100 text-amber-700 border border-amber-200",
-    icon: <Clock size={11} strokeWidth={2.5} />,
-    dot: "bg-amber-400",
-  },
-  "Dalam Review": {
-    cls: "bg-blue-100 text-blue-700 border border-blue-200",
-    icon: <Eye size={11} strokeWidth={2.5} />,
-    dot: "bg-blue-400",
-  },
-  Disetujui: {
-    cls: "bg-emerald-100 text-emerald-700 border border-emerald-200",
-    icon: <CheckCircle2 size={11} strokeWidth={2.5} />,
-    dot: "bg-emerald-400",
-  },
+type ResearchOption = { id: string; label: string };
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx"];
+const BASE_FILTER = "Semua";
+const STATUS_CLASS: Record<DraftStatus, string> = {
+  "Menunggu Review": "bg-amber-100 text-amber-700 border-amber-200",
+  "Dalam Review": "bg-blue-100 text-blue-700 border-blue-200",
+  Disetujui: "bg-emerald-100 text-emerald-700 border-emerald-200",
 };
 
-function StatusBadge({ status }: { status: DraftStatus }) {
-  const c = statusConfig[status];
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${c.cls}`}>
-      {c.icon}
-      {status}
-    </span>
-  );
-}
-
-// Disetujui → green icon overlay
-function DraftTypeIcon({ type, status }: { type: DraftType; status: DraftStatus }) {
-  if (status === "Disetujui") {
-    return (
-      <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-emerald-50 text-emerald-600 border border-emerald-200 relative">
-        <FileText size={20} />
-        <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center border border-white">
-          <CheckCircle2 size={9} className="text-white" strokeWidth={3} />
-        </div>
-      </div>
-    );
+function formatBytes(bytes?: number | null, fallback?: string | null) {
+  if (typeof bytes === "number" && Number.isFinite(bytes) && bytes > 0) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
-  const c = typeConfig[type];
-  return (
-    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${c.bg} ${c.text} border ${c.border}`}>
-      {c.icon}
-    </div>
-  );
+  return String(fallback || "-");
 }
 
-const draftTypeOptions = ["Laporan TA", "Jurnal", "Laporan Kemajuan"];
-const risetOptions = ["Riset A – LSTM Prediction System", "Riset B – IoT Sensor Network", "Riset C – Computer Vision"];
+function normalizeDate(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) return raw;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime())
+    ? raw
+    : parsed.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function detectFormat(row: DraftResponse) {
+  const explicit = String(row.format || "").trim();
+  if (explicit) return explicit.toUpperCase();
+  const name = String(row.file_name || "").trim();
+  if (name.includes(".")) return name.split(".").pop()?.toUpperCase() || "FILE";
+  const mime = String(row.mime_type || "").toLowerCase();
+  if (mime.includes("pdf")) return "PDF";
+  if (mime.includes("word") || mime.includes("doc")) return "DOC";
+  return "FILE";
+}
+
+function normalizeDraft(row: DraftResponse): DraftRecord {
+  const fileSizeBytes = row.file_size == null ? null : Number(row.file_size);
+  return {
+    id: String(row.id || ""),
+    studentId: String(row.studentId || ""),
+    studentName: String(row.studentName || "Mahasiswa"),
+    title: String(row.title || "Draft tanpa judul"),
+    type: String(row.type || "Laporan TA"),
+    uploadDate: normalizeDate(row.uploadDate),
+    fileSize: formatBytes(Number.isFinite(fileSizeBytes as number) ? fileSizeBytes : null, row.fileSize || null),
+    format: detectFormat(row),
+    status: (row.status || "Menunggu Review") as DraftStatus,
+    comment: row.comment || undefined,
+    riset: String(row.riset || "-"),
+    version: String(row.version || "v1.0"),
+    fileUrl: resolveApiAssetUrl(row.file_url || null),
+    fileName: row.file_name || null,
+    fileSizeBytes: Number.isFinite(fileSizeBytes as number) ? Number(fileSizeBytes) : null,
+    mimeType: row.mime_type || null,
+    projectId: row.projectId ? String(row.projectId) : null,
+  };
+}
+
+function validateFile(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (!ALLOWED_EXTENSIONS.includes(extension)) return "Format file harus PDF, DOC, atau DOCX.";
+  if (file.size > MAX_FILE_SIZE) return "Ukuran file maksimal 10 MB.";
+  return "";
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Gagal membaca file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function downloadFile(url: string, fileName?: string | null) {
+  const link = document.createElement("a");
+  link.href = url;
+  if (fileName) link.download = fileName;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
 export default function DraftReport() {
   const user = getStoredUser();
-  const [activeFilter, setActiveFilter] = useState<FilterType>("Semua");
-  const [draftData, setDraftData] = useState<DraftRecord[]>([]);
+  const [activeFilter, setActiveFilter] = useState(BASE_FILTER);
+  const [studentId, setStudentId] = useState("");
+  const [researchOptions, setResearchOptions] = useState<ResearchOption[]>([]);
+  const [draftTypes, setDraftTypes] = useState<string[]>(() => getCachedDraftReportTypes().map((item) => item.label));
+  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [selectedDraft, setSelectedDraft] = useState<DraftRecord | null>(null);
   const [revisiDraft, setRevisiDraft] = useState<DraftRecord | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [uploadType, setUploadType] = useState("");
-  const [uploadRiset, setUploadRiset] = useState("");
+  const [uploadProjectId, setUploadProjectId] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
-
-  // Revisi modal state
-  const [revisiFile, setRevisiFile] = useState<string | null>(null);
-  const [revisiNotes, setRevisiNotes] = useState("");
-  const [revisiDragging, setRevisiDragging] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [revisiTitle, setRevisiTitle] = useState("");
+  const [revisiFile, setRevisiFile] = useState<File | null>(null);
+  const [clearAttachment, setClearAttachment] = useState(false);
+  const [loadingInit, setLoadingInit] = useState(true);
+  const [loadingDrafts, setLoadingDrafts] = useState(false);
+  const [savingUpload, setSavingUpload] = useState(false);
+  const [savingRevisi, setSavingRevisi] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
-  React.useEffect(() => {
-    const loadDrafts = async () => {
-      if (!user?.id) return;
-      try {
-        const rows = await apiGet<DraftRecord[]>(`/draft-reports?studentId=${encodeURIComponent(user.id)}`);
-        if (Array.isArray(rows)) setDraftData(rows);
-      } catch (err: any) {
-        setError(err?.message || "Gagal memuat draft dari backend");
-      }
+  const filters = useMemo(() => [BASE_FILTER, ...draftTypes], [draftTypes]);
+
+  useEffect(() => {
+    const handleTypesChanged = () => setDraftTypes(getCachedDraftReportTypes().map((item) => item.label));
+    window.addEventListener("draft-report-types:updated", handleTypesChanged as EventListener);
+    return () => window.removeEventListener("draft-report-types:updated", handleTypesChanged as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const loadTypes = async () => {
+      const rows = await fetchDraftReportTypes();
+      setDraftTypes(rows.map((item) => item.label));
     };
 
-    loadDrafts();
+    void loadTypes();
+  }, []);
+
+  const loadDrafts = async (resolvedStudentId: string, filter: string) => {
+    const params = new URLSearchParams({ studentId: resolvedStudentId });
+    if (filter !== BASE_FILTER) params.set("type", filter);
+    const rows = await apiGet<Array<DraftResponse>>(`/draft-reports?${params.toString()}`);
+    setDrafts(Array.isArray(rows) ? rows.map(normalizeDraft) : []);
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      if (!user?.id) {
+        setLoadingInit(false);
+        return;
+      }
+      try {
+        setLoadingInit(true);
+        setError("");
+        const [profile, researchRows] = await Promise.all([
+          apiGet<any>(`/profile/${user.id}`),
+          apiGet<Array<any>>("/research").catch(() => []),
+        ]);
+        const resolvedStudentId = String(profile?.id || profile?.student_id || "").trim();
+        if (!resolvedStudentId) throw new Error("ID mahasiswa tidak ditemukan.");
+        setStudentId(resolvedStudentId);
+        setResearchOptions(
+          (researchRows || [])
+            .map((item: any) => ({ id: String(item?.id || ""), label: String(item?.short_title || item?.title || "").trim() }))
+            .filter((item) => item.id && item.label)
+        );
+      } catch (err: any) {
+        setError(err?.message || "Gagal memuat data awal draft.");
+      } finally {
+        setLoadingInit(false);
+      }
+    };
+    init();
   }, [user?.id]);
 
-  const filtered = activeFilter === "Semua"
-    ? draftData
-    : draftData.filter((d) => d.type === activeFilter);
+  useEffect(() => {
+    const run = async () => {
+      if (!studentId) return;
+      try {
+        setLoadingDrafts(true);
+        setError("");
+        await loadDrafts(studentId, activeFilter);
+      } catch (err: any) {
+        setError(err?.message || "Gagal memuat draft.");
+      } finally {
+        setLoadingDrafts(false);
+      }
+    };
+    run();
+  }, [studentId, activeFilter]);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) setUploadedFile(file.name);
+  const filtered = useMemo(() => (
+    activeFilter === BASE_FILTER ? drafts : drafts.filter((item) => item.type === activeFilter)
+  ), [activeFilter, drafts]);
+
+  const handleFileChange = (file?: File | null, mode: "upload" | "revisi" = "upload") => {
+    if (!file) return;
+    const validation = validateFile(file);
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    setError("");
+    if (mode === "upload") setUploadFile(file);
+    else {
+      setRevisiFile(file);
+      setClearAttachment(false);
+    }
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setUploadedFile(file.name);
-  };
-
-  const handleRevisiDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setRevisiDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) setRevisiFile(file.name);
-  };
-
-  const handleRevisiFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setRevisiFile(file.name);
+  const submitUpload = async () => {
+    if (!studentId || !uploadType || !uploadProjectId || !uploadTitle.trim() || !uploadFile) {
+      setError("Lengkapi jenis dokumen, riset, judul, dan file draft.");
+      return;
+    }
+    try {
+      setSavingUpload(true);
+      setError("");
+      setInfo("");
+      await apiPost("/draft-reports", {
+        id: `DRF-${Date.now()}`,
+        studentId,
+        projectId: uploadProjectId,
+        title: uploadTitle.trim(),
+        type: uploadType,
+        fileName: uploadFile.name,
+        fileDataUrl: await fileToDataUrl(uploadFile),
+      });
+      setUploadType("");
+      setUploadProjectId("");
+      setUploadTitle("");
+      setUploadFile(null);
+      setInfo("Draft berhasil diupload ke backend.");
+      await loadDrafts(studentId, activeFilter);
+    } catch (err: any) {
+      setError(err?.message || "Gagal mengupload draft.");
+    } finally {
+      setSavingUpload(false);
+    }
   };
 
   const openRevisi = (draft: DraftRecord) => {
     setRevisiDraft(draft);
+    setRevisiTitle(draft.title);
     setRevisiFile(null);
-    setRevisiNotes("");
-    setRevisiDragging(false);
+    setClearAttachment(false);
+    setError("");
+    setInfo("");
   };
 
-  const closeRevisi = () => {
-    setRevisiDraft(null);
-    setRevisiFile(null);
-    setRevisiNotes("");
+  const submitRevisi = async () => {
+    if (!revisiDraft || !revisiTitle.trim() || (!revisiFile && !clearAttachment)) {
+      setError("Isi judul revisi dan unggah file baru atau hapus lampiran lama.");
+      return;
+    }
+    try {
+      setSavingRevisi(true);
+      setError("");
+      setInfo("");
+      const payload: Record<string, unknown> = { title: revisiTitle.trim() };
+      if (revisiFile) {
+        payload.fileName = revisiFile.name;
+        payload.fileDataUrl = await fileToDataUrl(revisiFile);
+      }
+      if (clearAttachment && !revisiFile) payload.clearAttachment = true;
+      await apiPut(`/draft-reports/${revisiDraft.id}`, payload);
+      setInfo("Revisi draft berhasil dikirim.");
+      setRevisiDraft(null);
+      setRevisiFile(null);
+      setClearAttachment(false);
+      await loadDrafts(studentId, activeFilter);
+    } catch (err: any) {
+      setError(err?.message || "Gagal mengirim revisi draft.");
+    } finally {
+      setSavingRevisi(false);
+    }
   };
 
   return (
     <Layout title="Draft Laporan / Jurnal / TA">
-      <div className="flex flex-col gap-6 max-w-[1100px] mx-auto">
-        {error && (
-          <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
-            {error}
-          </div>
-        )}
+      <div className="max-w-[1100px] mx-auto flex flex-col gap-6">
+        {error && <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">{error}</div>}
+        {info && <div className="px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-700">{info}</div>}
 
-        {/* Page Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Mahasiswa</p>
             <h1 className="text-2xl font-black text-foreground">Draft Laporan / Jurnal / TA</h1>
           </div>
-          <button
-            onClick={() => document.getElementById("upload-section")?.scrollIntoView({ behavior: "smooth" })}
-            className="bg-[#6C47FF] hover:bg-[#5835e5] text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm shadow-[#6C47FF]/20 transition-all flex items-center gap-2"
-          >
-            <Plus size={16} strokeWidth={3} />
-            Upload Draft Baru
+          <button onClick={() => document.getElementById("upload-draft")?.scrollIntoView({ behavior: "smooth" })} className="bg-[#6C47FF] hover:bg-[#5835e5] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+            <Plus size={16} strokeWidth={3} /> Upload Draft Baru
           </button>
         </div>
 
-        {/* Two-column layout */}
         <div className="flex gap-6 items-start">
-
-          {/* ── LEFT COLUMN ── */}
-          <div className="flex flex-col gap-4 flex-1 min-w-0">
-
-            {/* Filter Chips */}
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
             <div className="flex items-center gap-2 flex-wrap">
-              {filterOptions.map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setActiveFilter(f)}
-                  className={`px-4 py-2 rounded-[10px] text-sm font-bold transition-all ${
-                    activeFilter === f
-                      ? "bg-[#6C47FF] text-white shadow-sm shadow-[#6C47FF]/20"
-                      : "bg-white border border-border text-muted-foreground hover:text-foreground hover:border-slate-300"
-                  }`}
-                >
-                  {f}
-                  {f !== "Semua" && (
-                    <span className={`ml-2 text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                      activeFilter === f ? "bg-white/20" : "bg-slate-100 text-slate-500"
-                    }`}>
-                      {draftData.filter((d) => d.type === f).length}
-                    </span>
-                  )}
+              {filters.map((item) => (
+                <button key={item} onClick={() => setActiveFilter(item)} className={`px-4 py-2 rounded-[10px] text-sm font-bold transition-all ${activeFilter === item ? "bg-[#6C47FF] text-white" : "bg-white border border-border text-muted-foreground hover:text-foreground"}`}>
+                  {item}
                 </button>
               ))}
-              <span className="ml-auto text-xs text-muted-foreground font-medium">
-                {filtered.length} dokumen
-              </span>
+              <span className="ml-auto text-xs text-muted-foreground font-medium">{loadingInit || loadingDrafts ? "Memuat..." : `${filtered.length} dokumen`}</span>
             </div>
 
-            {/* Draft Cards */}
-            <div className="flex flex-col gap-3">
-              {filtered.map((draft) => (
-                <div
-                  key={draft.id}
-                  className={`bg-white rounded-[16px] border shadow-sm p-5 flex flex-col gap-3 hover:shadow-md transition-all ${
-                    draft.status === "Disetujui"
-                      ? "border-emerald-200/70"
-                      : draft.status === "Dalam Review"
-                      ? "border-blue-200/70"
-                      : "border-border/60"
-                  }`}
-                >
-                  {/* Top row */}
-                  <div className="flex items-start gap-3.5">
-                    <DraftTypeIcon type={draft.type} status={draft.status} />
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+              Riwayat draft sekarang menampilkan data persisten backend, termasuk nama file, ukuran file, format, versi, status, dan URL file untuk preview atau download.
+            </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                          <p className="text-sm font-black text-foreground leading-snug line-clamp-2 pr-2">
-                            {draft.title}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${typeConfig[draft.type].bg} ${typeConfig[draft.type].text} ${typeConfig[draft.type].border}`}>
-                              {draft.type}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
-                              <Calendar size={10} />
-                              {draft.uploadDate}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
-                              <HardDrive size={10} />
-                              {draft.fileSize}
-                            </span>
-                            <span className="text-[11px] text-slate-400 font-bold uppercase">{draft.format}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">{draft.version}</span>
-                          </div>
+            {loadingInit || loadingDrafts ? (
+              <div className="bg-white border border-dashed border-slate-200 rounded-[16px] p-12 text-center text-sm font-bold text-slate-400">Memuat draft dari backend...</div>
+            ) : filtered.length === 0 ? (
+              <div className="bg-white border border-dashed border-slate-200 rounded-[16px] p-12 text-center text-sm font-bold text-slate-400">Belum ada draft pada filter ini.</div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {filtered.map((draft) => (
+                  <div key={draft.id} className="bg-white border border-border rounded-[16px] p-5 shadow-sm flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-foreground line-clamp-2">{draft.title}</p>
+                        <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground font-medium">
+                          <span className="inline-flex items-center gap-1"><BookOpen size={11} /> {draft.type}</span>
+                          <span className="inline-flex items-center gap-1"><Calendar size={11} /> {draft.uploadDate}</span>
+                          <span className="inline-flex items-center gap-1"><HardDrive size={11} /> {draft.fileSize}</span>
+                          <span>{draft.format}</span>
+                          <span>{draft.version}</span>
                         </div>
-                        <StatusBadge status={draft.status} />
+                        <p className="mt-2 text-xs text-slate-500">{draft.riset}</p>
+                        {draft.fileName && <p className="mt-1 text-xs text-slate-500 inline-flex items-center gap-1"><LinkIcon size={11} /> {draft.fileName}</p>}
                       </div>
+                      <span className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[draft.status]}`}>{draft.status}</span>
+                    </div>
+                    {draft.comment && <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"><span className="font-black">Komentar Dosen:</span> {draft.comment}</div>}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => setSelectedDraft(draft)} className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 inline-flex items-center gap-1.5"><Eye size={13} /> Detail</button>
+                      {draft.fileUrl && <button onClick={() => window.open(draft.fileUrl as string, "_blank", "noopener,noreferrer")} className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold inline-flex items-center gap-1.5"><Eye size={13} /> Preview</button>}
+                      {draft.fileUrl && <button onClick={() => downloadFile(draft.fileUrl as string, draft.fileName)} className="px-3.5 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5"><Download size={13} /> Download</button>}
+                      {draft.status !== "Disetujui" && <button onClick={() => openRevisi(draft)} className="px-3.5 py-2 rounded-xl bg-[#6C47FF] text-white text-xs font-bold inline-flex items-center gap-1.5"><RotateCcw size={13} /> Revisi</button>}
                     </div>
                   </div>
-
-                  {/* Comment preview */}
-                  {draft.comment && (
-                    <div className={`flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl text-xs ${
-                      draft.status === "Disetujui"
-                        ? "bg-emerald-50 border border-emerald-100"
-                        : "bg-blue-50 border border-blue-100"
-                    }`}>
-                      <MessageSquare size={13} className={`shrink-0 mt-0.5 ${draft.status === "Disetujui" ? "text-emerald-500" : "text-blue-400"}`} />
-                      <p className={`font-medium line-clamp-2 ${draft.status === "Disetujui" ? "text-emerald-800" : "text-blue-800"}`}>
-                        <span className="font-black">Komentar Dosen:</span> {draft.comment}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={() => setSelectedDraft(draft)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-all"
-                    >
-                      <Eye size={13} strokeWidth={2.5} />
-                      Lihat
-                    </button>
-                    {draft.status === "Disetujui" ? (
-                      <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm shadow-emerald-500/20">
-                        <Download size={13} strokeWidth={2.5} />
-                        Unduh
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => openRevisi(draft)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#6C47FF] hover:bg-[#5835e5] text-white text-xs font-bold transition-all shadow-sm shadow-[#6C47FF]/20"
-                      >
-                        <RotateCcw size={13} strokeWidth={2.5} />
-                        Revisi
-                      </button>
-                    )}
-                    <span className="ml-auto text-[10px] font-medium text-muted-foreground">{draft.riset}</span>
-                  </div>
-                </div>
-              ))}
-
-              {filtered.length === 0 && (
-                <div className="bg-white border border-dashed border-slate-200 rounded-[16px] p-12 flex flex-col items-center justify-center text-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-300">
-                    <FileText size={24} />
-                  </div>
-                  <p className="text-sm font-black text-slate-400">Belum ada draft untuk kategori ini</p>
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* ── RIGHT COLUMN ── */}
-          <div id="upload-section" className="w-[360px] shrink-0 sticky top-0">
+          <div id="upload-draft" className="w-[360px] shrink-0">
             <div className="bg-white border border-border rounded-[18px] shadow-sm overflow-hidden">
-
-              {/* Card header */}
-              <div className="px-6 py-4 border-b border-border flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#F8F5FF] text-[#6C47FF] flex items-center justify-center">
-                  <FileUp size={18} strokeWidth={2.5} />
-                </div>
-                <div>
-                  <p className="text-sm font-black text-foreground">Upload Draft Baru</p>
-                  <p className="text-[11px] text-muted-foreground font-medium">Isi semua field sebelum upload</p>
-                </div>
+              <div className="px-6 py-4 border-b border-border">
+                <p className="text-sm font-black text-foreground">Upload Draft Baru</p>
+                <p className="text-[11px] text-muted-foreground font-medium mt-1">Frontend akan mengirim `studentId`, `projectId`, `title`, `type`, `fileName`, dan `fileDataUrl`.</p>
               </div>
-
               <div className="p-6 flex flex-col gap-4">
-
-                {/* Info note */}
-                <div className="bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5">
-                  <Info size={14} className="text-blue-500 shrink-0" />
-                  <p className="text-[11px] font-medium text-blue-700">
-                    Format yang diterima: <span className="font-bold">PDF</span>. Maks. ukuran file <span className="font-bold">20 MB</span>.
-                  </p>
-                </div>
-
-                {/* Jenis Dokumen */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Tag size={11} className="text-slate-400" />
-                    Jenis Dokumen <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={uploadType}
-                      onChange={(e) => setUploadType(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all appearance-none cursor-pointer text-slate-700"
-                    >
-                      <option value="" disabled>Pilih jenis dokumen...</option>
-                      {draftTypeOptions.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[11px] text-blue-700"><Info size={13} className="inline mr-2" />Format file: PDF, DOC, DOCX. Maksimal 10 MB.</div>
+                <select value={uploadType} onChange={(e) => setUploadType(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-border text-sm focus:outline-none">
+                  <option value="">Pilih jenis dokumen...</option>
+                  {draftTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+                <select value={uploadProjectId} onChange={(e) => setUploadProjectId(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-border text-sm focus:outline-none">
+                  <option value="">Pilih riset...</option>
+                  {researchOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+                <input value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="Judul draft..." className="w-full h-11 px-3 rounded-xl border border-border text-sm focus:outline-none" />
+                <label className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center cursor-pointer">
+                  <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { handleFileChange(e.target.files?.[0] || null, "upload"); e.target.value = ""; }} />
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload size={20} className="text-slate-400" />
+                    <p className="text-xs font-bold text-slate-600">{uploadFile ? uploadFile.name : "Klik untuk memilih file draft"}</p>
+                    <p className="text-[11px] text-slate-400">{uploadFile ? `${formatBytes(uploadFile.size)} • ${uploadFile.name.split(".").pop()?.toUpperCase() || "FILE"}` : "PDF, DOC, DOCX"}</p>
                   </div>
+                </label>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600">
+                  <p>studentId: <span className="font-bold">{studentId || "-"}</span></p>
+                  <p>projectId: <span className="font-bold">{uploadProjectId || "-"}</span></p>
                 </div>
-
-                {/* Riset Terkait */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <BookOpen size={11} className="text-slate-400" />
-                    Riset Terkait <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={uploadRiset}
-                      onChange={(e) => setUploadRiset(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all appearance-none cursor-pointer text-slate-700"
-                    >
-                      <option value="" disabled>Pilih riset...</option>
-                      {risetOptions.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-
-                {/* Judul */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <FileText size={11} className="text-slate-400" />
-                    Judul Dokumen <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={uploadTitle}
-                    onChange={(e) => setUploadTitle(e.target.value)}
-                    placeholder="Masukkan judul draft..."
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all"
-                  />
-                </div>
-
-                {/* PDF Drop Zone */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Upload size={11} className="text-slate-400" />
-                    File PDF <span className="text-red-500">*</span>
-                  </label>
-                  <label
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                    className={`relative flex flex-col items-center justify-center gap-2.5 border-2 border-dashed rounded-xl p-6 cursor-pointer transition-all ${
-                      isDragging
-                        ? "border-[#6C47FF] bg-[#F8F5FF]"
-                        : uploadedFile
-                        ? "border-emerald-400 bg-emerald-50"
-                        : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-slate-100"
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      className="sr-only"
-                      onChange={handleFileInput}
-                    />
-                    {uploadedFile ? (
-                      <>
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                          <CheckCircle2 size={22} strokeWidth={2} />
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs font-black text-emerald-700 truncate max-w-[240px]">{uploadedFile}</p>
-                          <p className="text-[11px] text-emerald-600 mt-0.5">File siap diupload</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.preventDefault(); setUploadedFile(null); }}
-                          className="text-[11px] font-bold text-slate-400 hover:text-red-500 transition-colors"
-                        >
-                          Ganti file
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDragging ? "bg-[#6C47FF]/10 text-[#6C47FF]" : "bg-slate-200 text-slate-400"}`}>
-                          <Upload size={20} strokeWidth={2} />
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs font-black text-slate-500">
-                            {isDragging ? "Lepaskan file di sini" : "Seret & lepas file PDF"}
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">atau <span className="text-[#6C47FF] font-bold">klik untuk memilih</span></p>
-                        </div>
-                      </>
-                    )}
-                  </label>
-                </div>
-
-                {/* Upload Button */}
-                <button
-                  onClick={() => {
-                    if (uploadedFile && uploadType && uploadRiset && uploadTitle) {
-                      setUploadedFile(null);
-                      setUploadType("");
-                      setUploadRiset("");
-                      setUploadTitle("");
-                    }
-                  }}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${
-                    uploadedFile && uploadType && uploadRiset && uploadTitle
-                      ? "bg-[#6C47FF] hover:bg-[#5835e5] text-white shadow-sm shadow-[#6C47FF]/20"
-                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                  }`}
-                >
-                  <Upload size={15} strokeWidth={2.5} />
-                  Upload Draft
+                <button onClick={submitUpload} disabled={savingUpload || !uploadType || !uploadProjectId || !uploadTitle.trim() || !uploadFile} className="w-full h-11 rounded-xl bg-[#6C47FF] hover:bg-[#5835e5] disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-black transition-colors">
+                  {savingUpload ? "Mengupload..." : "Upload Draft"}
                 </button>
               </div>
             </div>
@@ -507,254 +433,74 @@ export default function DraftReport() {
         </div>
       </div>
 
-      {/* ─── Detail Modal ─── */}
       {selectedDraft && (
-        <div
-          className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6"
-          onClick={() => setSelectedDraft(null)}
-        >
-          <div
-            className="bg-white w-full max-w-[560px] rounded-[22px] shadow-2xl flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="px-6 py-5 border-b border-border flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <DraftTypeIcon type={selectedDraft.type} status={selectedDraft.status} />
-                <div>
-                  <p className="text-xs font-black text-muted-foreground uppercase tracking-widest">{selectedDraft.type}</p>
-                  <h2 className="text-sm font-black text-foreground leading-snug max-w-[340px] line-clamp-2 mt-0.5">
-                    {selectedDraft.title}
-                  </h2>
+        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setSelectedDraft(null)}>
+          <div className="bg-white w-full max-w-[560px] rounded-[22px] shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+              <div>
+                <p className="text-xs font-black text-muted-foreground uppercase tracking-widest">{selectedDraft.type}</p>
+                <h2 className="text-lg font-black text-foreground mt-1">{selectedDraft.title}</h2>
+              </div>
+              <button onClick={() => setSelectedDraft(null)} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500"><X size={18} /></button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-black text-foreground">{selectedDraft.fileName || "Lampiran draft"}</p>
+                <p className="text-xs text-slate-500 mt-1">{selectedDraft.fileSize} • {selectedDraft.format} • {selectedDraft.version}</p>
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  {selectedDraft.fileUrl && <button onClick={() => window.open(selectedDraft.fileUrl as string, "_blank", "noopener,noreferrer")} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold inline-flex items-center gap-1.5"><Eye size={13} /> Preview</button>}
+                  {selectedDraft.fileUrl && <button onClick={() => downloadFile(selectedDraft.fileUrl as string, selectedDraft.fileName)} className="px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5"><Download size={13} /> Download</button>}
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedDraft(null)}
-                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors shrink-0"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* File Preview Placeholder */}
-            <div className="mx-6 mt-5 rounded-[14px] bg-slate-50 border border-slate-200 h-[160px] flex flex-col items-center justify-center gap-3 relative overflow-hidden">
-              <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "repeating-linear-gradient(0deg, #6C47FF, #6C47FF 1px, transparent 1px, transparent 28px), repeating-linear-gradient(90deg, #6C47FF, #6C47FF 1px, transparent 1px, transparent 28px)" }} />
-              <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-300 shadow-sm z-10">
-                <ScrollText size={26} />
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Status</p><span className={`inline-flex rounded-lg border px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[selectedDraft.status]}`}>{selectedDraft.status}</span></div>
+                <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Riset</p><p className="font-bold text-foreground">{selectedDraft.riset}</p></div>
+                <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Tanggal Upload</p><p className="font-bold text-foreground">{selectedDraft.uploadDate}</p></div>
+                <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Format</p><p className="font-bold text-foreground">{selectedDraft.format}</p></div>
               </div>
-              <div className="text-center z-10">
-                <p className="text-xs font-black text-slate-400">Preview Dokumen</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">Klik "Unduh" untuk melihat file lengkap</p>
-              </div>
-            </div>
-
-            {/* Info Rows */}
-            <div className="px-6 py-5 grid grid-cols-2 gap-4">
-              {[
-                { label: "Jenis Dokumen", value: selectedDraft.type, icon: <Tag size={13} className="text-slate-400" /> },
-                { label: "Tanggal Upload", value: selectedDraft.uploadDate, icon: <Calendar size={13} className="text-slate-400" /> },
-                { label: "Ukuran File", value: `${selectedDraft.fileSize} · ${selectedDraft.format}`, icon: <HardDrive size={13} className="text-slate-400" /> },
-                { label: "Versi", value: selectedDraft.version, icon: <RotateCcw size={13} className="text-slate-400" /> },
-                { label: "Riset", value: selectedDraft.riset, icon: <BookOpen size={13} className="text-slate-400" /> },
-                { label: "Status", value: "", icon: null, statusBadge: true },
-              ].map((row) => (
-                <div key={row.label} className="flex flex-col gap-1">
-                  <div className="flex items-center gap-1.5">
-                    {row.icon}
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{row.label}</p>
-                  </div>
-                  {row.statusBadge ? (
-                    <StatusBadge status={selectedDraft.status} />
-                  ) : (
-                    <p className="text-sm font-bold text-foreground">{row.value}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Lecturer Comment */}
-            {selectedDraft.comment && (
-              <div className="mx-6 mb-5 rounded-[14px] bg-slate-50 border border-slate-200 p-4 flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <User size={13} className="text-slate-500" />
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Komentar Dosen Pembimbing</p>
-                </div>
-                <p className="text-sm text-foreground font-medium leading-relaxed">
-                  {selectedDraft.comment}
-                </p>
-              </div>
-            )}
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-border bg-slate-50/50 flex items-center justify-between shrink-0">
-              <button
-                onClick={() => setSelectedDraft(null)}
-                className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
-              >
-                Tutup
-              </button>
-              <div className="flex items-center gap-2.5">
-                {selectedDraft.status !== "Disetujui" && (
-                  <button
-                    onClick={() => { setSelectedDraft(null); openRevisi(selectedDraft); }}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#6C47FF] hover:bg-[#5835e5] text-white text-sm font-bold transition-all shadow-sm shadow-[#6C47FF]/20"
-                  >
-                    <RotateCcw size={14} strokeWidth={2.5} />
-                    Upload Revisi
-                  </button>
-                )}
-                <button className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition-all shadow-sm shadow-emerald-500/20">
-                  <Download size={14} strokeWidth={2.5} />
-                  Unduh
-                </button>
-              </div>
+              {selectedDraft.comment && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"><span className="font-black">Komentar Dosen:</span> {selectedDraft.comment}</div>}
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── Revisi Modal ─── */}
       {revisiDraft && (
-        <div
-          className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6"
-          onClick={closeRevisi}
-        >
-          <div
-            className="bg-white w-full max-w-[480px] rounded-[22px] shadow-2xl flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-border flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#F8F5FF] text-[#6C47FF] flex items-center justify-center shrink-0">
-                  <RotateCcw size={18} strokeWidth={2.5} />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-muted-foreground uppercase tracking-widest">Upload Revisi</p>
-                  <h2 className="text-sm font-black text-foreground leading-snug mt-0.5 max-w-[300px] line-clamp-2">
-                    {revisiDraft.title}
-                  </h2>
-                </div>
+        <div className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setRevisiDraft(null)}>
+          <div className="bg-white w-full max-w-[480px] rounded-[22px] shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+              <div>
+                <p className="text-xs font-black text-muted-foreground uppercase tracking-widest">Upload Revisi</p>
+                <h2 className="text-base font-black text-foreground mt-1">{revisiDraft.title}</h2>
               </div>
-              <button
-                onClick={closeRevisi}
-                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors shrink-0 mt-0.5"
-              >
-                <X size={18} />
-              </button>
+              <button onClick={() => setRevisiDraft(null)} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500"><X size={18} /></button>
             </div>
-
             <div className="p-6 flex flex-col gap-4">
-
-              {/* Info about current version */}
-              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                  <FileText size={15} />
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Versi saat ini: <span className="font-black">{revisiDraft.version}</span>. Backend akan menaikkan versi dan mereset status ke <span className="font-black">Menunggu Review</span>.
+              </div>
+              <input value={revisiTitle} onChange={(e) => setRevisiTitle(e.target.value)} placeholder="Judul revisi..." className="w-full h-11 px-3 rounded-xl border border-border text-sm focus:outline-none" />
+              {revisiDraft.fileName && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <p className="font-bold text-slate-800">{revisiDraft.fileName}</p>
+                  <p className="text-xs mt-1">{revisiDraft.fileSize} • {revisiDraft.format}</p>
+                  <button type="button" onClick={() => { setClearAttachment((prev) => !prev); setRevisiFile(null); }} className={`mt-3 inline-flex items-center gap-1.5 text-xs font-bold ${clearAttachment ? "text-red-600" : "text-slate-500 hover:text-red-600"}`}>
+                    <X size={12} /> {clearAttachment ? "Lampiran lama akan dihapus" : "Hapus lampiran lama"}
+                  </button>
                 </div>
-                <div>
-                  <p className="text-[11px] font-black text-amber-700 uppercase tracking-widest">Versi saat ini</p>
-                  <p className="text-xs font-bold text-amber-800 mt-0.5">
-                    {revisiDraft.version} · {revisiDraft.type} · {revisiDraft.uploadDate}
-                  </p>
+              )}
+              <label className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center cursor-pointer">
+                <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { handleFileChange(e.target.files?.[0] || null, "revisi"); e.target.value = ""; }} />
+                <div className="flex flex-col items-center gap-2">
+                  <RotateCcw size={20} className="text-slate-400" />
+                  <p className="text-xs font-bold text-slate-600">{revisiFile ? revisiFile.name : "Klik untuk memilih file revisi"}</p>
+                  <p className="text-[11px] text-slate-400">{revisiFile ? `${formatBytes(revisiFile.size)} • ${revisiFile.name.split(".").pop()?.toUpperCase() || "FILE"}` : "PDF, DOC, DOCX"}</p>
                 </div>
-                <StatusBadge status={revisiDraft.status} />
-              </div>
-
-              {/* Catatan Revisi */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <MessageSquare size={11} className="text-slate-400" />
-                  Catatan Perubahan <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={revisiNotes}
-                  onChange={(e) => setRevisiNotes(e.target.value)}
-                  placeholder="Jelaskan perubahan yang dilakukan pada revisi ini, misal: Memperbaiki Bab 3, menambahkan diagram arsitektur sistem..."
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none resize-none transition-all"
-                />
-              </div>
-
-              {/* PDF Drop Zone */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <Upload size={11} className="text-slate-400" />
-                  File PDF Revisi <span className="text-red-500">*</span>
-                </label>
-                <label
-                  onDragOver={(e) => { e.preventDefault(); setRevisiDragging(true); }}
-                  onDragLeave={() => setRevisiDragging(false)}
-                  onDrop={handleRevisiDrop}
-                  className={`relative flex flex-col items-center justify-center gap-2.5 border-2 border-dashed rounded-xl p-7 cursor-pointer transition-all ${
-                    revisiDragging
-                      ? "border-[#6C47FF] bg-[#F8F5FF]"
-                      : revisiFile
-                      ? "border-emerald-400 bg-emerald-50"
-                      : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-slate-100"
-                  }`}
-                >
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    className="sr-only"
-                    onChange={handleRevisiFileInput}
-                  />
-                  {revisiFile ? (
-                    <>
-                      <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                        <CheckCircle2 size={24} strokeWidth={2} />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs font-black text-emerald-700 truncate max-w-[280px]">{revisiFile}</p>
-                        <p className="text-[11px] text-emerald-600 mt-0.5">File revisi siap diupload</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); setRevisiFile(null); }}
-                        className="text-[11px] font-bold text-slate-400 hover:text-red-500 transition-colors"
-                      >
-                        Ganti file
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${revisiDragging ? "bg-[#6C47FF]/10 text-[#6C47FF]" : "bg-slate-200 text-slate-400"}`}>
-                        <Upload size={22} strokeWidth={2} />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs font-black text-slate-500">
-                          {revisiDragging ? "Lepaskan file di sini" : "Seret & lepas file PDF revisi"}
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          atau <span className="text-[#6C47FF] font-bold">klik untuk memilih</span> · Maks. 20 MB
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </label>
-              </div>
+              </label>
             </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 border-t border-border bg-slate-50/50 flex items-center justify-end gap-3 shrink-0">
-              <button
-                onClick={closeRevisi}
-                className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                onClick={() => {
-                  if (revisiFile && revisiNotes) closeRevisi();
-                }}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                  revisiFile && revisiNotes
-                    ? "bg-[#6C47FF] hover:bg-[#5835e5] text-white shadow-sm shadow-[#6C47FF]/20"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                }`}
-              >
-                <RotateCcw size={14} strokeWidth={2.5} />
-                Kirim Revisi
+            <div className="px-6 pb-6 flex gap-3">
+              <button onClick={() => setRevisiDraft(null)} className="flex-1 h-11 rounded-xl border border-border text-sm font-bold text-slate-600">Batal</button>
+              <button onClick={submitRevisi} disabled={savingRevisi || !revisiTitle.trim() || (!revisiFile && !clearAttachment)} className="flex-1 h-11 rounded-xl bg-[#6C47FF] hover:bg-[#5835e5] disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-black transition-colors">
+                {savingRevisi ? "Mengirim..." : "Kirim Revisi"}
               </button>
             </div>
           </div>
@@ -763,3 +509,4 @@ export default function DraftReport() {
     </Layout>
   );
 }
+

@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { Layout } from "../components/Layout";
-import { useNavigate } from "react-router";
-import { apiGet, apiPost, getStoredUser } from "../lib/api";
+import { useNavigate, useSearchParams } from "react-router";
+import { apiGet, apiPost, apiPut, getStoredUser } from "../lib/api";
+import {
+  fileToDataUrl,
+  formatAttachmentSize,
+  LogbookAttachmentView,
+  MAX_LOGBOOK_ATTACHMENT_BYTES,
+  mapLogbookAttachment,
+  validateLogbookAttachment
+} from "../lib/logbookAttachments";
 import { 
   ChevronLeft, 
   UploadCloud, 
@@ -16,11 +24,14 @@ import {
 
 export default function LogbookForm() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const user = getStoredUser();
+  const editId = searchParams.get("edit");
 
   const [researchOptions, setResearchOptions] = useState<Array<{ id: string; title: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [loadingEntry, setLoadingEntry] = useState(Boolean(editId));
 
   // Form State
   const [research, setResearch] = useState("");
@@ -34,10 +45,9 @@ export default function LogbookForm() {
   // StudentId state
   const [studentId, setStudentId] = useState<string>("");
 
-  // Mock file state
-  const [files, setFiles] = useState([
-    { name: "diagram-arsitektur.png", size: "1.2 MB" }
-  ]);
+  const [existingAttachment, setExistingAttachment] = useState<LogbookAttachmentView | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [removeExistingAttachment, setRemoveExistingAttachment] = useState(false);
 
   // Fetch research options
   useEffect(() => {
@@ -78,8 +88,78 @@ export default function LogbookForm() {
     fetchStudentId();
   }, [user]);
 
-  const removeFile = (indexToRemove: number) => {
-    setFiles(files.filter((_, idx) => idx !== indexToRemove));
+  useEffect(() => {
+    const loadEntry = async () => {
+      if (!editId) {
+        setLoadingEntry(false);
+        return;
+      }
+
+      try {
+        const entries = await apiGet<Array<any>>(`/logbooks${user?.id ? `?studentId=${encodeURIComponent(user.id)}` : ""}`);
+        const entry = (entries || []).find((item) => item.id === editId);
+        if (!entry) {
+          setError("Entri logbook yang akan diedit tidak ditemukan.");
+          return;
+        }
+
+        setResearch(entry.project_id || "");
+        setDate(entry.date || "");
+        setTitle(entry.title || "");
+        setDescription(entry.description || "");
+        setOutput(entry.output || "");
+        setIssues(entry.kendala || "");
+        setCategory(entry.category || "pengembangan");
+        setExistingAttachment(mapLogbookAttachment(entry));
+        setSelectedFile(null);
+        setRemoveExistingAttachment(false);
+      } catch (err: any) {
+        setError(err?.message || "Gagal memuat entri logbook.");
+      } finally {
+        setLoadingEntry(false);
+      }
+    };
+
+    loadEntry();
+  }, [editId, user?.id]);
+
+  const visibleAttachment = selectedFile
+    ? {
+        name: selectedFile.name,
+        size: selectedFile.size,
+        sizeLabel: formatAttachmentSize(selectedFile.size),
+        url: null
+      }
+    : existingAttachment && !removeExistingAttachment
+      ? existingAttachment
+      : null;
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    const validationMessage = validateLogbookAttachment(file);
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    setError("");
+    setSelectedFile(file);
+    setRemoveExistingAttachment(false);
+  };
+
+  const removeFile = () => {
+    if (selectedFile) {
+      setSelectedFile(null);
+      return;
+    }
+
+    if (existingAttachment) {
+      setRemoveExistingAttachment(true);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -98,17 +178,33 @@ export default function LogbookForm() {
 
     setSubmitting(true);
     try {
-      await apiPost<{ message: string }>("/logbooks", {
-        id: `LB${Date.now()}`,
-        studentId: user.role === "mahasiswa" ? studentId : user.id,
+      const payload = {
         projectId: research,
         date,
         title,
         description,
         output,
         kendala: issues,
-        hasAttachment: files.length > 0
-      });
+        ...(selectedFile
+          ? {
+              fileName: selectedFile.name,
+              fileDataUrl: await fileToDataUrl(selectedFile)
+            }
+          : {}),
+        ...(!selectedFile && existingAttachment && removeExistingAttachment
+          ? { clearAttachment: true }
+          : {})
+      };
+
+      if (editId) {
+        await apiPut<{ message: string }>(`/logbooks/${editId}`, payload);
+      } else {
+        await apiPost<{ message: string }>("/logbooks", {
+          id: `LB${Date.now()}`,
+          studentId: user.role === "mahasiswa" ? studentId : user.id,
+          ...payload
+        });
+      }
 
       navigate("/logbook");
     } catch (err: any) {
@@ -119,7 +215,7 @@ export default function LogbookForm() {
   };
 
   return (
-    <Layout title="Tambah Entri Logbook">
+    <Layout title={editId ? "Edit Entri Logbook" : "Tambah Entri Logbook"}>
       <div className="w-full mx-auto px-8 py-6 flex flex-col gap-6 relative">
         
         {/* Header */}
@@ -131,7 +227,7 @@ export default function LogbookForm() {
             <ChevronLeft size={20} />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground leading-none">Tambah Entri Logbook</h1>
+            <h1 className="text-2xl font-bold text-foreground leading-none">{editId ? "Edit Entri Logbook" : "Tambah Entri Logbook"}</h1>
           </div>
         </div>
 
@@ -141,6 +237,12 @@ export default function LogbookForm() {
             {error && (
               <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
                 {error}
+              </div>
+            )}
+
+            {loadingEntry && (
+              <div className="px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
+                Memuat entri logbook...
               </div>
             )}
             
@@ -264,37 +366,43 @@ export default function LogbookForm() {
               <label className="text-sm font-semibold text-foreground">Lampiran</label>
               
               {/* Dropzone */}
-              <div className="border-2 border-dashed border-border hover:border-primary/50 bg-background/50 hover:bg-primary/5 transition-colors rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer group">
+              <label className="border-2 border-dashed border-border hover:border-primary/50 bg-background/50 hover:bg-primary/5 transition-colors rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer group">
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
                 <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
                   <UploadCloud size={24} />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-foreground">Klik atau drag & drop file ke sini</p>
-                  <p className="text-xs text-muted-foreground mt-1">Mendukung format: PDF, DOCX, JPG, PNG, ZIP (Max. 10MB)</p>
+                  <p className="text-sm font-semibold text-foreground">Klik atau pilih file lampiran</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Mendukung PDF, DOC, DOCX, JPG, JPEG, PNG, ZIP (Max. {Math.round(MAX_LOGBOOK_ATTACHMENT_BYTES / (1024 * 1024))}MB)
+                  </p>
                 </div>
-              </div>
+              </label>
 
               {/* Uploaded Chips */}
-              {files.length > 0 && (
+              {visibleAttachment && (
                 <div className="flex flex-col gap-2 mt-2">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">File Terlampir ({files.length})</span>
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">File Terlampir (1)</span>
                   <div className="flex flex-wrap gap-3">
-                    {files.map((file, idx) => (
-                      <div key={idx} className="flex items-center gap-3 bg-background border border-border px-3 py-2 rounded-lg">
-                        <FileText size={16} className="text-primary" />
-                        <div className="flex flex-col min-w-[120px]">
-                          <span className="text-xs font-semibold text-foreground">{file.name}</span>
-                          <span className="text-[10px] text-muted-foreground">{file.size}</span>
-                        </div>
-                        <button 
-                          type="button" 
-                          onClick={() => removeFile(idx)}
-                          className="w-6 h-6 rounded flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors ml-2"
-                        >
-                          <X size={14} />
-                        </button>
+                    <div className="flex items-center gap-3 bg-background border border-border px-3 py-2 rounded-lg">
+                      <FileText size={16} className="text-primary" />
+                      <div className="flex flex-col min-w-[120px]">
+                        <span className="text-xs font-semibold text-foreground">{visibleAttachment.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{visibleAttachment.sizeLabel}</span>
                       </div>
-                    ))}
+                      <button 
+                        type="button" 
+                        onClick={removeFile}
+                        className="w-6 h-6 rounded flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors ml-2"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -311,10 +419,10 @@ export default function LogbookForm() {
               </button>
               <button 
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || loadingEntry}
                 className="px-6 py-2.5 rounded-xl font-bold text-sm text-white bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
               >
-                {submitting ? "Menyimpan..." : "Simpan Entri"}
+                {submitting ? "Menyimpan..." : editId ? "Simpan Perubahan" : "Simpan Entri"}
               </button>
             </div>
 

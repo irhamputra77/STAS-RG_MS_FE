@@ -60,6 +60,7 @@ const initialFormState = {
 
 export default function LeaveRequest() {
   const user = getStoredUser();
+  const [studentId, setStudentId] = useState("");
   const [leaveData, setLeaveData] = useState<LeaveRecord[]>([]);
   const [cutiRule, setCutiRule] = useState<{
     maxSemesterDays: number;
@@ -72,15 +73,35 @@ export default function LeaveRequest() {
   const [formData, setFormData] = useState(initialFormState);
 
   useEffect(() => {
+    const resolveStudentId = async () => {
+      if (user?.role !== "mahasiswa" || !user?.id) return;
+
+      try {
+        const profile = await apiGet<any>(`/profile/${user.id}`);
+        const resolvedId = String(profile?.id || profile?.student_id || "").trim();
+        setStudentId(resolvedId || String(user.id || ""));
+      } catch {
+        setStudentId(String(user?.id || ""));
+      }
+    };
+
+    resolveStudentId();
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
     const load = async () => {
       try {
         const [rows, settings] = await Promise.all([
-          apiGet<Array<any>>("/leave-requests"),
+          apiGet<Array<any>>(`/leave-requests${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
           apiGet<any>("/system-settings"),
         ]);
 
         const mapped: LeaveRecord[] = (rows || [])
-          .filter((item) => !user?.id || item.student_id === user.id || item.studentId === user.id)
+          .filter((item) => {
+            const currentIds = new Set([String(studentId || "").trim(), String(user?.id || "").trim()].filter(Boolean));
+            const itemIds = [String(item?.student_id || "").trim(), String(item?.studentId || "").trim()].filter(Boolean);
+            return itemIds.some((value) => currentIds.has(value));
+          })
           .map((item) => ({
           id: item.id,
           jenis: parseRequestType(item),
@@ -112,7 +133,7 @@ export default function LeaveRequest() {
     };
 
     load();
-  }, [user?.id]);
+  }, [studentId, user?.id]);
 
   const resetForm = () => {
     setFormData(initialFormState);
@@ -178,7 +199,7 @@ export default function LeaveRequest() {
 
       await apiPost<{ message: string }>("/leave-requests", {
         id: requestId,
-        studentId: user?.id || "S001",
+        studentId: studentId || user?.id || "S001",
         periodeStart: formData.periodeMulai,
         periodeEnd: formData.periodeSelesai,
         durasi: duration,

@@ -57,6 +57,11 @@ function SaveRow({ onSave }: { onSave: () => Promise<void> }) {
 
 export default function PengaturanSistem() {
   const [tab, setTab] = useState("umum");
+  const [health, setHealth] = useState<{
+    ok: boolean;
+    service: string;
+    time: string;
+  } | null>(null);
   const [umum, setUmum] = useState({
     appName: "STAS-RG MS",
     universityName: "Telkom University",
@@ -100,7 +105,10 @@ export default function PengaturanSistem() {
   React.useEffect(() => {
     const loadSettings = async () => {
       try {
-        const data = await apiGet<any>("/system-settings");
+        const [data, healthData] = await Promise.all([
+          apiGet<any>("/system-settings"),
+          apiGet<any>("/health").catch(() => null),
+        ]);
         setUmum({
           appName: data?.umum?.appName || "STAS-RG MS",
           universityName: data?.umum?.universityName || "Telkom University",
@@ -135,6 +143,13 @@ export default function PengaturanSistem() {
           magangWorkDays: String(data?.attendanceRules?.magangWorkDays || "5"),
           earlyCheckoutWarning: Boolean(data?.attendanceRules?.earlyCheckoutWarning ?? true)
         });
+        if (healthData?.ok) {
+          setHealth({
+            ok: true,
+            service: healthData.service || "backend",
+            time: healthData.time || "",
+          });
+        }
       } catch (err: any) {
         setError(err?.message || "Gagal memuat pengaturan sistem");
       }
@@ -359,7 +374,13 @@ export default function PengaturanSistem() {
 
   return (
     <OperatorLayout title="Pengaturan Sistem">
-      <div className="flex gap-6 items-start pb-4">
+      <div className="flex flex-col gap-4 pb-4">
+        <div className={`px-4 py-3 rounded-xl border text-sm font-semibold ${health?.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+          {health?.ok
+            ? `Health check backend aktif: ${health.service} • ${new Date(health.time).toLocaleString("id-ID")}`
+            : "Health check backend belum tersedia atau gagal dihubungi."}
+        </div>
+        <div className="flex gap-6 items-start">
         {error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
             {error}
@@ -540,6 +561,7 @@ export default function PengaturanSistem() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </OperatorLayout>
   );
