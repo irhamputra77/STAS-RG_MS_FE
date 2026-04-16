@@ -85,18 +85,23 @@ export const router = createBrowserRouter([
           {
             element: <RequireAuth />,
             children: [
-              { path: "dashboard", element: <Dashboard /> },
-              { path: "attendance", element: <Attendance /> },
-              { path: "logbook", element: <Logbook /> },
-              { path: "logbook/new", element: <LogbookForm /> },
-              { path: "leave", element: <LeaveRequest /> },
-              { path: "documents", element: <Documents /> },
-              { path: "draft", element: <DraftReport /> },
-              { path: "research", element: <MyResearch /> },
-              { path: "scrum-board", element: <Navigate to="/research" replace /> },
-              { path: "scrum-board/:researchId", element: <ScrumBoard /> },
               { path: "settings", element: <Settings /> },
-              { path: "board", element: <Navigate to="/research" replace /> },
+              {
+                element: <RequireRole allowedRoles={["mahasiswa"]} />,
+                children: [
+                  { path: "dashboard", element: <Dashboard /> },
+                  { path: "attendance", element: <Attendance /> },
+                  { path: "logbook", element: <Logbook /> },
+                  { path: "logbook/new", element: <LogbookForm /> },
+                  { path: "leave", element: <LeaveRequest /> },
+                  { path: "documents", element: <Documents /> },
+                  { path: "draft", element: <DraftReport /> },
+                  { path: "research", element: <MyResearch /> },
+                  { path: "scrum-board", element: <Navigate to="/research" replace /> },
+                  { path: "scrum-board/:researchId", element: <ScrumBoard /> },
+                  { path: "board", element: <Navigate to="/research" replace /> },
+                ],
+              },
             ]
           },
           {
