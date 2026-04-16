@@ -27,16 +27,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const role = getRoleHeader();
   const userId = getUserIdHeader();
   const url = `${API_BASE_URL}${path}`;
-  
-  console.log("[API] Request:", options?.method || "GET", url);
-  console.log("[API] Headers:", {
-    "Content-Type": "application/json",
-    ...(role ? { "x-user-role": String(role) } : {}),
-    ...(userId ? { "x-user-id": String(userId) } : {})
-  });
-  if (options?.body) {
-    console.log("[API] Body:", options.body);
-  }
 
   const response = await fetch(url, {
     headers: {
@@ -48,10 +38,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options
   });
 
-  console.log("[API] Response status:", response.status, response.ok);
-
   const body = await response.json().catch(() => null);
-  console.log("[API] Response body:", body);
 
   if (!response.ok) {
     const message = body?.message || `HTTP ${response.status}`;
