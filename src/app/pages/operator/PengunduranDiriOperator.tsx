@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Check, Clock, Filter, Search, UserX, X } from "lucide-react";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 type WithdrawalRow = {
   id: string;
@@ -47,7 +48,7 @@ export default function PengunduranDiriOperator() {
             studentNim: item.student_nim || "-",
             advisorName: item.advisor_name || "-",
             reason: item.reason || "-",
-            submittedAt: item.submitted_at,
+            submittedAt: formatDateYmd(item.submitted_at),
             statusOperator: item.status_operator || "Menunggu",
             statusDosen: item.status_dosen ?? null,
             finalStatus: item.final_status || "Menunggu",
@@ -172,7 +173,7 @@ export default function PengunduranDiriOperator() {
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{item.finalStatus}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Dosen pembimbing: {item.advisorName}</p>
-                    <p className="text-xs text-muted-foreground">Diajukan {new Date(item.submittedAt).toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-muted-foreground">Diajukan {item.submittedAt}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {item.statusOperator === "Menunggu" && (

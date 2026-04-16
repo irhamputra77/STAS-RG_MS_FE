@@ -869,13 +869,6 @@ export function SharedBoardView({
       }
     }
     
-    console.log("[Add Member] Payload:", {
-      userId: selectedCandidateId,
-      memberType: candidate?.member_type,
-      peran: newMemberPeran,
-      status: "Aktif"
-    });
-    
     try {
       await apiPost(`/research/${activeId}/members`, {
         userId: selectedCandidateId,
@@ -886,7 +879,6 @@ export function SharedBoardView({
 
       // Reload members dari API
       const members = await apiGet<Array<any>>(`/research/${activeId}/members`);
-      console.log("[Add Member] API Response:", members);
       
       const updatedTeamMembers: TeamMember[] = (members || []).map((member, index) => {
         const fallbackInitials = String(member?.name || "TM")
@@ -906,17 +898,12 @@ export function SharedBoardView({
               ? "bg-[#8B6FFF] text-white"
               : "bg-emerald-500 text-white"
         };
-        console.log("[Add Member] Mapped member:", mappedMember);
         return mappedMember;
       });
-
-      console.log("[Add Member] Updated team members:", updatedTeamMembers);
       
       // Update map dan trigger re-render
       setTeamMembersMap(prev => {
-        const newMap = { ...prev, [activeId]: updatedTeamMembers };
-        console.log("[Add Member] New teamMembersMap:", newMap);
-        return newMap;
+        return { ...prev, [activeId]: updatedTeamMembers };
       });
       
       setIsAddMemberOpen(false);

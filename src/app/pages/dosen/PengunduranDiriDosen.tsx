@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Clock, Filter, Search, UserX, X } from "lucide-react";
 import { DosenLayout } from "../../components/DosenLayout";
 import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 type WithdrawalRow = {
   id: string;
@@ -43,7 +44,7 @@ export default function PengunduranDiriDosen() {
             studentName: item.student_name || "Mahasiswa",
             studentNim: item.student_nim || "-",
             reason: item.reason || "-",
-            submittedAt: item.submitted_at,
+            submittedAt: formatDateYmd(item.submitted_at),
             operatorNote: item.operator_note || null,
             finalStatus: item.final_status || "Menunggu",
           }))
@@ -156,7 +157,7 @@ export default function PengunduranDiriDosen() {
                       <span className="text-xs font-medium text-muted-foreground">{item.studentNim}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{item.finalStatus}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Diajukan {new Date(item.submittedAt).toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Diajukan {item.submittedAt}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {item.finalStatus === "Menunggu Dosen" && (

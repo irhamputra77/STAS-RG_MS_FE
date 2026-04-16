@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { DosenLayout } from "../../components/DosenLayout";
 import { FlaskConical, Users, BookOpen, CalendarCheck, Eye, Check, X, ChevronRight, Target, AlertTriangle, Clock } from "lucide-react";
 import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 export default function DashboardDosen() {
   const user = getStoredUser();
@@ -24,8 +25,8 @@ export default function DashboardDosen() {
         mahasiswaNama: item.student_name || "Mahasiswa",
         mahasiswaInitials: (item.student_name || "M").slice(0, 2).toUpperCase(),
         mahasiswaColor: "bg-[#8B6FFF] text-white",
-        periodeStart: item.periode_start,
-        periodeEnd: item.periode_end,
+        periodeStart: formatDateYmd(item.periode_start),
+        periodeEnd: formatDateYmd(item.periode_end),
         alasan: item.alasan,
         durasi: item.durasi
       })));
@@ -36,7 +37,7 @@ export default function DashboardDosen() {
         studentInitials: String(item.student_name || "M").split(" ").map((chunk: string) => chunk[0] || "").join("").slice(0, 2).toUpperCase() || "M",
         studentColor: "bg-amber-500 text-white",
         reason: item.reason || "-",
-        submittedAt: item.submitted_at,
+        submittedAt: formatDateYmd(item.submitted_at),
         operatorNote: item.operator_note || "",
         finalStatus: item.final_status || "Menunggu Dosen"
       })));

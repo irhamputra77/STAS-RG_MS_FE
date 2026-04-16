@@ -7,6 +7,7 @@ import {
   TrendingDown, UserX, AlertCircle, ArrowRight, Bell,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 type MahasiswaRecord = any;
 type LeaveRequestAll = any;
@@ -109,8 +110,13 @@ function WarningInfo({ message, tone }: { message: string; tone: "success" | "wa
   );
 }
 
+function getJakartaDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Jakarta" }).format(date);
+}
+
 export default function OperatorDashboard() {
   const user = getStoredUser();
+  const attendanceReadStorageKey = `operator-attendance-read:${getJakartaDateKey()}`;
   const [students, setStudents] = useState<MahasiswaRecord[]>([]);
   const [pendingCuti, setPendingCuti] = useState<LeaveRequestAll[]>([]);
   const [pendingSurat, setPendingSurat] = useState<LetterRequestAll[]>([]);
@@ -126,7 +132,26 @@ export default function OperatorDashboard() {
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
   const [warningInfo, setWarningInfo] = useState<{ message: string; tone: "success" | "warning" } | null>(null);
+  const [readAttendanceItems, setReadAttendanceItems] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(attendanceReadStorageKey);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const todayLabel = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(attendanceReadStorageKey);
+      setReadAttendanceItems(raw ? JSON.parse(raw) : []);
+    } catch {
+      setReadAttendanceItems([]);
+    }
+  }, [attendanceReadStorageKey]);
 
   useEffect(() => {
     const colorByIndex = [
@@ -297,12 +322,12 @@ export default function OperatorDashboard() {
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
           riset: item.project_name || "-",
-          periodeStart: item.periode_start,
-          periodeEnd: item.periode_end,
+          periodeStart: formatDateYmd(item.periode_start),
+          periodeEnd: formatDateYmd(item.periode_end),
           durasi: item.durasi,
           alasan: item.alasan,
           catatan: item.catatan || "",
-          tanggalPengajuan: item.tanggal_pengajuan,
+          tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
           status: item.status
         }));
 
@@ -314,10 +339,10 @@ export default function OperatorDashboard() {
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
           jenis: item.jenis,
-          tanggal: item.tanggal,
+          tanggal: formatDateYmd(item.tanggal),
           tujuan: item.tujuan,
           status: item.status,
-          estimasi: item.estimasi || undefined,
+          estimasi: item.estimasi ? formatDateYmd(item.estimasi) : undefined,
           nomorSurat: item.nomor_surat || undefined
         }));
 
@@ -330,7 +355,7 @@ export default function OperatorDashboard() {
           studentColor: "bg-amber-500 text-white",
           advisorName: item.advisor_name || "-",
           reason: item.reason || "-",
-          submittedAt: item.submitted_at,
+          submittedAt: formatDateYmd(item.submitted_at),
           statusOperator: item.status_operator || "Menunggu",
           statusDosen: item.status_dosen ?? null,
           finalStatus: item.final_status || "Menunggu",
@@ -475,9 +500,16 @@ export default function OperatorDashboard() {
   const suratMenunggu = summary?.suratMenunggu ?? pendingSurat.length;
   const logbookHariIni = summary?.logbookTerbaru?.length ?? 0;
   const resignCount = resignationRequests.filter(r => ["Menunggu", "Menunggu Dosen"].includes(r.finalStatus)).length;
+  const currentHour = new Date().getHours();
+  const hasPassedAttendanceCutoff = currentHour >= 10;
+  const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
   const notLogbookMhs = warnings.logbookMissing;
-  const tidakHadirMhs = warnings.attendanceAbsent;
+  const tidakHadirMhs = hasPassedAttendanceCutoff
+    ? warnings.attendanceAbsent.filter((item) =>
+        item.attendanceStatus !== "Cuti" && !readAttendanceItems.includes(getAttendanceReadId(item))
+      )
+    : [];
   const lowHoursMhs = warnings.lowHours;
   const risetLowHours = lowHoursMhs.filter(m => {
     const student = students.find((item) => item.id === m.studentId);
@@ -520,6 +552,14 @@ export default function OperatorDashboard() {
     }
   };
 
+  const markAttendanceAsRead = (warning: WarningItem) => {
+    const next = Array.from(new Set([...readAttendanceItems, getAttendanceReadId(warning)]));
+    setReadAttendanceItems(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(attendanceReadStorageKey, JSON.stringify(next));
+    }
+  };
+
   return (
     <OperatorLayout title="Dashboard Operator">
       <WarningSent visible={warningSent} />
@@ -549,7 +589,7 @@ export default function OperatorDashboard() {
           <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
           <MiniStatCard icon={<FileText size={22} className="text-blue-500" />} label="Surat Menunggu" value={suratMenunggu} color="bg-blue-100" href="/operator/surat" urgent />
           <MiniStatCard icon={<BookOpen size={22} className="text-emerald-600" />} label="Logbook Hari Ini" value={logbookHariIni} color="bg-emerald-100" href="/operator/logbook" />
-          <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/progress-board" />
+          <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/riset" />
         </div>
 
         {/* Alert Sections */}
@@ -574,13 +614,36 @@ export default function OperatorDashboard() {
             <div className="px-4 py-3 border-b border-red-100 bg-red-50/50 flex items-center justify-between">
               <h3 className="text-xs font-black text-foreground flex items-center gap-2"><UserX size={13} className="text-red-500" /> Tidak Hadir Hari Ini<span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{tidakHadirMhs.length}</span></h3>
             </div>
-            {tidakHadirMhs.map(m => (
-              <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
-                <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.studentName}</p><p className="text-[10px] text-muted-foreground">{m.attendanceStatus === "Cuti" ? "Sedang Cuti" : "Tidak Hadir"}</p></div>
-                {m.attendanceStatus !== "Cuti" && <button onClick={() => handleSendWarning(m)} className="flex items-center gap-1 h-6 px-2 bg-red-100 hover:bg-red-500 text-red-600 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>}
+            {!hasPassedAttendanceCutoff ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Daftar belum ditampilkan</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Mahasiswa akan masuk ke section ini jika sampai lewat pukul 10.00 WIB belum melakukan presensi.</p>
               </div>
-            ))}
+            ) : tidakHadirMhs.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Tidak ada mahasiswa yang melewati batas presensi</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Semua mahasiswa sudah hadir atau memiliki status kehadiran yang valid hari ini.</p>
+              </div>
+            ) : (
+              tidakHadirMhs.map(m => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-foreground">{m.studentName}</p>
+                    <p className="text-[10px] text-muted-foreground">Lewat batas presensi 10.00 WIB</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600">
+                    Belum Hadir
+                  </span>
+                  <button
+                    onClick={() => markAttendanceAsRead(m)}
+                    className="shrink-0 rounded-[6px] border border-slate-200 px-2 py-1 text-[9px] font-black text-slate-600 transition-colors hover:bg-slate-100"
+                  >
+                    Mark as Read
+                  </button>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Jam Kurang */}
@@ -688,7 +751,7 @@ export default function OperatorDashboard() {
             <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                 <h2 className="text-sm font-black text-foreground flex items-center gap-2"><FlaskConical size={15} className="text-[#0AB600]" /> Ringkasan Riset</h2>
-                <Link to="/operator/riset-dosen" className="text-xs font-bold text-[#0AB600] flex items-center gap-0.5 hover:gap-1 transition-all">Semua <ChevronRight size={12} strokeWidth={3} /></Link>
+                <Link to="/operator/riset" className="text-xs font-bold text-[#0AB600] flex items-center gap-0.5 hover:gap-1 transition-all">Semua <ChevronRight size={12} strokeWidth={3} /></Link>
               </div>
               <div className="divide-y divide-border">
                 {researches.map(r => (
@@ -759,4 +822,3 @@ export default function OperatorDashboard() {
     </OperatorLayout>
   );
 }
-

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Layout } from "../components/Layout";
 import { apiGet, apiPost, getStoredUser, resolveApiAssetUrl } from "../lib/api";
+import { formatDateYmd } from "../lib/date";
 import {
   Plus,
   X,
@@ -126,10 +127,10 @@ export default function Documents() {
           .map((item) => ({
             id: item.id,
             jenis: item.jenis,
-            tanggal: item.tanggal,
+            tanggal: formatDateYmd(item.tanggal),
             tujuan: item.tujuan,
             status: item.status,
-            estimasi: item.estimasi || undefined,
+            estimasi: item.estimasi ? formatDateYmd(item.estimasi) : undefined,
             fileUrl: item.file_url || null
           }));
 
@@ -139,7 +140,7 @@ export default function Documents() {
             projectId: item.project_id,
             projectName: item.project_name || "Riset",
             status: item.status,
-            issueDate: item.issue_date || null,
+            issueDate: item.issue_date ? formatDateYmd(item.issue_date) : null,
             certificateNumber: item.certificate_number || null,
             fileUrl: item.file_url || null
           }));

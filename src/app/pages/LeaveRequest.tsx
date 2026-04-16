@@ -2,6 +2,7 @@ import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
 import { Plus, X, Check, Upload, FileText } from "lucide-react";
 import { apiGet, apiPost, getStoredUser } from "../lib/api";
+import { formatDateYmd } from "../lib/date";
 
 type LeaveStatus = "Disetujui" | "Ditolak" | "Menunggu";
 type RequestType = "cuti" | "izin" | "sakit";
@@ -105,9 +106,9 @@ export default function LeaveRequest() {
           .map((item) => ({
           id: item.id,
           jenis: parseRequestType(item),
-          tanggalPengajuan: item.tanggal_pengajuan,
-          periodeMulai: item.periode_start,
-          periodeSelesai: item.periode_end,
+          tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
+          periodeMulai: formatDateYmd(item.periode_start),
+          periodeSelesai: formatDateYmd(item.periode_end),
           durasi: item.durasi || 1,
           alasan: item.alasan,
           buktiPendukung:
@@ -118,7 +119,7 @@ export default function LeaveRequest() {
             "",
           status: item.status,
           reviewedBy: item.reviewed_by_name,
-          reviewedAt: item.reviewed_at,
+          reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : undefined,
         }));
 
         setLeaveData(mapped);
@@ -211,7 +212,7 @@ export default function LeaveRequest() {
       const newLeave: LeaveRecord = {
         id: requestId,
         jenis: formData.jenis,
-        tanggalPengajuan: new Date().toLocaleDateString("id-ID"),
+        tanggalPengajuan: formatDateYmd(new Date().toISOString()),
         periodeMulai: formData.periodeMulai,
         periodeSelesai: formData.periodeSelesai,
         durasi: duration,

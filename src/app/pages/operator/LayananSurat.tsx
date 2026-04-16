@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { FileText, Clock, CheckCircle2, Hourglass, Eye, Upload, X, Download, Check, Trash2 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, resolveApiAssetUrl } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 type LetterRequestAll = any;
 type ToastState = { msg: string; type: "success" } | null;
@@ -39,10 +40,10 @@ export default function LayananSurat() {
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
           jenis: item.jenis,
-          tanggal: item.tanggal,
+          tanggal: formatDateYmd(item.tanggal),
           tujuan: item.tujuan,
           status: item.status,
-          estimasi: item.estimasi,
+          estimasi: item.estimasi ? formatDateYmd(item.estimasi) : undefined,
           nomorSurat: item.nomor_surat,
           fileUrl: item.file_url || null,
         }));

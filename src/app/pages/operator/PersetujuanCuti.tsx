@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { Check, X, Eye, CalendarCheck, AlertTriangle, Download, Clock } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 type RequestType = "cuti" | "izin" | "sakit";
 type LeaveRequestAll = any;
@@ -55,15 +56,15 @@ export default function PersetujuanCuti() {
           nim: item.nim,
           jenis: (item.jenis_pengajuan || item.jenis || "cuti") as RequestType,
           riset: item.project_name || "-",
-          periodeStart: item.periode_start,
-          periodeEnd: item.periode_end,
+          periodeStart: formatDateYmd(item.periode_start),
+          periodeEnd: formatDateYmd(item.periode_end),
           durasi: item.durasi,
           alasan: item.alasan,
           catatan: item.catatan || "",
-          tanggalPengajuan: item.tanggal_pengajuan,
+          tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
           status: item.status,
           reviewedBy: item.reviewed_by_name,
-          reviewedAt: item.reviewed_at,
+          reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : undefined,
           reviewNote: item.review_note,
         }));
         setLeaves(mapped);
@@ -97,8 +98,9 @@ export default function PersetujuanCuti() {
         reviewNote: note,
       });
 
-      setLeaves((prev) => prev.map((leave) => leave.id === confirm.item.id ? { ...leave, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt: new Date().toISOString(), reviewNote: note } : leave));
-      setDetail((prev) => prev?.id === confirm.item.id ? { ...prev, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt: new Date().toISOString(), reviewNote: note } : prev);
+      const reviewedAt = formatDateYmd(new Date().toISOString());
+      setLeaves((prev) => prev.map((leave) => leave.id === confirm.item.id ? { ...leave, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt, reviewNote: note } : leave));
+      setDetail((prev) => prev?.id === confirm.item.id ? { ...prev, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt, reviewNote: note } : prev);
       showToast(`Pengajuan cuti ${confirm.item.mahasiswaNama} berhasil ${confirm.action === "Setujui" ? "disetujui" : "ditolak"}.`, confirm.action === "Setujui" ? "success" : "error");
       setConfirm(null);
       setNote("");

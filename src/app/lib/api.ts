@@ -59,22 +59,13 @@ function getFilenameFromDisposition(disposition: string | null) {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const headers = getRequestHeaders(options);
-  
-  console.log("[API] Request:", options?.method || "GET", url);
-  console.log("[API] Headers:", headers);
-  if (options?.body) {
-    console.log("[API] Body:", options.body);
-  }
 
   const response = await fetch(url, {
     headers,
     ...options
   });
 
-  console.log("[API] Response status:", response.status, response.ok);
-
   const body = await response.json().catch(() => null);
-  console.log("[API] Response body:", body);
 
   if (!response.ok) {
     const message = body?.message || `HTTP ${response.status}`;

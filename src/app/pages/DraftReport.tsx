@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { apiGet, apiPost, apiPut, getStoredUser, resolveApiAssetUrl } from "../lib/api";
 import { fetchDraftReportTypes, getCachedDraftReportTypes } from "../lib/draftReportTypes";
+import { formatDateYmd } from "../lib/date";
 
 type DraftStatus = "Menunggu Review" | "Dalam Review" | "Disetujui";
 type DraftResponse = {
@@ -80,11 +81,7 @@ function formatBytes(bytes?: number | null, fallback?: string | null) {
 function normalizeDate(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "-";
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) return raw;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime())
-    ? raw
-    : parsed.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  return formatDateYmd(raw);
 }
 
 function detectFormat(row: DraftResponse) {
@@ -353,10 +350,6 @@ export default function DraftReport() {
                 </button>
               ))}
               <span className="ml-auto text-xs text-muted-foreground font-medium">{loadingInit || loadingDrafts ? "Memuat..." : `${filtered.length} dokumen`}</span>
-            </div>
-
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Riwayat draft sekarang menampilkan data persisten backend, termasuk nama file, ukuran file, format, versi, status, dan URL file untuk preview atau download.
             </div>
 
             {loadingInit || loadingDrafts ? (
