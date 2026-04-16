@@ -83,7 +83,6 @@ export default function DatabaseMahasiswa() {
       const raw = localStorage.getItem("stas_user");
       if (raw) {
         const user = JSON.parse(raw);
-        console.log("[DEBUG] Current user:", user);
       }
       
       const rows = await apiGet<Array<any>>("/students");
@@ -205,19 +204,12 @@ export default function DatabaseMahasiswa() {
         riset: form.riset
       };
 
-      console.log("[DEBUG] Sending payload:", payload);
-      console.log("[DEBUG] Modal mode:", modal);
-
       let result;
       if (modal === "add") {
-        console.log("[DEBUG] Calling POST /students");
         result = await apiPost<{ message: string }>("/students", payload);
       } else {
-        console.log("[DEBUG] Calling PUT /students/" + form.id);
         result = await apiPut<{ message: string }>(`/students/${form.id}`, payload);
       }
-
-      console.log("[DEBUG] API response:", result);
       alert(`Berhasil! ${result?.message || "Data tersimpan"}`);
 
       await loadStudents();
