@@ -6,8 +6,8 @@
 import React, { useEffect, useState } from "react";
 import {
   ChevronLeft, Edit2, AlertTriangle, Check, X,
-  UploadCloud, Download, Send, FileText, Link,
-  Image as ImageIcon, Folder, Calendar, Plus, Trash2, MessageSquare,
+  UploadCloud, Download, Send, FileText,
+  Image as ImageIcon, Folder, Plus, Trash2, MessageSquare,
   Paperclip, GitBranch, ExternalLink,
 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
@@ -33,12 +33,47 @@ type BoardTask = {
   status: "TO DO" | "DOING" | "REVIEW" | "DONE";
   deadline?: string;
   statusText?: string;
+  description?: string;
   tag: string;
   sp: number;
   assignees: string[];
+  assigneeUserIds?: string[];
   comments: number;
   isOverdue: boolean;
   progress?: number;
+  priority?: string;
+  sortOrder?: number;
+  createdByName?: string;
+  createdByInitials?: string;
+  createdByRole?: string;
+};
+
+type TaskAttachment = {
+  id: string;
+  name: string;
+  sizeLabel: string;
+  uploadedAt: string;
+  url?: string;
+  type: "file" | "link";
+  local?: boolean;
+};
+
+type TaskSubtask = {
+  id: string;
+  title: string;
+  done: boolean;
+  attachmentRequired: boolean;
+  completedAt?: string;
+};
+
+type TaskComment = {
+  id: string;
+  authorId?: string;
+  authorName?: string;
+  text: string;
+  createdAt?: string;
+  subtaskId?: string;
+  subtaskTitle?: string;
 };
 
 type BoardColumns = {
@@ -71,6 +106,153 @@ function getMilestoneProgress(milestones: Milestone[]) {
   return milestones.length
     ? Math.round((milestones.filter((m) => m.done).length / milestones.length) * 100)
     : 0;
+}
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function toDateInputValue(value?: string) {
+  if (!value) return "";
+  const normalized = String(value).trim();
+  if (!normalized) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(normalized)) {
+    const [day, month, year] = normalized.split("/");
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
+function normalizeTaskAttachment(item: any, index: number): TaskAttachment {
+  const name = item?.name || item?.filename || item?.file_name || item?.title || item?.url || `Lampiran ${index + 1}`;
+  const sizeValue = Number(item?.size || item?.bytes || item?.file_size || 0);
+  const uploadedAt = item?.uploadedAt || item?.createdAt || new Date().toISOString();
+  return {
+    id: String(item?.id || `attachment-${index}`),
+    name,
+    sizeLabel: item?.sizeLabel || formatFileSize(sizeValue),
+    uploadedAt,
+    url: item?.url || item?.href || item?.file_url || "",
+    type: item?.type === "link" ? "link" : "file",
+    local: Boolean(item?.local)
+  };
+}
+
+function normalizeTaskSubtask(item: any, index: number): TaskSubtask {
+  return {
+    id: String(item?.id || `subtask-${index}`),
+    title: item?.title || item?.label || item?.text || `Sub-tugas ${index + 1}`,
+    done: Boolean(item?.done || item?.checked),
+    attachmentRequired: item?.attachmentRequired !== false,
+    completedAt: item?.completedAt || item?.checkedAt || undefined
+  };
+}
+
+function normalizeTaskComment(item: any, index: number): TaskComment {
+  return {
+    id: String(item?.id || `comment-${index}`),
+    authorId: item?.authorId || item?.userId || undefined,
+    authorName: item?.authorName || item?.author || item?.userName || "Pengguna",
+    text: item?.text || item?.comment || item?.body || "",
+    createdAt: item?.createdAt || item?.created_at || item?.date || undefined,
+    subtaskId: item?.subtaskId || item?.checklistId || undefined,
+    subtaskTitle: item?.subtaskTitle || item?.checklistTitle || item?.subtask || undefined
+  };
+}
+
+function getInitialsFromName(value?: string) {
+  return String(value || "U")
+    .split(" ")
+    .map((chunk) => chunk[0] || "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "U";
+}
+
+function normalizeBoardStatus(value?: string): BoardTask["status"] {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+
+  if (normalized === "TODO") return "TO DO";
+  if (normalized === "TO DO" || normalized === "DOING" || normalized === "REVIEW" || normalized === "DONE") {
+    return normalized;
+  }
+
+  return "TO DO";
+}
+
+function getBoardColumnKey(status: BoardTask["status"]): keyof BoardColumns {
+  if (status === "TO DO") return "todo";
+  if (status === "DOING") return "doing";
+  if (status === "REVIEW") return "review";
+  return "done";
+}
+
+function mapBoardTask(item: any): BoardTask {
+  const status = normalizeBoardStatus(item?.status);
+  const deadline = item?.deadline || undefined;
+  const isOverdue = Boolean(
+    deadline &&
+    status !== "DONE" &&
+    !Number.isNaN(new Date(deadline).getTime()) &&
+    new Date(deadline).getTime() < new Date(new Date().toDateString()).getTime()
+  );
+  const assignees = Array.isArray(item?.assignees)
+    ? item.assignees.map((assignee: any) => assignee?.initials || getInitialsFromName(assignee?.name))
+    : [];
+  const assigneeUserIds = Array.isArray(item?.assignee_ids || item?.assigneeIds)
+    ? (item.assignee_ids || item.assigneeIds).map((value: any) => String(value))
+    : Array.isArray(item?.assignees)
+      ? item.assignees.map((assignee: any) => String(assignee?.user_id || assignee?.userId || "")).filter(Boolean)
+      : [];
+
+  return {
+    id: String(item?.id || ""),
+    title: item?.title || "Task",
+    status,
+    deadline,
+    statusText: item?.description || item?.statusText || undefined,
+    description: item?.description || "",
+    tag: item?.tag || (status === "DONE" ? "Done" : "Riset"),
+    sp: Number(item?.sp) || 3,
+    assignees,
+    assigneeUserIds,
+    comments: Number(item?.commentsCount ?? item?.comments_count ?? item?.comments?.length ?? 0),
+    isOverdue,
+    progress: item?.progress !== undefined && item?.progress !== null ? Number(item.progress) : undefined,
+    priority: item?.priority || undefined,
+    sortOrder: Number(item?.sortOrder ?? item?.sort_order ?? 0),
+    createdByName: item?.createdByName || item?.created_by_name || undefined,
+    createdByInitials: item?.createdByName ? getInitialsFromName(item.createdByName) : undefined,
+    createdByRole: item?.createdByRole || undefined
+  };
+}
+
+function getTaskAttachmentsFromDetail(task: any) {
+  if (!Array.isArray(task?.attachments)) return [];
+  return task.attachments.map(normalizeTaskAttachment);
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error(`Gagal membaca file ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
 }
 
 // ─── MilestoneBanner ─────────────────────────────────────────────────────────
@@ -180,7 +362,11 @@ export function SharedBoardView({
       setLoading(true);
       setLoadError("");
       try {
-        const projectRows = await apiGet<Array<any>>("/research");
+        const projectRows = await apiGet<Array<any>>(
+          currentUser?.id && currentUser?.role !== "operator"
+            ? `/research/assigned?userId=${encodeURIComponent(currentUser.id)}`
+            : "/research"
+        );
         const filteredRows = strictProjectFilter
           ? (projectRows || []).filter((row) => projectIds.includes(row.id))
           : projectIds.length
@@ -259,36 +445,39 @@ export function SharedBoardView({
     };
 
     loadProjects();
-  }, [projectIdsKey]);
+  }, [currentUser?.id, currentUser?.role, projectIdsKey, strictProjectFilter]);
 
   useEffect(() => {
     const loadBoard = async () => {
       if (!activeId) return;
       try {
         const data = await apiGet<any>(`/research/${activeId}/board`);
-        const fallbackAssignee = teamMembersMap[activeId]?.[0]?.initials;
-        const mapColumn = (rows: Array<any> = [], status: BoardTask["status"]) =>
-          rows.map((item) => ({
-            id: item.id,
-            title: item.title,
-            status,
-            deadline: item.deadline,
-            statusText: item.statusText,
-            tag: status === "DONE" ? "Done" : "Riset",
-            sp: 3,
-            assignees: fallbackAssignee ? [fallbackAssignee] : [],
-            comments: Number(item.commentsCount) || 0,
-            isOverdue: false,
-            progress: status === "DOING" ? Number(item.progress || 45) : undefined
-          }));
+        const allTasks = Array.isArray(data?.tasks)
+          ? data.tasks
+          : [
+              ...(data?.columns?.todo || []),
+              ...(data?.columns?.doing || []),
+              ...(data?.columns?.review || []),
+              ...(data?.columns?.done || [])
+            ];
+
+        const nextAttachmentMap: Record<string, TaskAttachment[]> = {};
+        allTasks.forEach((task: any) => {
+          const attachments = getTaskAttachmentsFromDetail(task);
+          if (attachments.length > 0) {
+            nextAttachmentMap[String(task.id)] = attachments;
+          }
+        });
+
+        setTaskAttachmentsMap((prev) => ({ ...prev, ...nextAttachmentMap }));
 
         setTasksMap((prev) => ({
           ...prev,
           [activeId]: {
-            todo: mapColumn(data?.columns?.todo, "TO DO"),
-            doing: mapColumn(data?.columns?.doing, "DOING"),
-            review: mapColumn(data?.columns?.review, "REVIEW"),
-            done: mapColumn(data?.columns?.done, "DONE")
+            todo: (data?.columns?.todo || []).map(mapBoardTask),
+            doing: (data?.columns?.doing || []).map(mapBoardTask),
+            review: (data?.columns?.review || []).map(mapBoardTask),
+            done: (data?.columns?.done || []).map(mapBoardTask)
           }
         }));
       } catch {
@@ -301,19 +490,43 @@ export function SharedBoardView({
 
   // Modal state
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<"detail" | "lampiran" | "komentar">("detail");
+  const [activeTab, setActiveTab] = useState<"detail" | "komentar">("detail");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditBoardOpen, setIsEditBoardOpen] = useState(false);
   const [showDeleteWarning, setShowDeleteWarning] = useState(false);
   const [isMilestoneOpen, setIsMilestoneOpen] = useState(false);
   const [subtasks, setSubtasks] = useState([""]);
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    status: "TO DO" as BoardTask["status"],
+    priority: "Tinggi",
+    deadline: "",
+    assigneeId: "",
+    description: ""
+  });
+  const [boardForm, setBoardForm] = useState({
+    title: "",
+    mitra: "",
+    period: ""
+  });
   const [newMilestoneLabel, setNewMilestoneLabel] = useState("");
   const [editingMsIndex, setEditingMsIndex] = useState<number | null>(null);
   const [editingMsLabel, setEditingMsLabel] = useState("");
-  const [taskComments, setTaskComments] = useState<Array<any>>([]);
+  const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
   const [newCommentText, setNewCommentText] = useState("");
+  const [taskSubtasks, setTaskSubtasks] = useState<TaskSubtask[]>([]);
+  const [newTaskSubtask, setNewTaskSubtask] = useState("");
+  const [taskAttachmentsMap, setTaskAttachmentsMap] = useState<Record<string, TaskAttachment[]>>({});
+  const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
+  const [taskFetchMessage, setTaskFetchMessage] = useState("");
+  const [taskCommentMessage, setTaskCommentMessage] = useState("");
+  const [taskAttachmentMessage, setTaskAttachmentMessage] = useState("");
+  const [taskChecklistMessage, setTaskChecklistMessage] = useState("");
+  const [pendingChecklistSubtaskId, setPendingChecklistSubtaskId] = useState<string | null>(null);
+  const [selectedCommentSubtaskId, setSelectedCommentSubtaskId] = useState<string>("__task__");
+  const checklistAttachmentInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Attachment link state
   const [attachmentLink, setAttachmentLink] = useState("");
@@ -387,6 +600,224 @@ export function SharedBoardView({
   const getMemberName = (initials: string) =>
     teamMembers.find((m) => m.initials === initials)?.name ?? initials;
 
+  const patchTaskIntoColumns = (task: any) => {
+    const mappedTask = mapBoardTask(task);
+    setTasksMap((prev) => {
+      const columnsState = prev[activeId] || EMPTY_BOARD_COLUMNS;
+      const sanitized = {
+        todo: (columnsState.todo || []).filter((item) => item.id !== mappedTask.id),
+        doing: (columnsState.doing || []).filter((item) => item.id !== mappedTask.id),
+        review: (columnsState.review || []).filter((item) => item.id !== mappedTask.id),
+        done: (columnsState.done || []).filter((item) => item.id !== mappedTask.id)
+      };
+      const columnKey = getBoardColumnKey(mappedTask.status);
+      sanitized[columnKey] = [...sanitized[columnKey], mappedTask].sort((left, right) => {
+        const leftOrder = Number(left.sortOrder ?? 0);
+        const rightOrder = Number(right.sortOrder ?? 0);
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        return left.title.localeCompare(right.title);
+      });
+      return { ...prev, [activeId]: sanitized };
+    });
+
+    const attachments = getTaskAttachmentsFromDetail(task);
+    setTaskAttachmentsMap((prev) => ({ ...prev, [String(task.id)]: attachments }));
+
+    return mappedTask;
+  };
+
+  const hydrateTaskDetailState = (task: any) => {
+    const mappedTask = patchTaskIntoColumns(task);
+    const comments = Array.isArray(task?.comments)
+      ? task.comments.map(normalizeTaskComment)
+      : [];
+    const subtasks = Array.isArray(task?.subtasks)
+      ? task.subtasks.map(normalizeTaskSubtask)
+      : [];
+    const attachments = getTaskAttachmentsFromDetail(task);
+
+    setSelectedTask({
+      ...mappedTask,
+      createdByName: task?.createdByName || task?.created_by_name || mappedTask.createdByName,
+      createdByInitials: getInitialsFromName(task?.createdByName || task?.created_by_name || mappedTask.createdByName),
+      createdByRole: task?.createdByRole || mappedTask.createdByRole
+    });
+    setTaskComments(comments);
+    setTaskSubtasks(subtasks);
+    setTaskAttachments(attachments);
+    setSelectedCommentSubtaskId(subtasks[0]?.id || "__task__");
+  };
+
+  const openAddTaskModal = () => {
+    setTaskForm({
+      title: "",
+      status: "TO DO",
+      priority: "Tinggi",
+      deadline: "",
+      assigneeId: teamMembers[0]?.id || "",
+      description: ""
+    });
+    setSubtasks([""]);
+    setIsAddTaskOpen(true);
+  };
+
+  const openEditTaskModal = () => {
+    if (!selectedTask) return;
+    setTaskForm({
+      title: selectedTask.title || "",
+      status: selectedTask.status || "TO DO",
+      priority: selectedTask.priority || "Tinggi",
+      deadline: toDateInputValue(selectedTask.deadline),
+      assigneeId: selectedTask.assigneeUserIds?.[0] || "",
+      description: selectedTask.description || selectedTask.statusText || ""
+    });
+    setSubtasks(taskSubtasks.length > 0 ? taskSubtasks.map((item) => item.title) : [""]);
+    setIsEditModalOpen(true);
+  };
+
+  const openEditBoardModal = () => {
+    setBoardForm({
+      title: project.shortTitle || "",
+      mitra: project.mitra || "",
+      period: project.period || ""
+    });
+    setIsEditBoardOpen(true);
+  };
+
+  const closeTaskEditor = () => {
+    setIsAddTaskOpen(false);
+    setIsEditModalOpen(false);
+  };
+
+  const syncModalSubtasks = async (taskId: string) => {
+    const cleaned = subtasks.map((item) => item.trim()).filter(Boolean);
+
+    if (!isEditModalOpen) {
+      for (const title of cleaned) {
+        await apiPost(`/research/${activeId}/board/tasks/${taskId}/subtasks`, { title });
+      }
+      return;
+    }
+
+    const existing = taskSubtasks;
+    const maxLength = Math.max(existing.length, cleaned.length);
+    for (let index = 0; index < maxLength; index += 1) {
+      const existingSubtask = existing[index];
+      const nextTitle = cleaned[index];
+
+      if (existingSubtask && nextTitle) {
+        if (existingSubtask.title !== nextTitle) {
+          await apiPatch(`/research/${activeId}/board/tasks/${taskId}/subtasks/${existingSubtask.id}`, {
+            title: nextTitle
+          });
+        }
+        continue;
+      }
+
+      if (!existingSubtask && nextTitle) {
+        await apiPost(`/research/${activeId}/board/tasks/${taskId}/subtasks`, { title: nextTitle });
+        continue;
+      }
+
+      if (existingSubtask && !nextTitle) {
+        await apiDelete(`/research/${activeId}/board/tasks/${taskId}/subtasks/${existingSubtask.id}`);
+      }
+    }
+  };
+
+  const handleSaveTask = async () => {
+    const title = taskForm.title.trim();
+    if (!title) {
+      setTaskFetchMessage("Judul tugas wajib diisi.");
+      return;
+    }
+
+    const payload = {
+      title,
+      description: taskForm.description.trim() || null,
+      status: taskForm.status,
+      deadline: taskForm.deadline || null,
+      priority: taskForm.priority,
+      tag: selectedTask?.tag || "Riset",
+      assignee_ids: taskForm.assigneeId ? [taskForm.assigneeId] : []
+    };
+
+    try {
+      setTaskFetchMessage("");
+      const response = isEditModalOpen && selectedTask?.id
+        ? await apiPatch<{ task?: any }>(`/research/${activeId}/board/tasks/${selectedTask.id}`, payload)
+        : await apiPost<{ task?: any }>(`/research/${activeId}/board/tasks`, payload);
+
+      const savedTask = response?.task || response;
+      const savedTaskId = String(savedTask?.id || selectedTask?.id || "");
+      if (!savedTaskId) {
+        closeTaskEditor();
+        return;
+      }
+
+      await syncModalSubtasks(savedTaskId);
+      await refreshBoardData(selectedTask?.id === savedTaskId ? savedTaskId : null);
+
+      closeTaskEditor();
+    } catch (error: any) {
+      setTaskFetchMessage(error?.message || "Gagal menyimpan task.");
+    }
+  };
+
+  const handleMoveTaskStatus = async (value: string) => {
+    if (!selectedTask?.id || !value) return;
+
+    const nextStatus = value === "todo"
+      ? "TO DO"
+      : value === "doing"
+        ? "DOING"
+        : value === "review"
+          ? "REVIEW"
+          : "DONE";
+
+    try {
+      await apiPatch<{ task?: any }>(
+        `/research/${activeId}/board/tasks/${selectedTask.id}/status`,
+        { status: nextStatus }
+      );
+      await refreshBoardData(selectedTask.id);
+    } catch (error: any) {
+      setTaskFetchMessage(error?.message || "Gagal memindahkan status task.");
+    }
+  };
+
+  const handleSaveBoardHeader = async () => {
+    try {
+      const response = await apiPatch<{ project?: any }>(`/research/${activeId}/board/header`, {
+        title: boardForm.title.trim() || project.shortTitle,
+        shortTitle: boardForm.title.trim() || project.shortTitle,
+        periodText: boardForm.period.trim() || project.period,
+        mitra: boardForm.mitra.trim() || project.mitra
+      });
+
+      const updatedProject = response?.project;
+      if (updatedProject) {
+        setAvailableProjects((prev) => prev.map((item) =>
+          item.id === activeId
+            ? {
+                ...item,
+                shortTitle: updatedProject.short_title || updatedProject.shortTitle || updatedProject.title || item.shortTitle,
+                period: updatedProject.period_text || updatedProject.periodText || item.period,
+                mitra: updatedProject.mitra || item.mitra,
+                status: updatedProject.status || item.status,
+                progress: Number(updatedProject.progress ?? item.progress) || 0
+              }
+            : item
+        ));
+      }
+
+      await refreshBoardData(selectedTask?.id || null);
+      setIsEditBoardOpen(false);
+    } catch (error: any) {
+      setLoadError(error?.message || "Gagal menyimpan detail proyek.");
+    }
+  };
+
   // ─── Add Member Functions ───────────────────────────────────────────────────
 
   const loadCandidates = async () => {
@@ -415,7 +846,7 @@ export function SharedBoardView({
       ].filter((c: any) => !currentMemberIds.has(c.user_id));
 
       setAvailableCandidates(candidates);
-      setSelectedCandidateIds([]);
+      setSelectedCandidateId(null);
       setNewMemberPeran("Anggota");
     } catch (err) {
       console.error("Failed to load candidates:", err);
@@ -451,13 +882,6 @@ export function SharedBoardView({
       }
     }
     
-    console.log("[Add Member] Payload:", {
-      userId: selectedCandidateId,
-      memberType: candidate?.member_type,
-      peran: newMemberPeran,
-      status: "Aktif"
-    });
-    
     try {
       await apiPost(`/research/${activeId}/members`, {
         userId: selectedCandidateId,
@@ -468,7 +892,6 @@ export function SharedBoardView({
 
       // Reload members dari API
       const members = await apiGet<Array<any>>(`/research/${activeId}/members`);
-      console.log("[Add Member] API Response:", members);
       
       const updatedTeamMembers: TeamMember[] = (members || []).map((member, index) => {
         const fallbackInitials = String(member?.name || "TM")
@@ -488,17 +911,12 @@ export function SharedBoardView({
               ? "bg-[#8B6FFF] text-white"
               : "bg-emerald-500 text-white"
         };
-        console.log("[Add Member] Mapped member:", mappedMember);
         return mappedMember;
       });
-
-      console.log("[Add Member] Updated team members:", updatedTeamMembers);
       
       // Update map dan trigger re-render
       setTeamMembersMap(prev => {
-        const newMap = { ...prev, [activeId]: updatedTeamMembers };
-        console.log("[Add Member] New teamMembersMap:", newMap);
-        return newMap;
+        return { ...prev, [activeId]: updatedTeamMembers };
       });
       
       setIsAddMemberOpen(false);
@@ -554,39 +972,126 @@ export function SharedBoardView({
     { id: "done", title: "DONE", bg: "bg-emerald-50/50", iconColor: "bg-emerald-400", textColor: "text-emerald-600", pillBg: "bg-emerald-100 text-emerald-700" },
   ];
 
+  const syncSelectedTaskProgress = (subtasks: TaskSubtask[], taskIdOverride?: string) => {
+    const taskId = taskIdOverride || selectedTask?.id;
+    if (!taskId) return;
+    const progress = subtasks.length
+      ? Math.round((subtasks.filter((item) => item.done).length / subtasks.length) * 100)
+      : 0;
+
+    setSelectedTask((prev: any) => prev ? { ...prev, progress } : prev);
+    setTasksMap((prev) => {
+      const columnsState = prev[activeId] || EMPTY_BOARD_COLUMNS;
+      const patch = (rows: BoardTask[]) => rows.map((row) => row.id === taskId ? { ...row, progress } : row);
+      return {
+        ...prev,
+        [activeId]: {
+          todo: patch(columnsState.todo || []),
+          doing: patch(columnsState.doing || []),
+          review: patch(columnsState.review || []),
+          done: patch(columnsState.done || [])
+        }
+      };
+    });
+  };
+
+  const refreshBoardData = async (taskIdToRefresh?: string | null) => {
+    if (!activeId) return null;
+
+    const data = await apiGet<any>(`/research/${activeId}/board`);
+    const allTasks = Array.isArray(data?.tasks)
+      ? data.tasks
+      : [
+          ...(data?.columns?.todo || []),
+          ...(data?.columns?.doing || []),
+          ...(data?.columns?.review || []),
+          ...(data?.columns?.done || [])
+        ];
+
+    const nextAttachmentMap: Record<string, TaskAttachment[]> = {};
+    allTasks.forEach((task: any) => {
+      const attachments = getTaskAttachmentsFromDetail(task);
+      if (attachments.length > 0) {
+        nextAttachmentMap[String(task.id)] = attachments;
+      }
+    });
+
+    setTaskAttachmentsMap((prev) => ({ ...prev, ...nextAttachmentMap }));
+    setTasksMap((prev) => ({
+      ...prev,
+      [activeId]: {
+        todo: (data?.columns?.todo || []).map(mapBoardTask),
+        doing: (data?.columns?.doing || []).map(mapBoardTask),
+        review: (data?.columns?.review || []).map(mapBoardTask),
+        done: (data?.columns?.done || []).map(mapBoardTask)
+      }
+    }));
+
+    if (taskIdToRefresh) {
+      const refreshedTask = await apiGet<any>(`/research/${activeId}/board/tasks/${taskIdToRefresh}`);
+      hydrateTaskDetailState(refreshedTask);
+      return refreshedTask;
+    }
+
+    return data;
+  };
+
   const openTask = async (task: any) => {
     setSelectedTask(task);
     setActiveTab("detail");
     setShowDeleteWarning(false);
     setNewCommentText("");
     setTaskComments([]);
+    setTaskSubtasks([]);
+    setTaskAttachments(taskAttachmentsMap[String(task.id)] || []);
+    setNewTaskSubtask("");
+    setTaskFetchMessage("");
+    setTaskCommentMessage("");
+    setTaskAttachmentMessage("");
+    setTaskChecklistMessage("");
+    setPendingChecklistSubtaskId(null);
+    setSelectedCommentSubtaskId("__task__");
     setTaskCommentsLoading(true);
     try {
-      const rows = await apiGet<Array<any>>(`/logbooks?projectId=${encodeURIComponent(activeId)}`);
-      const detail = (rows || []).find((item) => item.id === task.id);
-      setTaskComments(Array.isArray(detail?.comments) ? detail.comments : []);
-    } catch {
+      const detail = await apiGet<any>(`/research/${activeId}/board/tasks/${task.id}`);
+      hydrateTaskDetailState(detail);
+      if (!detail?.comments?.length && !detail?.subtasks?.length && !detail?.attachments?.length) {
+        setTaskFetchMessage("Detail task berhasil dimuat, tetapi komentar, sub-tugas, dan lampiran masih kosong.");
+      }
+    } catch (error: any) {
       setTaskComments([]);
+      setTaskSubtasks([]);
+      setTaskAttachments([]);
+      setTaskFetchMessage(error?.message || "Fetching data detail tugas gagal.");
     } finally {
       setTaskCommentsLoading(false);
     }
   };
-  const closeTask = () => { setSelectedTask(null); setShowDeleteWarning(false); };
+  const closeTask = () => {
+    setTaskAttachments([]);
+    setSelectedTask(null);
+    setShowDeleteWarning(false);
+    setTaskFetchMessage("");
+    setTaskCommentMessage("");
+    setTaskAttachmentMessage("");
+    setTaskChecklistMessage("");
+    setPendingChecklistSubtaskId(null);
+    setSelectedCommentSubtaskId("__task__");
+  };
   const addSubtaskRow = () => setSubtasks([...subtasks, ""]);
   const removeSubtaskRow = (i: number) => setSubtasks(subtasks.filter((_, idx) => idx !== i));
 
   const deleteTask = () => {
     if (!selectedTask) return;
-    const col = selectedTask.status.toLowerCase().replace(" ", "");
-    const colKey: keyof BoardColumns = col === "todo" ? "todo" : col === "doing" ? "doing" : col === "review" ? "review" : "done";
-    setTasksMap(prev => ({
-      ...prev,
-      [activeId]: {
-        ...(prev[activeId] || EMPTY_BOARD_COLUMNS),
-        [colKey]: ((prev[activeId] || EMPTY_BOARD_COLUMNS)[colKey] || []).filter((t: any) => t.id !== selectedTask.id)
+    void (async () => {
+      try {
+        await apiDelete(`/research/${activeId}/board/tasks/${selectedTask.id}`);
+        await refreshBoardData();
+        closeTask();
+      } catch (error: any) {
+        setTaskFetchMessage(error?.message || "Gagal menghapus task.");
       }
-    }));
-    closeTask();
+    })();
   };
 
   const addMilestone = async () => {
@@ -653,9 +1158,15 @@ export function SharedBoardView({
   };
 
   const sendTaskComment = async () => {
-    if (!selectedTask?.id || !currentUser?.id) return;
+    if (!selectedTask?.id || !currentUser?.id) {
+      setTaskCommentMessage("Komentar tidak bisa dikirim karena data user atau tugas tidak tersedia.");
+      return;
+    }
     const text = newCommentText.trim();
-    if (!text) return;
+    if (!text) {
+      setTaskCommentMessage("Komentar kosong tidak bisa dikirim.");
+      return;
+    }
 
     const payload = {
       id: `LCM-${Date.now()}`,
@@ -665,32 +1176,131 @@ export function SharedBoardView({
       text
     };
 
-    await apiPost(`/logbooks/${selectedTask.id}/comments`, payload);
-
-    const createdComment = {
-      id: payload.id,
-      authorId: payload.authorId,
-      authorName: payload.authorName || "Pengguna",
-      text: payload.text,
-      createdAt: new Date().toISOString()
-    };
-
-    setTaskComments((prev) => [createdComment, ...prev]);
-    setNewCommentText("");
-    setSelectedTask((prev: any) => prev ? { ...prev, comments: (prev.comments || 0) + 1 } : prev);
-    setTasksMap((prev) => {
-      const columns = prev[activeId] || EMPTY_BOARD_COLUMNS;
-      const patch = (rows: any[]) => rows.map((row) => row.id === selectedTask.id ? { ...row, comments: (row.comments || 0) + 1 } : row);
-      return {
-        ...prev,
-        [activeId]: {
-          todo: patch(columns.todo || []),
-          doing: patch(columns.doing || []),
-          review: patch(columns.review || []),
-          done: patch(columns.done || [])
+    try {
+      const response = await apiPost<{ task?: any; comment?: any }>(
+        `/research/${activeId}/board/tasks/${selectedTask.id}/comments`,
+        {
+          id: payload.id,
+          authorId: payload.authorId,
+          authorName: payload.authorName || undefined,
+          text: payload.text
         }
-      };
-    });
+      );
+
+      await refreshBoardData(selectedTask.id);
+      setNewCommentText("");
+      setTaskCommentMessage("");
+    } catch (error: any) {
+      setTaskCommentMessage(error?.message || "Fetching komentar atau mengirim komentar gagal.");
+    }
+  };
+
+  const addTaskSubtask = () => {
+    const title = newTaskSubtask.trim();
+    if (!title) {
+      setTaskChecklistMessage("Sub-tugas kosong tidak bisa ditambahkan.");
+      return;
+    }
+
+    if (!selectedTask?.id) return;
+    void (async () => {
+      try {
+        await apiPost<{ task?: any }>(
+          `/research/${activeId}/board/tasks/${selectedTask.id}/subtasks`,
+          { title }
+        );
+        await refreshBoardData(selectedTask.id);
+        setNewTaskSubtask("");
+        setTaskChecklistMessage("");
+      } catch (error: any) {
+        setTaskChecklistMessage(error?.message || "Gagal menambahkan sub-tugas.");
+      }
+    })();
+  };
+
+  const removeTaskSubtask = (subtaskId: string) => {
+    if (!selectedTask?.id) return;
+    void (async () => {
+      try {
+        await apiDelete<{ task?: any }>(
+          `/research/${activeId}/board/tasks/${selectedTask.id}/subtasks/${subtaskId}`
+        );
+        await refreshBoardData(selectedTask.id);
+        setTaskChecklistMessage("");
+      } catch (error: any) {
+        setTaskChecklistMessage(error?.message || "Gagal menghapus sub-tugas.");
+      }
+    })();
+  };
+
+  const toggleTaskSubtask = (subtaskId: string) => {
+    const current = taskSubtasks.find((item) => item.id === subtaskId);
+    if (!current) return;
+
+    if (!current.done && currentUser?.role === "mahasiswa" && current.attachmentRequired && taskAttachments.length === 0) {
+      setTaskChecklistMessage("Mahasiswa wajib menambahkan minimal 1 lampiran sebelum mencentang sub-tugas.");
+      setTaskAttachmentMessage("Silakan pilih lampiran pendukung untuk sub-tugas ini.");
+      setPendingChecklistSubtaskId(subtaskId);
+      checklistAttachmentInputRef.current?.click();
+      return;
+    }
+
+    void (async () => {
+      try {
+        await apiPatch<{ task?: any }>(
+          `/research/${activeId}/board/tasks/${selectedTask.id}/subtasks/${subtaskId}`,
+          { done: !current.done }
+        );
+        await refreshBoardData(selectedTask.id);
+        setTaskChecklistMessage("");
+        setPendingChecklistSubtaskId(null);
+      } catch (error: any) {
+        setTaskChecklistMessage(error?.message || "Gagal memperbarui sub-tugas.");
+      }
+    })();
+  };
+
+  const handleTaskAttachmentUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) {
+      setTaskAttachmentMessage("Tidak ada file yang dipilih.");
+      return;
+    }
+
+    const taskId = String(selectedTask?.id || "");
+    if (!taskId) {
+      setTaskAttachmentMessage("Lampiran tidak bisa ditambahkan karena tugas belum dipilih.");
+      event.target.value = "";
+      return;
+    }
+
+    void (async () => {
+      try {
+        for (const file of files) {
+          const fileDataUrl = await fileToDataUrl(file);
+          await apiPost<{ task?: any }>(
+            `/research/${activeId}/board/tasks/${taskId}/attachments`,
+            { fileName: file.name, fileDataUrl }
+          );
+        }
+
+        await refreshBoardData(taskId);
+
+        setTaskAttachmentMessage("Lampiran berhasil ditambahkan untuk tugas ini.");
+        setTaskChecklistMessage("");
+        if (pendingChecklistSubtaskId) {
+          const subtaskId = pendingChecklistSubtaskId;
+          setPendingChecklistSubtaskId(null);
+          window.setTimeout(() => {
+            toggleTaskSubtask(subtaskId);
+          }, 0);
+        }
+      } catch (error: any) {
+        setTaskAttachmentMessage(error?.message || "Gagal mengunggah lampiran tugas.");
+      } finally {
+        event.target.value = "";
+      }
+    })();
   };
 
   return (
@@ -728,14 +1338,14 @@ export function SharedBoardView({
             <div className="flex items-center gap-3">
               <button
                 title="Edit Board Settings"
-                onClick={() => setIsEditBoardOpen(true)}
+                onClick={openEditBoardModal}
                 className={`flex items-center justify-center bg-white border border-border rounded-xl w-10 h-10 text-slate-500 ${accentHover} hover:bg-slate-50 hover:border-[#0AB600]/30 transition-all shadow-sm`}
               >
                 <Edit2 size={16} strokeWidth={2.5} />
               </button>
               <div className="w-px h-6 bg-border mx-1" />
               <button
-                onClick={() => setIsAddTaskOpen(true)}
+                onClick={openAddTaskModal}
                 className={`${accentBg} hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2`}
               >
                 <Plus size={16} strokeWidth={3} /> Tambah Tugas
@@ -752,7 +1362,7 @@ export function SharedBoardView({
                   <span>📌</span>
                   <h2 className={`text-lg font-bold ${accentText}`}>{project.shortTitle}</h2>
                   <button
-                    onClick={() => setIsEditBoardOpen(true)}
+                    onClick={openEditBoardModal}
                     className="opacity-0 group-hover:opacity-100 p-1.5 bg-white/60 border border-[#D8F5D0] text-[#4AB834] hover:text-[#0AB600] hover:bg-white rounded-lg transition-all shadow-sm"
                   >
                     <Edit2 size={14} strokeWidth={2.5} />
@@ -952,11 +1562,70 @@ export function SharedBoardView({
           <div className="mt-2 flex flex-col gap-5">
             <div className="flex items-center gap-2">
               <Paperclip className="text-primary" size={20} />
-              <h2 className="text-lg font-bold text-foreground">Lampiran Proyek</h2>
+              <h2 className="text-lg font-bold text-foreground">Lampiran Tugas</h2>
             </div>
-            <div className="rounded-[16px] border border-dashed border-border bg-white p-6 text-sm text-muted-foreground">
-              Lampiran proyek belum terintegrasi dengan API.
-            </div>
+            {Object.entries(taskAttachmentsMap).filter(([, items]) => items.length > 0).length === 0 ? (
+              <div className="rounded-[16px] border border-dashed border-border bg-white p-6 text-sm text-muted-foreground">
+                Belum ada lampiran tugas. Lampiran akan muncul di sini setelah mahasiswa menambahkan lampiran saat menyelesaikan sub-tugas.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {Object.entries(taskAttachmentsMap)
+                  .filter(([, items]) => items.length > 0)
+                  .map(([taskId, items]) => {
+                    const boardTask = [
+                      ...(tasks.todo || []),
+                      ...(tasks.doing || []),
+                      ...(tasks.review || []),
+                      ...(tasks.done || [])
+                    ].find((task) => String(task.id) === taskId);
+
+                    return (
+                      <div key={taskId} className="rounded-[16px] border border-border bg-white p-4 shadow-sm">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <div>
+                            <p className="text-sm font-black text-foreground">{boardTask?.title || `Tugas ${taskId}`}</p>
+                            <p className="text-[11px] font-medium text-muted-foreground">{items.length} lampiran</p>
+                          </div>
+                          {boardTask && (
+                            <button
+                              onClick={() => openTask(boardTask)}
+                              className="text-xs font-bold text-[#0AB600] hover:underline"
+                            >
+                              Buka Tugas
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {items.map((attachment) => (
+                            <div key={attachment.id} className="flex items-center gap-3 rounded-xl border border-border/70 bg-slate-50 px-3 py-2.5">
+                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${attachment.type === "link" ? "bg-blue-100 text-blue-600" : "bg-emerald-100 text-emerald-600"}`}>
+                                {attachment.type === "link" ? <ExternalLink size={16} /> : <FileText size={16} />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold text-foreground">{attachment.name}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {attachment.sizeLabel} • {new Date(attachment.uploadedAt).toLocaleString("id-ID")}
+                                </p>
+                              </div>
+                              {attachment.url && (
+                                <a
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Download size={12} /> Buka
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
 
           {/* ──   Links ── */}
@@ -1001,14 +1670,22 @@ export function SharedBoardView({
                   <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">{selectedTask.sp} SP</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <select defaultValue="" className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-600 focus:outline-none hover:bg-slate-100 cursor-pointer transition-colors">
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      void handleMoveTaskStatus(e.target.value);
+                      e.currentTarget.value = "";
+                    }}
+                    className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-600 focus:outline-none hover:bg-slate-100 cursor-pointer transition-colors"
+                  >
                     <option value="" disabled>Pindah ke...</option>
                     <option value="todo">TO DO</option>
                     <option value="doing">DOING</option>
                     <option value="review">REVIEW</option>
                     <option value="done">DONE</option>
                   </select>
-                  <button onClick={() => setIsEditModalOpen(true)} className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors border border-transparent hover:border-slate-200"><Edit2 size={14} /></button>
+                  <button onClick={openEditTaskModal} className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors border border-transparent hover:border-slate-200"><Edit2 size={14} /></button>
                   <button onClick={() => setShowDeleteWarning(true)} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors border border-transparent hover:border-red-200"><Trash2 size={14} /></button>
                   <div className="w-px h-5 bg-border mx-1" />
                   <button onClick={closeTask} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors ml-1"><X size={18} /></button>
@@ -1028,19 +1705,24 @@ export function SharedBoardView({
               )}
             </div>
             <div className="flex px-6 border-b border-border bg-white shrink-0">
-              {(["detail", "lampiran", "komentar"] as const).map((tab) => (
+              {(["detail", "komentar"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`py-3 px-2 mr-6 text-sm font-bold border-b-2 transition-colors capitalize ${activeTab === tab ? `border-[#0AB600] ${accentText}` : "border-transparent text-muted-foreground hover:text-foreground"}`}
                 >
-                  {tab === "detail" ? "Detail" : tab === "lampiran" ? "Lampiran (0)" : `Komentar (${selectedTask.comments || 0})`}
+                  {tab === "detail" ? "Detail" : `Komentar (${selectedTask.comments || 0})`}
                 </button>
               ))}
             </div>
             <div className="flex-1 flex flex-col min-h-0 bg-slate-50/50 relative">
               {activeTab === "detail" && (
                 <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+                  {taskFetchMessage && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-3.5 mb-4 text-sm font-medium">
+                      {taskFetchMessage}
+                    </div>
+                  )}
                   {selectedTask.isOverdue ? (
                     <div className="bg-red-50 border border-red-100 text-red-600 rounded-xl p-3.5 mb-6 flex items-start gap-3">
                       <AlertTriangle size={18} className="mt-0.5 shrink-0" />
@@ -1089,8 +1771,15 @@ export function SharedBoardView({
                     <div>
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Dibuat Oleh</span>
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-slate-400 text-white flex items-center justify-center text-[9px] font-bold">SYS</div>
-                        <span className="text-sm font-bold text-foreground">Sistem</span>
+                        <div className="w-6 h-6 rounded-full bg-slate-400 text-white flex items-center justify-center text-[9px] font-bold">
+                          {selectedTask.createdByInitials || "SYS"}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-foreground">{selectedTask.createdByName || "Sistem"}</span>
+                          {selectedTask.createdByRole && (
+                            <span className="text-[10px] font-medium text-muted-foreground">{selectedTask.createdByRole}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1101,26 +1790,127 @@ export function SharedBoardView({
                     </div>
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Sub-tugas</span>
-                    <div className="mt-2 rounded-xl border border-dashed border-border bg-white px-4 py-3 text-sm text-muted-foreground">
-                      Sub-tugas belum tersedia dari API.
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        Sub-tugas ({taskSubtasks.filter((item) => item.done).length}/{taskSubtasks.length})
+                      </span>
+                      {taskSubtasks.length > 0 && (
+                        <span className={`text-xs font-black ${accentText}`}>
+                          {Math.round((taskSubtasks.filter((item) => item.done).length / taskSubtasks.length) * 100)}%
+                        </span>
+                      )}
+                    </div>
+                    {taskChecklistMessage && (
+                      <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                        {taskChecklistMessage}
+                      </div>
+                    )}
+                    {taskAttachmentMessage && (
+                      <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">
+                        {taskAttachmentMessage}
+                      </div>
+                    )}
+                    <input
+                      ref={checklistAttachmentInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleTaskAttachmentUpload}
+                    />
+                    <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-white px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-foreground">Lampiran checklist</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {taskAttachments.length > 0
+                            ? `${taskAttachments.length} lampiran sudah ditambahkan untuk tugas ini.`
+                            : "Belum ada lampiran. Mahasiswa wajib menambahkan lampiran sebelum mencentang sub-tugas."}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => checklistAttachmentInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+                      >
+                        <UploadCloud size={14} /> Tambah Lampiran
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {taskSubtasks.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-border bg-white px-4 py-3 text-sm text-muted-foreground">
+                          Sub-tugas belum ada. Tambahkan item checklist baru di bawah.
+                        </div>
+                      )}
+                      {taskSubtasks.map((item) => (
+                        <div key={item.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-border shadow-sm">
+                          <button
+                            onClick={() => toggleTaskSubtask(item.id)}
+                            className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
+                              item.done ? "bg-emerald-500 text-white border-emerald-500" : "bg-slate-50 border-2 border-slate-300 hover:border-[#0AB600]"
+                            }`}
+                            title={item.attachmentRequired ? "Checklist ini membutuhkan lampiran untuk mahasiswa." : "Toggle sub-tugas"}
+                          >
+                            {item.done && <Check size={12} strokeWidth={3} />}
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium ${item.done ? "text-muted-foreground line-through decoration-slate-300" : "text-foreground"}`}>
+                              {item.title}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              {item.attachmentRequired && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
+                                  <Paperclip size={10} /> Butuh lampiran
+                                </span>
+                              )}
+                              {item.completedAt && (
+                                <span className="text-[10px] font-medium text-muted-foreground">
+                                  Dicentang {new Date(item.completedAt).toLocaleString("id-ID")}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => removeTaskSubtask(item.id)}
+                            className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors shrink-0"
+                            title="Hapus sub-tugas"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        value={newTaskSubtask}
+                        onChange={(e) => setNewTaskSubtask(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") addTaskSubtask(); }}
+                        placeholder="Tambah sub-tugas baru..."
+                        className="flex-1 rounded-xl border border-border bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20 focus:border-[#0AB600]"
+                      />
+                      <button
+                        onClick={addTaskSubtask}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-bold text-white ${accentBg} hover:opacity-90 transition-colors`}
+                      >
+                        Tambah
+                      </button>
                     </div>
                   </div>
                 </div>
               )}
-              {activeTab === "lampiran" && (
-                <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-                  <div className="rounded-xl border border-dashed border-border bg-white px-4 py-8 text-center text-sm text-muted-foreground">
-                    Lampiran tugas belum terintegrasi ke API.
-                  </div>
-                </div>
-              )}
               {activeTab === "komentar" && (
-                <div className="flex flex-col h-full absolute inset-0">
+                <div className="flex-1 min-h-0 flex flex-col">
                   <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+                    {taskFetchMessage && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+                        {taskFetchMessage}
+                      </div>
+                    )}
+                    {taskCommentMessage && (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                        {taskCommentMessage}
+                      </div>
+                    )}
                     {taskCommentsLoading && <p className="text-sm text-muted-foreground">Memuat komentar...</p>}
                     {!taskCommentsLoading && taskComments.length === 0 && (
-                      <p className="text-sm text-muted-foreground">Belum ada komentar.</p>
+                      <p className="text-sm text-muted-foreground">Belum ada komentar. Kamu bisa menulis komentar pertama di bawah.</p>
                     )}
                     {!taskCommentsLoading && taskComments.map((comment) => {
                       const initials = String(comment.authorName || "U")
@@ -1138,6 +1928,11 @@ export function SharedBoardView({
                           <div className={`flex flex-col gap-1.5 max-w-[85%] ${isOwn ? "items-end" : "items-start"}`}>
                             <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
                               <span className="text-xs font-bold text-foreground">{comment.authorName || "Pengguna"}</span>
+                              {comment.subtaskTitle && (
+                                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-black text-amber-700">
+                                  {comment.subtaskTitle}
+                                </span>
+                              )}
                               <span className="text-[10px] font-medium text-muted-foreground">
                                 {comment.createdAt ? new Date(comment.createdAt).toLocaleString("id-ID") : "-"}
                               </span>
@@ -1151,25 +1946,65 @@ export function SharedBoardView({
                       );
                     })}
                   </div>
-                  <div className="p-4 bg-white border-t border-border flex items-end gap-3 shrink-0">
-                    <div className="w-8 h-8 rounded-full bg-slate-400 flex items-center justify-center text-xs font-bold text-white shrink-0 mb-1">
-                      {String(currentUser?.initials || "U")}
-                    </div>
-                    <div className="flex-1 bg-slate-50 border border-border rounded-xl focus-within:ring-2 focus-within:ring-[#6C47FF]/20 focus-within:border-[#6C47FF] transition-all p-1 flex">
-                      <textarea
-                        placeholder="Tulis komentar..."
-                        value={newCommentText}
-                        onChange={(e) => setNewCommentText(e.target.value)}
-                        className="w-full bg-transparent border-none focus:ring-0 resize-none text-sm p-2.5 min-h-[40px] max-h-[120px]"
-                        rows={1}
-                      />
-                      <button
-                        onClick={sendTaskComment}
-                        disabled={!newCommentText.trim() || !currentUser?.id}
-                        className={`w-10 h-10 ${accentBg} hover:opacity-90 text-white rounded-lg flex items-center justify-center shrink-0 transition-colors self-end m-0.5 disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        <Send size={16} className="ml-0.5" />
-                      </button>
+                  <div className="p-4 bg-white border-t border-border shrink-0">
+                    <div className="rounded-2xl border border-border bg-slate-50 p-4 shadow-sm">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-400 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                          {String(currentUser?.initials || "U")}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-foreground">Tulis Komentar</p>
+                          <p className="text-[11px] font-medium text-muted-foreground">Pilih sub-tugas tujuan komentar sebelum mengirim.</p>
+                        </div>
+                      </div>
+                      <div className="mb-3">
+                        <label className="mb-1.5 block text-[11px] font-black uppercase tracking-wide text-muted-foreground">
+                          Komentar untuk
+                        </label>
+                        <select
+                          value={selectedCommentSubtaskId}
+                          onChange={(e) => setSelectedCommentSubtaskId(e.target.value)}
+                          className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF]"
+                        >
+                          <option value="__task__">Tugas utama</option>
+                          {taskSubtasks.map((subtask) => (
+                            <option key={subtask.id} value={subtask.id}>
+                              {subtask.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="bg-white border border-border rounded-xl focus-within:ring-2 focus-within:ring-[#6C47FF]/20 focus-within:border-[#6C47FF] transition-all p-1 flex">
+                        <textarea
+                          placeholder={
+                            selectedCommentSubtaskId !== "__task__"
+                              ? `Tulis komentar untuk ${taskSubtasks.find((item) => item.id === selectedCommentSubtaskId)?.title || "sub-tugas ini"}...`
+                              : "Tulis komentar untuk tugas ini..."
+                          }
+                          value={newCommentText}
+                          onChange={(e) => setNewCommentText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                              e.preventDefault();
+                              void sendTaskComment();
+                            }
+                          }}
+                          className="w-full bg-transparent border-none focus:ring-0 resize-none text-sm p-2.5 min-h-[72px] max-h-[160px]"
+                          rows={3}
+                        />
+                        <button
+                          onClick={sendTaskComment}
+                          disabled={!newCommentText.trim() || !currentUser?.id}
+                          className={`w-11 h-11 ${accentBg} hover:opacity-90 text-white rounded-xl flex items-center justify-center shrink-0 transition-colors self-end m-0.5 disabled:opacity-40 disabled:cursor-not-allowed`}
+                          title="Kirim komentar"
+                        >
+                          <Send size={16} className="ml-0.5" />
+                        </button>
+                      </div>
+                      <div className="mt-2 flex justify-between gap-3">
+                        <p className="text-[11px] text-muted-foreground">Gunakan `Ctrl+Enter` untuk kirim lebih cepat.</p>
+                        <span className="text-[11px] font-medium text-muted-foreground">{newCommentText.trim().length} karakter</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1188,17 +2023,27 @@ export function SharedBoardView({
                 {isEditModalOpen ? <Edit2 className={accentText} size={24} /> : <Folder className="text-amber-400" size={24} fill="#FCD34D" />}
                 <h2 className="text-lg font-black text-foreground">{isEditModalOpen ? "Edit Tugas" : "Tambah Tugas Baru"}</h2>
               </div>
-              <button onClick={() => { setIsAddTaskOpen(false); setIsEditModalOpen(false); }} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors"><X size={18} /></button>
+              <button onClick={closeTaskEditor} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
               <div>
                 <label className="text-sm font-bold text-slate-700 block mb-1.5">Judul Tugas <span className="text-red-500">*</span></label>
-                <input type="text" defaultValue={isEditModalOpen && selectedTask ? selectedTask.title : ""} placeholder="Contoh: Implementasi model training pipeline..." className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all" />
+                <input
+                  type="text"
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="Contoh: Implementasi model training pipeline..."
+                  className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-bold text-slate-700 block mb-1.5">Status</label>
-                  <select defaultValue={isEditModalOpen && selectedTask ? selectedTask.status : "TO DO"} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all">
+                  <select
+                    value={taskForm.status}
+                    onChange={(e) => setTaskForm((prev) => ({ ...prev, status: e.target.value as BoardTask["status"] }))}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all"
+                  >
                     <option value="TO DO">To Do</option>
                     <option value="DOING">Doing</option>
                     <option value="REVIEW">Review</option>
@@ -1207,36 +2052,60 @@ export function SharedBoardView({
                 </div>
                 <div>
                   <label className="text-sm font-bold text-slate-700 block mb-1.5">Prioritas</label>
-                  <select className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all">
-                    <option>🔴 Tinggi</option><option>🟡 Menengah</option><option>🟢 Rendah</option>
+                  <select
+                    value={taskForm.priority}
+                    onChange={(e) => setTaskForm((prev) => ({ ...prev, priority: e.target.value }))}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all"
+                  >
+                    <option value="Tinggi">Tinggi</option>
+                    <option value="Menengah">Menengah</option>
+                    <option value="Rendah">Rendah</option>
                   </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-bold text-slate-700 block mb-1.5">Deadline</label>
-                  <div className="relative">
-                    <input type="text" defaultValue={isEditModalOpen && selectedTask ? selectedTask.deadline : ""} placeholder="dd/mm/yyyy" className="w-full p-3 pr-10 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all" />
-                    <Calendar size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
+                  <input
+                    type="date"
+                    value={taskForm.deadline}
+                    onChange={(e) => setTaskForm((prev) => ({ ...prev, deadline: e.target.value }))}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-700 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all cursor-pointer"
+                  />
                 </div>
                 <div>
                   <label className="text-sm font-bold text-slate-700 block mb-1.5">Ditugaskan ke</label>
-                  <select className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all">
-                    {teamMembers.map((m) => <option key={m.initials}>{m.name}</option>)}
+                  <select
+                    value={taskForm.assigneeId}
+                    onChange={(e) => setTaskForm((prev) => ({ ...prev, assigneeId: e.target.value }))}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all"
+                  >
+                    <option value="">Belum ditentukan</option>
+                    {teamMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </div>
               </div>
               <div>
                 <label className="text-sm font-bold text-slate-700 block mb-1.5">Deskripsi Tugas</label>
-                <textarea placeholder="Jelaskan detail tugas yang harus dikerjakan..." className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none min-h-[100px] resize-y transition-all" />
+                <textarea
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Jelaskan detail tugas yang harus dikerjakan..."
+                  className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none min-h-[100px] resize-y transition-all"
+                />
               </div>
               <div>
                 <label className="text-sm font-bold text-slate-700 block mb-1.5">Sub-tugas / Checklist</label>
                 <div className="flex flex-col gap-2">
-                  {subtasks.map((_, idx) => (
+                  {subtasks.map((value, idx) => (
                     <div key={idx} className="flex items-center gap-2">
-                      <input type="text" placeholder={`Sub-tugas ${idx + 1}...`} className="flex-1 p-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all" />
+                      <input
+                        type="text"
+                        value={value}
+                        onChange={(e) => setSubtasks((prev) => prev.map((item, itemIndex) => itemIndex === idx ? e.target.value : item))}
+                        placeholder={`Sub-tugas ${idx + 1}...`}
+                        className="flex-1 p-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all"
+                      />
                       <button onClick={() => removeSubtaskRow(idx)} className="w-11 h-11 shrink-0 rounded-xl bg-red-50 hover:bg-red-100 border border-red-100 text-red-500 flex items-center justify-center transition-colors"><X size={16} /></button>
                     </div>
                   ))}
@@ -1247,8 +2116,8 @@ export function SharedBoardView({
               </div>
             </div>
             <div className="p-5 border-t border-border bg-white flex items-center justify-end gap-3 shrink-0">
-              <button onClick={() => { setIsAddTaskOpen(false); setIsEditModalOpen(false); }} className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Batal</button>
-              <button onClick={() => { setIsAddTaskOpen(false); setIsEditModalOpen(false); }} className={`px-6 py-2.5 rounded-xl text-sm font-bold text-white ${accentBg} hover:opacity-90 shadow-sm transition-colors flex items-center gap-2`}>
+              <button onClick={closeTaskEditor} className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Batal</button>
+              <button onClick={() => { void handleSaveTask(); }} className={`px-6 py-2.5 rounded-xl text-sm font-bold text-white ${accentBg} hover:opacity-90 shadow-sm transition-colors flex items-center gap-2`}>
                 <Check size={16} strokeWidth={3} /> {isEditModalOpen ? "Simpan Perubahan" : "Buat Tugas"}
               </button>
             </div>
@@ -1273,11 +2142,21 @@ export function SharedBoardView({
             <div className="p-5 md:p-6 flex flex-col gap-5 overflow-y-auto">
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-slate-700">Nama Proyek</label>
-                <input type="text" defaultValue={project.shortTitle} className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all" />
+                <input
+                  type="text"
+                  value={boardForm.title}
+                  onChange={(e) => setBoardForm((prev) => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-slate-700">Mitra / Organisasi</label>
-                <input type="text" defaultValue={project.mitra} className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all" />
+                <input
+                  type="text"
+                  value={boardForm.mitra}
+                  onChange={(e) => setBoardForm((prev) => ({ ...prev, mitra: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
@@ -1288,7 +2167,12 @@ export function SharedBoardView({
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-slate-700">Periode</label>
-                  <input type="text" defaultValue={project.period} className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all" />
+                  <input
+                    type="text"
+                    value={boardForm.period}
+                    onChange={(e) => setBoardForm((prev) => ({ ...prev, period: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-border bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
+                  />
                 </div>
               </div>
               <div className="flex flex-col gap-2">
@@ -1320,7 +2204,7 @@ export function SharedBoardView({
             </div>
             <div className="p-5 md:px-6 border-t border-border/50 bg-slate-50/50 flex justify-end gap-3">
               <button onClick={() => setIsEditBoardOpen(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">Batal</button>
-              <button onClick={() => setIsEditBoardOpen(false)} className={`${accentBg} hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all`}>Simpan Perubahan</button>
+              <button onClick={() => { void handleSaveBoardHeader(); }} className={`${accentBg} hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all`}>Simpan Perubahan</button>
             </div>
           </div>
         </div>

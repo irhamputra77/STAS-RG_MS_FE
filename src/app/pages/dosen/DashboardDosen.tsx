@@ -3,27 +3,43 @@ import { Link } from "react-router";
 import { DosenLayout } from "../../components/DosenLayout";
 import { FlaskConical, Users, BookOpen, CalendarCheck, Eye, Check, X, ChevronRight, Target, AlertTriangle, Clock } from "lucide-react";
 import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 export default function DashboardDosen() {
   const user = getStoredUser();
   const [detailLog, setDetailLog] = useState<any | null>(null);
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [leaves, setLeaves] = useState<any[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
 
   React.useEffect(() => {
     const loadDashboard = async () => {
       if (!user?.id) return;
-      const data = await apiGet<any>(`/dashboard/lecturer?userId=${encodeURIComponent(user.id)}`);
+      const [data, withdrawalRows] = await Promise.all([
+        apiGet<any>(`/dashboard/lecturer?userId=${encodeURIComponent(user.id)}`),
+        apiGet<Array<any>>(`/withdrawal-requests?advisorId=${encodeURIComponent(user.id)}&finalStatus=${encodeURIComponent("Menunggu Dosen")}`)
+      ]);
       setDashboardData(data);
       setLeaves((data.pendingLeaves || []).map((item: any) => ({
         ...item,
         mahasiswaNama: item.student_name || "Mahasiswa",
         mahasiswaInitials: (item.student_name || "M").slice(0, 2).toUpperCase(),
         mahasiswaColor: "bg-[#8B6FFF] text-white",
-        periodeStart: item.periode_start,
-        periodeEnd: item.periode_end,
+        periodeStart: formatDateYmd(item.periode_start),
+        periodeEnd: formatDateYmd(item.periode_end),
         alasan: item.alasan,
         durasi: item.durasi
+      })));
+      setWithdrawals((withdrawalRows || []).map((item: any) => ({
+        id: item.id,
+        studentName: item.student_name || "Mahasiswa",
+        studentNim: item.student_nim || "-",
+        studentInitials: String(item.student_name || "M").split(" ").map((chunk: string) => chunk[0] || "").join("").slice(0, 2).toUpperCase() || "M",
+        studentColor: "bg-amber-500 text-white",
+        reason: item.reason || "-",
+        submittedAt: formatDateYmd(item.submitted_at),
+        operatorNote: item.operator_note || "",
+        finalStatus: item.final_status || "Menunggu Dosen"
       })));
     };
 
@@ -42,10 +58,22 @@ export default function DashboardDosen() {
     title: item.title
   }));
   const pendingLeaveCount = leaves.length;
+  const pendingWithdrawalCount = withdrawals.length;
 
   const handleLeave = async (id: string, action: "Disetujui" | "Ditolak") => {
     await apiPatch(`/leave-requests/${id}/status`, { status: action });
     setLeaves(p => p.filter(l => l.id !== id));
+  };
+
+  const handleWithdrawal = async (id: string, action: "Disetujui" | "Ditolak") => {
+    await apiPatch(`/withdrawal-requests/${id}/advisor-review`, {
+      status: action,
+      reviewedById: user?.id,
+      note: action === "Disetujui"
+        ? "Pengajuan pengunduran diri disetujui dosen pembimbing."
+        : "Pengajuan pengunduran diri ditolak dosen pembimbing."
+    });
+    setWithdrawals((prev) => prev.filter((item) => item.id !== id));
   };
 
   return (
@@ -57,12 +85,13 @@ export default function DashboardDosen() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
             {[
               { icon: <FlaskConical size={22} className="text-blue-600" />, label: "Riset Dipimpin", value: dashboardData?.stats?.risetDipimpin ?? myRiset.length, sub: "semua aktif", bg: "bg-blue-100", href: "/dosen/riset" },
               { icon: <Users size={22} className="text-emerald-600" />, label: "Mahasiswa Aktif", value: myMahasiswaCount, sub: "di bawah bimbingan", bg: "bg-emerald-100", href: "/dosen/riset" },
               { icon: <BookOpen size={22} className="text-amber-600" />, label: "Logbook Pending Review", value: dashboardData?.stats?.pendingLogbook ?? pendingLogs.length, sub: "butuh perhatian", bg: "bg-amber-100", href: "/dosen/logbook" },
               { icon: <CalendarCheck size={22} className="text-red-500" />, label: "Cuti Menunggu", value: pendingLeaveCount, sub: "perlu persetujuan", bg: "bg-red-100", href: "#" },
+              { icon: <AlertTriangle size={22} className="text-orange-500" />, label: "Pengunduran Diri", value: pendingWithdrawalCount, sub: "menunggu keputusan", bg: "bg-orange-100", href: "#" },
             ].map(s => (
             <Link key={s.label} to={s.href} className="bg-white border border-border rounded-[14px] p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all flex flex-col gap-3">
               <div className={`w-11 h-11 rounded-[12px] flex items-center justify-center ${s.bg}`}>{s.icon}</div>
@@ -137,6 +166,38 @@ export default function DashboardDosen() {
                       <div className="flex gap-2 shrink-0">
                         <button onClick={() => handleLeave(l.id, "Disetujui")} className="flex items-center gap-1 h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black rounded-[8px] transition-colors"><Check size={12} strokeWidth={3} /> Setujui</button>
                         <button onClick={() => handleLeave(l.id, "Ditolak")} className="flex items-center gap-1 h-8 px-3 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-black rounded-[8px] border border-red-200 transition-colors"><X size={12} strokeWidth={3} /> Tolak</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-orange-200 rounded-[14px] shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-orange-100 flex items-center justify-between bg-orange-50/40">
+                <h2 className="text-sm font-black text-foreground flex items-center gap-2">
+                  <AlertTriangle size={15} className="text-orange-500" /> Pengunduran Diri Menunggu Keputusan
+                  {pendingWithdrawalCount > 0 && <span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{pendingWithdrawalCount}</span>}
+                </h2>
+              </div>
+              {withdrawals.length === 0 ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">Tidak ada pengunduran diri yang menunggu keputusan dosen.</div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {withdrawals.map((item) => (
+                    <div key={item.id} className="flex items-center gap-4 px-5 py-3.5">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${item.studentColor}`}>{item.studentInitials}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-foreground text-sm">{item.studentName}</p>
+                        <p className="text-xs text-muted-foreground">{item.studentNim}</p>
+                        <p className="text-xs text-foreground mt-0.5 line-clamp-2">{item.reason}</p>
+                        {item.operatorNote && (
+                          <p className="mt-1 text-[10px] font-medium text-orange-700">Catatan operator: {item.operatorNote}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => handleWithdrawal(item.id, "Disetujui")} className="flex items-center gap-1 h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black rounded-[8px] transition-colors"><Check size={12} strokeWidth={3} /> Setujui</button>
+                        <button onClick={() => handleWithdrawal(item.id, "Ditolak")} className="flex items-center gap-1 h-8 px-3 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-black rounded-[8px] border border-red-200 transition-colors"><X size={12} strokeWidth={3} /> Tolak</button>
                       </div>
                     </div>
                   ))}

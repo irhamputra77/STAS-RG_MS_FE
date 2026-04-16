@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { DosenLayout } from "../../components/DosenLayout";
 import { Search, X, Download, BookOpen, Paperclip, Send, MessageSquare } from "lucide-react";
 import { apiGet, apiPost, getStoredUser } from "../../lib/api";
+import { mapLogbookAttachment } from "../../lib/logbookAttachments";
 
 const AVATAR_COLORS = [
   "bg-[#8B6FFF] text-white",
@@ -81,7 +82,9 @@ export default function ReviewLogbook() {
         }));
 
         const studentById = Object.fromEntries(mappedStudents.map((student) => [student.id, student]));
-        const mappedEntries = logRows.map((item) => ({
+        const mappedEntries = logRows.map((item) => {
+          const attachment = mapLogbookAttachment(item);
+          return {
           id: item.id,
           mahasiswaId: item.student_id,
           mahasiswaNama: item.student_name,
@@ -94,10 +97,12 @@ export default function ReviewLogbook() {
           description: item.description,
           output: item.output || "-",
           kendala: item.kendala || "",
-          hasAttachment: Boolean(item.has_attachment),
+          hasAttachment: Boolean(attachment),
+          attachment,
           comments: Array.isArray(item.comments) ? item.comments : [],
           commentsCount: Number(item.comments_count) || 0
-        }));
+          };
+        });
 
         setStudentsState(mappedStudents);
         setEntriesState(mappedEntries);
@@ -254,7 +259,11 @@ export default function ReviewLogbook() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${entry.riset === "Riset A" ? "bg-[#F8F5FF] text-[#6C47FF]" : "bg-emerald-50 text-emerald-700"}`}>{entry.riset}</span>
-                            {entry.hasAttachment && <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground font-bold"><Paperclip size={9} /> Lampiran</span>}
+                            {entry.hasAttachment && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground font-bold">
+                                <Paperclip size={9} /> {entry.attachment?.name || "Lampiran"}
+                              </span>
+                            )}
                             {hasComment && <span className="flex items-center gap-0.5 text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded"><MessageSquare size={9} /> {entry.commentsCount}</span>}
                             {!hasComment && <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Belum Direview</span>}
                           </div>
@@ -289,11 +298,32 @@ export default function ReviewLogbook() {
               <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-1.5">Deskripsi</p><p className="text-sm text-foreground leading-relaxed">{selectedEntry.description}</p></div>
               <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-1.5">Output</p><p className="text-sm text-foreground leading-relaxed">{selectedEntry.output}</p></div>
               {selectedEntry.kendala && <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-1.5">Kendala</p><p className="text-sm text-foreground leading-relaxed">{selectedEntry.kendala}</p></div>}
-              {selectedEntry.hasAttachment && (
+              {selectedEntry.attachment && (
                 <div className="p-3 bg-slate-50 border border-border rounded-[10px] flex items-center gap-3">
                   <Paperclip size={13} className="text-muted-foreground" />
-                  <span className="text-xs font-bold text-foreground flex-1">Lampiran terlampir</span>
-                  <button className="text-xs font-black text-indigo-600 hover:underline">Unduh</button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-foreground truncate">{selectedEntry.attachment.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{selectedEntry.attachment.sizeLabel}</p>
+                  </div>
+                  {selectedEntry.attachment.url && (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={selectedEntry.attachment.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-black text-indigo-600 hover:underline"
+                      >
+                        Preview
+                      </a>
+                      <a
+                        href={selectedEntry.attachment.url}
+                        download={selectedEntry.attachment.name}
+                        className="text-xs font-black text-indigo-600 hover:underline"
+                      >
+                        Unduh
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 

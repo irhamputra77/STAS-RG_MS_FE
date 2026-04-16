@@ -2,6 +2,7 @@ import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
 import { Plus, X, Check, Upload, FileText } from "lucide-react";
 import { apiGet, apiPost, getStoredUser } from "../lib/api";
+import { formatDateYmd } from "../lib/date";
 
 type LeaveStatus = "Disetujui" | "Ditolak" | "Menunggu";
 type RequestType = "cuti" | "izin" | "sakit";
@@ -38,6 +39,18 @@ const REQUEST_TYPE_BADGE: Record<RequestType, string> = {
   sakit: "bg-rose-100 text-rose-700 border border-rose-200",
 };
 
+function parseRequestType(item: any): RequestType {
+  const rawJenis = String(item?.jenis_pengajuan || item?.jenis || "").toLowerCase();
+  if (rawJenis === "izin" || rawJenis === "sakit" || rawJenis === "cuti") {
+    return rawJenis as RequestType;
+  }
+
+  const note = String(item?.catatan || "").toLowerCase();
+  if (note.includes("jenis pengajuan: izin")) return "izin";
+  if (note.includes("jenis pengajuan: sakit")) return "sakit";
+  return "cuti";
+}
+
 const initialFormState = {
   jenis: "cuti" as RequestType,
   periodeMulai: "",
@@ -48,6 +61,7 @@ const initialFormState = {
 
 export default function LeaveRequest() {
   const user = getStoredUser();
+  const [studentId, setStudentId] = useState("");
   const [leaveData, setLeaveData] = useState<LeaveRecord[]>([]);
   const [cutiRule, setCutiRule] = useState<{
     maxSemesterDays: number;
@@ -60,19 +74,41 @@ export default function LeaveRequest() {
   const [formData, setFormData] = useState(initialFormState);
 
   useEffect(() => {
+    const resolveStudentId = async () => {
+      if (user?.role !== "mahasiswa" || !user?.id) return;
+
+      try {
+        const profile = await apiGet<any>(`/profile/${user.id}`);
+        const resolvedId = String(profile?.id || profile?.student_id || "").trim();
+        setStudentId(resolvedId || String(user.id || ""));
+      } catch {
+        setStudentId(String(user?.id || ""));
+      }
+    };
+
+    resolveStudentId();
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
     const load = async () => {
       try {
         const [rows, settings] = await Promise.all([
-          apiGet<Array<any>>(`/leave-requests${user?.id ? `?studentId=${user.id}` : ""}`),
-          apiGet<any>("/health/leave-rules"),
+          apiGet<Array<any>>(`/leave-requests${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
+          apiGet<any>("/system-settings"),
         ]);
 
-        const mapped: LeaveRecord[] = (rows || []).map((item) => ({
+        const mapped: LeaveRecord[] = (rows || [])
+          .filter((item) => {
+            const currentIds = new Set([String(studentId || "").trim(), String(user?.id || "").trim()].filter(Boolean));
+            const itemIds = [String(item?.student_id || "").trim(), String(item?.studentId || "").trim()].filter(Boolean);
+            return itemIds.some((value) => currentIds.has(value));
+          })
+          .map((item) => ({
           id: item.id,
-          jenis: (item.jenis_pengajuan || item.jenis || "cuti") as RequestType,
-          tanggalPengajuan: item.tanggal_pengajuan,
-          periodeMulai: item.periode_start,
-          periodeSelesai: item.periode_end,
+          jenis: parseRequestType(item),
+          tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
+          periodeMulai: formatDateYmd(item.periode_start),
+          periodeSelesai: formatDateYmd(item.periode_end),
           durasi: item.durasi || 1,
           alasan: item.alasan,
           buktiPendukung:
@@ -83,14 +119,14 @@ export default function LeaveRequest() {
             "",
           status: item.status,
           reviewedBy: item.reviewed_by_name,
-          reviewedAt: item.reviewed_at,
+          reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : undefined,
         }));
 
         setLeaveData(mapped);
         setCutiRule({
-          maxSemesterDays: Number(settings?.maxSemesterDays || 0),
-          maxMonthDays: Number(settings?.maxMonthDays || 0),
-          minAttendancePct: Number(settings?.minAttendancePct || 0),
+          maxSemesterDays: Number(settings?.cuti?.maxSemesterDays || 0),
+          maxMonthDays: Number(settings?.cuti?.maxMonthDays || 0),
+          minAttendancePct: Number(settings?.cuti?.minAttendancePct || 0),
         });
       } catch (err: any) {
         setError(err?.message || "Gagal memuat data pengajuan.");
@@ -98,7 +134,7 @@ export default function LeaveRequest() {
     };
 
     load();
-  }, [user?.id]);
+  }, [studentId, user?.id]);
 
   const resetForm = () => {
     setFormData(initialFormState);
@@ -162,23 +198,21 @@ export default function LeaveRequest() {
     try {
       setSubmitting(true);
 
-      const payload = new FormData();
-      payload.append("id", requestId);
-      payload.append("studentId", user?.id || "S001");
-      payload.append("jenis", formData.jenis);
-      payload.append("periodeStart", formData.periodeMulai);
-      payload.append("periodeEnd", formData.periodeSelesai);
-      payload.append("durasi", String(duration));
-      payload.append("alasan", formData.alasan.trim());
-      payload.append("tanggalPengajuan", new Date().toISOString().split("T")[0]);
-      payload.append("buktiPendukung", formData.buktiPendukung);
-
-      await apiPost<{ message: string }>("/leave-requests", payload as any);
+      await apiPost<{ message: string }>("/leave-requests", {
+        id: requestId,
+        studentId: studentId || user?.id || "S001",
+        periodeStart: formData.periodeMulai,
+        periodeEnd: formData.periodeSelesai,
+        durasi: duration,
+        alasan: formData.alasan.trim(),
+        tanggalPengajuan: new Date().toISOString().split("T")[0],
+        catatan: `Jenis pengajuan: ${formData.jenis}. Lampiran frontend: ${formData.buktiPendukung.name}`
+      });
 
       const newLeave: LeaveRecord = {
         id: requestId,
         jenis: formData.jenis,
-        tanggalPengajuan: new Date().toLocaleDateString("id-ID"),
+        tanggalPengajuan: formatDateYmd(new Date().toISOString()),
         periodeMulai: formData.periodeMulai,
         periodeSelesai: formData.periodeSelesai,
         durasi: duration,

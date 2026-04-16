@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import {
@@ -7,14 +7,71 @@ import {
   TrendingDown, UserX, AlertCircle, ArrowRight, Bell,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../lib/api";
+import { formatDateYmd } from "../../lib/date";
 
 type MahasiswaRecord = any;
 type LeaveRequestAll = any;
 type LetterRequestAll = any;
 type AuditLogEntry = any;
 type ResearchFull = any;
+type WarningItem = {
+  id: string;
+  type: "logbook_missing" | "attendance_absent" | "low_hours";
+  studentId: string;
+  recipientUserId: string;
+  studentName: string;
+  studentInitials: string;
+  studentColor: string;
+  nim: string;
+  referenceDate?: string | null;
+  referencePeriod?: string | null;
+  attendanceStatus?: string | null;
+  currentHours?: number | null;
+  targetHours?: number | null;
+};
 
-// ─── Send Warning Helper ──────────────────────────────────────────────────────
+type WarningData = {
+  logbookMissing: WarningItem[];
+  attendanceAbsent: WarningItem[];
+  lowHours: WarningItem[];
+};
+
+type DashboardSummary = {
+  totalMahasiswa: number;
+  totalRisetAktif: number;
+  cutiMenunggu: number;
+  suratMenunggu: number;
+  logbookTerbaru: Array<any>;
+};
+
+type OperatorWarningsResponse = {
+  referenceDate?: string;
+  referencePeriod?: string;
+  warnings?: {
+    logbookMissing?: Array<any>;
+    attendanceAbsent?: Array<any>;
+    lowHours?: Array<any>;
+  };
+};
+
+type WithdrawalRequestRecord = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentNim: string;
+  studentInitials: string;
+  studentColor: string;
+  advisorName: string;
+  reason: string;
+  submittedAt: string;
+  statusOperator: "Menunggu" | "Diteruskan" | "Ditolak";
+  statusDosen: "Menunggu" | "Disetujui" | "Ditolak" | null;
+  finalStatus: "Menunggu" | "Ditolak Operator" | "Menunggu Dosen" | "Ditolak Dosen" | "Disetujui";
+  operatorNote?: string | null;
+  advisorNote?: string | null;
+};
+
+
 function MiniStatCard({ icon, label, value, color, href, urgent }: { icon: React.ReactNode; label: string; value: number | string; color: string; href: string; urgent?: boolean }) {
   return (
     <Link to={href} className="bg-white border border-border rounded-[14px] p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group flex items-center gap-4">
@@ -40,20 +97,61 @@ function WarningSent({ visible }: { visible: boolean }) {
   );
 }
 
+function WarningInfo({ message, tone }: { message: string; tone: "success" | "warning" }) {
+  return (
+    <div className={`fixed top-6 right-6 z-[400] flex items-center gap-3 px-5 py-3.5 rounded-[14px] shadow-xl border text-sm font-bold ${
+      tone === "success"
+        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+        : "bg-amber-50 border-amber-200 text-amber-700"
+    }`}>
+      {tone === "success" ? <Check size={16} strokeWidth={3} /> : <AlertTriangle size={16} strokeWidth={3} />}
+      {message}
+    </div>
+  );
+}
+
+function getJakartaDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Jakarta" }).format(date);
+}
+
 export default function OperatorDashboard() {
   const user = getStoredUser();
+  const attendanceReadStorageKey = `operator-attendance-read:${getJakartaDateKey()}`;
   const [students, setStudents] = useState<MahasiswaRecord[]>([]);
   const [pendingCuti, setPendingCuti] = useState<LeaveRequestAll[]>([]);
   const [pendingSurat, setPendingSurat] = useState<LetterRequestAll[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [researches, setResearches] = useState<ResearchFull[]>([]);
-  const [resignationRequests, setResignationRequests] = useState<any[]>([]);
-  const [notIsiLogbookKemarin, setNotIsiLogbookKemarin] = useState<string[]>([]);
-  const [tidakHadirHariIni, setTidakHadirHariIni] = useState<string[]>([]);
-  const [summary, setSummary] = useState<{ totalMahasiswa: number; totalRisetAktif: number; cutiMenunggu: number; suratMenunggu: number; logbookTerbaru: Array<any> } | null>(null);
+  const [resignationRequests, setResignationRequests] = useState<WithdrawalRequestRecord[]>([]);
+  const [warnings, setWarnings] = useState<WarningData>({
+    logbookMissing: [],
+    attendanceAbsent: [],
+    lowHours: []
+  });
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
+  const [warningInfo, setWarningInfo] = useState<{ message: string; tone: "success" | "warning" } | null>(null);
+  const [readAttendanceItems, setReadAttendanceItems] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(attendanceReadStorageKey);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const todayLabel = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(attendanceReadStorageKey);
+      setReadAttendanceItems(raw ? JSON.parse(raw) : []);
+    } catch {
+      setReadAttendanceItems([]);
+    }
+  }, [attendanceReadStorageKey]);
 
   useEffect(() => {
     const colorByIndex = [
@@ -65,19 +163,134 @@ export default function OperatorDashboard() {
       "bg-blue-500 text-white"
     ];
 
+    const mapWarningItem = (item: any, type: WarningItem["type"], index: number): WarningItem => ({
+      id: String(item?.id || `${type}-${item?.student_id || item?.studentId || index}`),
+      type,
+      studentId: String(item?.student_id || item?.studentId || ""),
+      recipientUserId: String(item?.recipient_user_id || item?.recipientUserId || ""),
+      studentName: item?.student_name || item?.studentName || "Mahasiswa",
+      studentInitials: item?.student_initials || item?.studentInitials || item?.student_name?.slice(0, 2)?.toUpperCase() || "M",
+      studentColor: colorByIndex[index % colorByIndex.length],
+      nim: item?.nim || "-",
+      referenceDate: item?.reference_date || item?.referenceDate || null,
+      referencePeriod: item?.reference_period || item?.referencePeriod || null,
+      attendanceStatus: item?.attendance_status || item?.attendanceStatus || null,
+      currentHours: item?.current_hours ?? item?.currentHours ?? null,
+      targetHours: item?.target_hours ?? item?.targetHours ?? null,
+    });
+
+    const applyWarnings = (warningsRes: OperatorWarningsResponse | null | undefined) => {
+      const derivedWarnings: WarningData = {
+        logbookMissing: (warningsRes?.warnings?.logbookMissing || []).map((item: any, index: number) =>
+          mapWarningItem(item, "logbook_missing", index)
+        ),
+        attendanceAbsent: (warningsRes?.warnings?.attendanceAbsent || []).map((item: any, index: number) =>
+          mapWarningItem(item, "attendance_absent", index)
+        ),
+        lowHours: (warningsRes?.warnings?.lowHours || []).map((item: any, index: number) =>
+          mapWarningItem(item, "low_hours", index)
+        )
+      };
+
+      setWarnings(derivedWarnings);
+    };
+
+    const refreshWarnings = async () => {
+      const warningsRes = await apiGet<OperatorWarningsResponse>("/dashboard/operator-warnings");
+      applyWarnings(warningsRes);
+    };
+
     const loadDashboard = async () => {
       setError("");
       try {
-        const [summaryRes, studentsRes, leaveRes, lettersRes, auditRes, researchRes, logRows, attendanceMonitor] = await Promise.all([
-          apiGet<{ totalMahasiswa: number; totalRisetAktif: number; cutiMenunggu: number; suratMenunggu: number; logbookTerbaru: Array<any> }>("/dashboard/summary"),
-          apiGet<Array<any>>("/students"),
-          apiGet<Array<any>>("/leave-requests?status=Menunggu"),
-          apiGet<Array<any>>("/letter-requests?status=Menunggu"),
-          apiGet<Array<any>>("/audit-logs?limit=5"),
-          apiGet<Array<any>>("/research"),
-          apiGet<Array<any>>("/logbooks"),
-          apiGet<{ absentIds: string[] }>("/attendance/monitor/today")
-        ]);
+        const requests = [
+          {
+            key: "summary",
+            label: "ringkasan dashboard",
+            request: apiGet<DashboardSummary>("/dashboard/summary"),
+          },
+          {
+            key: "students",
+            label: "data mahasiswa",
+            request: apiGet<Array<any>>("/students"),
+          },
+          {
+            key: "leave",
+            label: "pengajuan cuti",
+            request: apiGet<Array<any>>("/leave-requests?status=Menunggu"),
+          },
+          {
+            key: "letters",
+            label: "pengajuan surat",
+            request: apiGet<Array<any>>("/letter-requests?status=Menunggu"),
+          },
+          {
+            key: "audit",
+            label: "audit log",
+            request: apiGet<Array<any>>("/audit-logs?limit=5"),
+          },
+          {
+            key: "research",
+            label: "data riset",
+            request: apiGet<Array<any>>("/research"),
+          },
+          {
+            key: "warnings",
+            label: "warning operator",
+            request: apiGet<OperatorWarningsResponse>("/dashboard/operator-warnings"),
+          },
+          {
+            key: "withdrawals",
+            label: "pengunduran diri",
+            request: apiGet<Array<any>>("/withdrawal-requests"),
+          },
+        ] as const;
+
+        const settled = await Promise.allSettled(requests.map((item) => item.request));
+        const failures = settled.flatMap((result, index) =>
+          result.status === "rejected"
+            ? `${requests[index].label}: ${result.reason?.message || "gagal dimuat"}`
+            : []
+        );
+
+        const summaryRes =
+          settled[0].status === "fulfilled"
+            ? settled[0].value
+            : null;
+        const studentsRes =
+          settled[1].status === "fulfilled"
+            ? settled[1].value
+            : [];
+        const leaveRes =
+          settled[2].status === "fulfilled"
+            ? settled[2].value
+            : [];
+        const lettersRes =
+          settled[3].status === "fulfilled"
+            ? settled[3].value
+            : [];
+        const auditRes =
+          settled[4].status === "fulfilled"
+            ? settled[4].value
+            : [];
+        const researchRes =
+          settled[5].status === "fulfilled"
+            ? settled[5].value
+            : [];
+        const warningsRes =
+          settled[6].status === "fulfilled"
+            ? settled[6].value
+            : [];
+        const withdrawalRes =
+          settled[7].status === "fulfilled"
+            ? settled[7].value
+            : [];
+
+        if (failures.length === requests.length) {
+          setError("Semua data dashboard gagal dimuat. Periksa koneksi API atau endpoint backend.");
+        } else if (failures.length > 0) {
+          setError(`Sebagian data dashboard belum tersedia: ${failures.join(" | ")}`);
+        }
 
         const mappedStudents: MahasiswaRecord[] = studentsRes.map((item: any, index: number) => ({
           id: item.id,
@@ -109,12 +322,12 @@ export default function OperatorDashboard() {
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
           riset: item.project_name || "-",
-          periodeStart: item.periode_start,
-          periodeEnd: item.periode_end,
+          periodeStart: formatDateYmd(item.periode_start),
+          periodeEnd: formatDateYmd(item.periode_end),
           durasi: item.durasi,
           alasan: item.alasan,
           catatan: item.catatan || "",
-          tanggalPengajuan: item.tanggal_pengajuan,
+          tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
           status: item.status
         }));
 
@@ -126,11 +339,28 @@ export default function OperatorDashboard() {
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
           jenis: item.jenis,
-          tanggal: item.tanggal,
+          tanggal: formatDateYmd(item.tanggal),
           tujuan: item.tujuan,
           status: item.status,
-          estimasi: item.estimasi || undefined,
+          estimasi: item.estimasi ? formatDateYmd(item.estimasi) : undefined,
           nomorSurat: item.nomor_surat || undefined
+        }));
+
+        const mappedWithdrawals: WithdrawalRequestRecord[] = (withdrawalRes || []).map((item: any) => ({
+          id: item.id,
+          studentId: String(item.student_id || ""),
+          studentName: item.student_name || "Mahasiswa",
+          studentNim: item.student_nim || "-",
+          studentInitials: String(item.student_name || "M").split(" ").map((chunk: string) => chunk[0] || "").join("").slice(0, 2).toUpperCase() || "M",
+          studentColor: "bg-amber-500 text-white",
+          advisorName: item.advisor_name || "-",
+          reason: item.reason || "-",
+          submittedAt: formatDateYmd(item.submitted_at),
+          statusOperator: item.status_operator || "Menunggu",
+          statusDosen: item.status_dosen ?? null,
+          finalStatus: item.final_status || "Menunggu",
+          operatorNote: item.operator_note || null,
+          advisorNote: item.advisor_note || null
         }));
 
         const mappedAudit: AuditLogEntry[] = auditRes.map((item: any) => ({
@@ -170,24 +400,8 @@ export default function OperatorDashboard() {
         setPendingSurat(mappedLetters.slice(0, 2));
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
-
-        const yesterdayDate = new Date();
-        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-        const yesterdayKey = yesterdayDate.toISOString().slice(0, 10);
-        const loggedYesterdaySet = new Set(
-          (logRows || [])
-            .filter((row: any) => String(row.date || "").slice(0, 10) === yesterdayKey)
-            .map((row: any) => row.student_id)
-        );
-
-        const missingLogbookIds = mappedStudents
-          .filter((student) => student.status === "Aktif")
-          .map((student) => student.id)
-          .filter((studentId) => !loggedYesterdaySet.has(studentId));
-
-        setNotIsiLogbookKemarin(missingLogbookIds);
-        setTidakHadirHariIni(attendanceMonitor?.absentIds || []);
-        setResignationRequests([]);
+        applyWarnings(warningsRes);
+        setResignationRequests(mappedWithdrawals);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat dashboard operator.");
       }
@@ -201,38 +415,110 @@ export default function OperatorDashboard() {
     setTimeout(() => setWarningSent(false), 3000);
   };
 
-  const handleSendWarning = async (mahasiswaId: string, name: string, type: "logbook" | "absensi" | "jam") => {
+  const showWarningInfo = (message: string, tone: "success" | "warning") => {
+    setWarningInfo({ message, tone });
+    window.setTimeout(() => setWarningInfo(null), 3000);
+  };
+
+  const handleSendWarning = async (warning: WarningItem) => {
     const messages = {
-      logbook:  { title: `Peringatan: Logbook Belum Diisi`, body: `${name}, Anda belum mengisi logbook untuk kemarin. Segera isi sebelum deadline hari ini.` },
-      absensi:  { title: `Peringatan: Ketidakhadiran`, body: `${name}, Anda tercatat tidak hadir hari ini. Hubungi operator jika ada keperluan.` },
-      jam:      { title: `Peringatan: Jam Kehadiran Kurang`, body: `${name}, jam kehadiran Anda minggu ini belum memenuhi target yang ditetapkan. Segera penuhi jam minimal.` },
+      logbook_missing: {
+        title: "Peringatan: Logbook Belum Diisi",
+        body: `${warning.studentName}, Anda belum mengisi logbook untuk tanggal ${warning.referenceDate || "acuan sebelumnya"}. Segera isi sebelum deadline hari ini.`
+      },
+      attendance_absent: {
+        title: "Peringatan: Ketidakhadiran",
+        body: `${warning.studentName}, Anda tercatat ${warning.attendanceStatus === "Belum Absen" ? "belum absen" : "tidak hadir"} pada ${warning.referenceDate || "hari ini"}. Hubungi operator jika ada keperluan.`
+      },
+      low_hours: {
+        title: "Peringatan: Jam Kehadiran Kurang",
+        body: `${warning.studentName}, jam kehadiran Anda minggu ini belum memenuhi target (${warning.currentHours || 0}j/${warning.targetHours || 0}j). Segera penuhi jam minimal.`
+      },
     };
-    const msg = messages[type];
+    const msg = messages[warning.type];
     try {
-      await apiPost<{ message: string; id: string }>("/notifications", {
-        recipientUserId: mahasiswaId,
-        senderUserId: user?.id || null,
+      const response = await apiPost<{ message?: string; id?: string; duplicate?: boolean; skipped?: boolean; reason?: string; eventId?: string }>("/notifications", {
+        recipientUserId: warning.recipientUserId || warning.studentId,
         type: "pengumuman",
+        reminderType: warning.type,
+        studentId: warning.studentId,
+        referenceDate: warning.referenceDate || undefined,
+        referencePeriod: warning.referencePeriod || undefined,
         title: msg.title,
         body: msg.body
       });
-      showWarningSent();
+
+      if (response?.skipped) {
+        showWarningInfo("Notifikasi dilewati karena event sedang nonaktif.", "warning");
+      } else if (response?.duplicate) {
+        showWarningInfo("Reminder untuk periode ini sudah pernah dikirim.", "warning");
+      } else {
+        showWarningSent();
+      }
+
+      try {
+        const latestWarnings = await apiGet<OperatorWarningsResponse>("/dashboard/operator-warnings");
+        const colorByIndex = [
+          "bg-[#8B6FFF] text-white",
+          "bg-emerald-500 text-white",
+          "bg-pink-500 text-white",
+          "bg-teal-500 text-white",
+          "bg-violet-500 text-white",
+          "bg-blue-500 text-white"
+        ];
+        const mapWarningItem = (item: any, type: WarningItem["type"], index: number): WarningItem => ({
+          id: String(item?.id || `${type}-${item?.student_id || item?.studentId || index}`),
+          type,
+          studentId: String(item?.student_id || item?.studentId || ""),
+          recipientUserId: String(item?.recipient_user_id || item?.recipientUserId || ""),
+          studentName: item?.student_name || item?.studentName || "Mahasiswa",
+          studentInitials: item?.student_initials || item?.studentInitials || item?.student_name?.slice(0, 2)?.toUpperCase() || "M",
+          studentColor: colorByIndex[index % colorByIndex.length],
+          nim: item?.nim || "-",
+          referenceDate: item?.reference_date || item?.referenceDate || null,
+          referencePeriod: item?.reference_period || item?.referencePeriod || null,
+          attendanceStatus: item?.attendance_status || item?.attendanceStatus || null,
+          currentHours: item?.current_hours ?? item?.currentHours ?? null,
+          targetHours: item?.target_hours ?? item?.targetHours ?? null,
+        });
+        setWarnings({
+          logbookMissing: (latestWarnings?.warnings?.logbookMissing || []).map((item: any, index: number) => mapWarningItem(item, "logbook_missing", index)),
+          attendanceAbsent: (latestWarnings?.warnings?.attendanceAbsent || []).map((item: any, index: number) => mapWarningItem(item, "attendance_absent", index)),
+          lowHours: (latestWarnings?.warnings?.lowHours || []).map((item: any, index: number) => mapWarningItem(item, "low_hours", index))
+        });
+      } catch {
+        // Keep current list if refetch fails.
+      }
     } catch (err: any) {
       setError(err?.message || "Gagal mengirim peringatan ke mahasiswa.");
     }
   };
 
-  const aktifCount     = summary?.totalMahasiswa ?? students.filter(m => m.status === "Aktif").length;
-  const risetAktif     = summary?.totalRisetAktif ?? researches.filter(r => r.status === "Aktif").length;
-  const cutiMenunggu   = pendingCuti.length;
-  const suratMenunggu  = summary?.suratMenunggu ?? pendingSurat.length;
+  const aktifCount = summary?.totalMahasiswa ?? students.filter(m => m.status === "Aktif").length;
+  const risetAktif = summary?.totalRisetAktif ?? researches.filter(r => r.status === "Aktif").length;
+  const cutiMenunggu = pendingCuti.length;
+  const suratMenunggu = summary?.suratMenunggu ?? pendingSurat.length;
   const logbookHariIni = summary?.logbookTerbaru?.length ?? 0;
-  const resignCount    = resignationRequests.filter(r => r.statusOperator !== "Ditolak" && r.statusDosen !== "Dikonfirmasi").length;
+  const resignCount = resignationRequests.filter(r => ["Menunggu", "Menunggu Dosen"].includes(r.finalStatus)).length;
+  const currentHour = new Date().getHours();
+  const hasPassedAttendanceCutoff = currentHour >= 10;
+  const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
-  const notLogbookMhs  = students.filter(m => notIsiLogbookKemarin.includes(m.id));
-  const tidakHadirMhs  = students.filter(m => tidakHadirHariIni.includes(m.id));
-  const risetLowHours  = students.filter(m => m.tipe === "Riset" && m.status === "Aktif" && (m.jamMingguIni || 0) < (m.jamMingguTarget || 6));
-  const magangLowHours = students.filter(m => m.tipe === "Magang" && m.status === "Aktif" && (m.jamMingguIni || 0) < (m.jamMingguTarget || 45));
+  const notLogbookMhs = warnings.logbookMissing;
+  const tidakHadirMhs = hasPassedAttendanceCutoff
+    ? warnings.attendanceAbsent.filter((item) =>
+        item.attendanceStatus !== "Cuti" && !readAttendanceItems.includes(getAttendanceReadId(item))
+      )
+    : [];
+  const lowHoursMhs = warnings.lowHours;
+  const risetLowHours = lowHoursMhs.filter(m => {
+    const student = students.find((item) => item.id === m.studentId);
+    return student?.tipe === "Riset";
+  });
+  const magangLowHours = lowHoursMhs.filter(m => {
+    const student = students.find((item) => item.id === m.studentId);
+    return student?.tipe === "Magang";
+  });
 
   const handleLeave = async (id: string, status: "Disetujui" | "Ditolak") => {
     try {
@@ -243,9 +529,41 @@ export default function OperatorDashboard() {
     }
   };
 
+  const handleWithdrawalReview = async (id: string, status: "Diteruskan" | "Ditolak") => {
+    try {
+      const note = status === "Diteruskan"
+        ? "Data lengkap, diteruskan ke dosen pembimbing."
+        : "Pengajuan ditolak oleh operator.";
+
+      await apiPatch<{ message: string }>(`/withdrawal-requests/${id}/operator-review`, {
+        status,
+        reviewedById: user?.id,
+        note
+      });
+
+      setResignationRequests((prev) => prev.map((item) => item.id === id ? {
+        ...item,
+        statusOperator: status,
+        finalStatus: status === "Diteruskan" ? "Menunggu Dosen" : "Ditolak Operator",
+        operatorNote: note
+      } : item));
+    } catch (err: any) {
+      setError(err?.message || "Gagal memproses pengunduran diri.");
+    }
+  };
+
+  const markAttendanceAsRead = (warning: WarningItem) => {
+    const next = Array.from(new Set([...readAttendanceItems, getAttendanceReadId(warning)]));
+    setReadAttendanceItems(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(attendanceReadStorageKey, JSON.stringify(next));
+    }
+  };
+
   return (
     <OperatorLayout title="Dashboard Operator">
       <WarningSent visible={warningSent} />
+      {warningInfo && <WarningInfo message={warningInfo.message} tone={warningInfo.tone} />}
       <div className="flex flex-col gap-6 pb-4">
         {error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
@@ -256,10 +574,10 @@ export default function OperatorDashboard() {
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-black text-foreground">Selamat datang, {user?.name || "Operator"}! 👋</h1>
-            <p className="text-sm font-medium text-muted-foreground mt-1">{todayLabel} ·
+            <h1 className="text-2xl font-black text-foreground">Selamat datang, {user?.name || "Operator"}!</h1>
+            <p className="text-sm font-medium text-muted-foreground mt-1">{todayLabel}
               {cutiMenunggu > 0 && <span className="text-amber-600 font-black ml-1">{cutiMenunggu} cuti menunggu</span>}
-              {resignCount > 0 && <span className="text-red-500 font-black ml-1">· {resignCount} pengunduran diri aktif</span>}
+              {resignCount > 0 && <span className="text-red-500 font-black ml-1">{resignCount} pengunduran diri aktif</span>}
             </p>
           </div>
         </div>
@@ -267,11 +585,11 @@ export default function OperatorDashboard() {
         {/* Stat Cards */}
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           <MiniStatCard icon={<Users size={22} className="text-blue-600" />} label="Mahasiswa Aktif" value={aktifCount} color="bg-blue-100" href="/operator/mahasiswa" />
-          <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset-dosen" />
+          <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset" />
           <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
           <MiniStatCard icon={<FileText size={22} className="text-blue-500" />} label="Surat Menunggu" value={suratMenunggu} color="bg-blue-100" href="/operator/surat" urgent />
           <MiniStatCard icon={<BookOpen size={22} className="text-emerald-600" />} label="Logbook Hari Ini" value={logbookHariIni} color="bg-emerald-100" href="/operator/logbook" />
-          <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/progress-board" />
+          <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/riset" />
         </div>
 
         {/* Alert Sections */}
@@ -284,9 +602,9 @@ export default function OperatorDashboard() {
             </div>
             {notLogbookMhs.map(m => (
               <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
-                <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.name}</p><p className="text-[10px] text-muted-foreground">{m.nim}</p></div>
-                <button onClick={() => handleSendWarning(m.id, m.name, "logbook")} className="flex items-center gap-1 h-6 px-2 bg-amber-100 hover:bg-amber-500 text-amber-700 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.studentName}</p><p className="text-[10px] text-muted-foreground">{m.nim}</p></div>
+                <button onClick={() => handleSendWarning(m)} className="flex items-center gap-1 h-6 px-2 bg-amber-100 hover:bg-amber-500 text-amber-700 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>
               </div>
             ))}
           </div>
@@ -296,13 +614,36 @@ export default function OperatorDashboard() {
             <div className="px-4 py-3 border-b border-red-100 bg-red-50/50 flex items-center justify-between">
               <h3 className="text-xs font-black text-foreground flex items-center gap-2"><UserX size={13} className="text-red-500" /> Tidak Hadir Hari Ini<span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{tidakHadirMhs.length}</span></h3>
             </div>
-            {tidakHadirMhs.map(m => (
-              <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
-                <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.name}</p><p className="text-[10px] text-muted-foreground">{m.status === "Cuti" ? "Sedang Cuti" : "Tidak Hadir"}</p></div>
-                {m.status !== "Cuti" && <button onClick={() => handleSendWarning(m.id, m.name, "absensi")} className="flex items-center gap-1 h-6 px-2 bg-red-100 hover:bg-red-500 text-red-600 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>}
+            {!hasPassedAttendanceCutoff ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Daftar belum ditampilkan</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Mahasiswa akan masuk ke section ini jika sampai lewat pukul 10.00 WIB belum melakukan presensi.</p>
               </div>
-            ))}
+            ) : tidakHadirMhs.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Tidak ada mahasiswa yang melewati batas presensi</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Semua mahasiswa sudah hadir atau memiliki status kehadiran yang valid hari ini.</p>
+              </div>
+            ) : (
+              tidakHadirMhs.map(m => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-foreground">{m.studentName}</p>
+                    <p className="text-[10px] text-muted-foreground">Lewat batas presensi 10.00 WIB</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600">
+                    Belum Hadir
+                  </span>
+                  <button
+                    onClick={() => markAttendanceAsRead(m)}
+                    className="shrink-0 rounded-[6px] border border-slate-200 px-2 py-1 text-[9px] font-black text-slate-600 transition-colors hover:bg-slate-100"
+                  >
+                    Mark as Read
+                  </button>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Jam Kurang */}
@@ -312,10 +653,10 @@ export default function OperatorDashboard() {
             </div>
             {[...risetLowHours.slice(0, 2), ...magangLowHours.slice(0, 1)].map(m => (
               <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
-                <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.name}</p><p className="text-[10px] text-muted-foreground">{m.tipe}</p></div>
-                <div className="text-right shrink-0"><p className="text-xs font-black text-orange-600">{m.jamMingguIni}j/{m.jamMingguTarget}j</p></div>
-                <button onClick={() => handleSendWarning(m.id, m.name, "jam")} className="flex items-center gap-1 h-6 px-2 bg-orange-100 hover:bg-orange-500 text-orange-600 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.studentName}</p><p className="text-[10px] text-muted-foreground">{students.find((item) => item.id === m.studentId)?.tipe || "Mahasiswa"}</p></div>
+                <div className="text-right shrink-0"><p className="text-xs font-black text-orange-600">{m.currentHours || 0}j/{m.targetHours || 0}j</p></div>
+                <button onClick={() => handleSendWarning(m)} className="flex items-center gap-1 h-6 px-2 bg-orange-100 hover:bg-orange-500 text-orange-600 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>
               </div>
             ))}
           </div>
@@ -331,26 +672,44 @@ export default function OperatorDashboard() {
                 <div className="px-5 py-4 border-b border-red-100 bg-red-50/30 flex items-center justify-between">
                   <h2 className="text-sm font-black text-foreground flex items-center gap-2">
                     <AlertCircle size={15} className="text-red-500" /> Pengunduran Diri
-                    <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{resignationRequests.length}</span>
+                    <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{resignCount}</span>
                   </h2>
                 </div>
                 {resignationRequests.map(r => (
-                  <div key={r.id} className="px-5 py-4 flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${r.mahasiswaColor}`}>{r.mahasiswaInitials}</div>
+                  <div key={r.id} className="px-5 py-4 flex items-center gap-4 border-b border-border/40 last:border-b-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${r.studentColor}`}>{r.studentInitials}</div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-black text-foreground text-sm">{r.mahasiswaNama} <span className="text-xs font-medium text-muted-foreground">({r.nim})</span></p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{r.alasan}</p>
+                      <p className="font-black text-foreground text-sm">{r.studentName} <span className="text-xs font-medium text-muted-foreground">({r.studentNim})</span></p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{r.reason}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Dosen pembimbing: {r.advisorName}</p>
                     </div>
-                    {/* 3-step flow */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {[{ label: "Pengajuan", done: true }, { label: "Operator", done: r.statusOperator === "Diteruskan" }, { label: "Dosen Ketua", done: r.statusDosen === "Dikonfirmasi" }].map((step, i, arr) => (
-                        <div key={i} className="flex items-center gap-1">
-                          <div className={`flex items-center gap-1 px-2 py-1 rounded-[6px] text-[9px] font-black ${step.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                            {step.done ? <Check size={8} strokeWidth={3} /> : <Clock size={8} />} {step.label}
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <div className="flex items-center gap-1.5">
+                        {[{ label: "Pengajuan", done: true }, { label: "Operator", done: r.statusOperator === "Diteruskan" }, { label: "Dosen Pembimbing", done: r.statusDosen === "Disetujui" }].map((step, i, arr) => (
+                          <div key={i} className="flex items-center gap-1">
+                            <div className={`flex items-center gap-1 px-2 py-1 rounded-[6px] text-[9px] font-black ${step.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                              {step.done ? <Check size={8} strokeWidth={3} /> : <Clock size={8} />} {step.label}
+                            </div>
+                            {i < arr.length - 1 && <ArrowRight size={10} className="text-muted-foreground" />}
                           </div>
-                          {i < arr.length - 1 && <ArrowRight size={10} className="text-muted-foreground" />}
+                        ))}
+                      </div>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${r.finalStatus === "Disetujui"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : r.finalStatus.includes("Ditolak")
+                          ? "bg-red-100 text-red-600"
+                          : r.finalStatus === "Menunggu Dosen"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}>
+                        {r.finalStatus}
+                      </span>
+                      {r.statusOperator === "Menunggu" && (
+                        <div className="flex gap-2">
+                          <button onClick={() => handleWithdrawalReview(r.id, "Diteruskan")} className="flex items-center gap-1 h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black rounded-[8px] transition-colors"><Check size={12} strokeWidth={3} /> Teruskan</button>
+                          <button onClick={() => handleWithdrawalReview(r.id, "Ditolak")} className="flex items-center gap-1 h-8 px-3 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-black rounded-[8px] border border-red-200 transition-colors"><X size={12} strokeWidth={3} /> Tolak</button>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 ))}
@@ -392,14 +751,14 @@ export default function OperatorDashboard() {
             <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                 <h2 className="text-sm font-black text-foreground flex items-center gap-2"><FlaskConical size={15} className="text-[#0AB600]" /> Ringkasan Riset</h2>
-                <Link to="/operator/riset-dosen" className="text-xs font-bold text-[#0AB600] flex items-center gap-0.5 hover:gap-1 transition-all">Semua <ChevronRight size={12} strokeWidth={3} /></Link>
+                <Link to="/operator/riset" className="text-xs font-bold text-[#0AB600] flex items-center gap-0.5 hover:gap-1 transition-all">Semua <ChevronRight size={12} strokeWidth={3} /></Link>
               </div>
               <div className="divide-y divide-border">
                 {researches.map(r => (
                   <div key={r.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-black text-foreground line-clamp-1">{r.title}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{r.supervisor} · {r.mahasiswaCount + r.dosenCount} anggota</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{r.supervisor} Â· {r.mahasiswaCount + r.dosenCount} anggota</p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="w-24 h-1.5 bg-slate-100 rounded-full"><div className="bg-[#0AB600] h-1.5 rounded-full" style={{ width: `${r.progress}%` }} /></div>
@@ -428,7 +787,7 @@ export default function OperatorDashboard() {
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${l.mahasiswaColor}`}>{l.mahasiswaInitials}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground">{l.mahasiswaNama}</p>
-                        <p className="text-[10px] text-muted-foreground">{l.periodeStart} · {l.durasi}h</p>
+                        <p className="text-[10px] text-muted-foreground">{l.periodeStart} Â· {l.durasi}h</p>
                         <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Cuti</span>
                       </div>
                     </div>
@@ -453,8 +812,8 @@ export default function OperatorDashboard() {
                 ))}
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-slate-50/50 grid grid-cols-2 gap-2">
-                <Link to="/operator/cuti" className="text-center text-[10px] font-bold text-amber-600 hover:underline">Semua Cuti →</Link>
-                <Link to="/operator/surat" className="text-center text-[10px] font-bold text-blue-600 hover:underline">Semua Surat →</Link>
+                <Link to="/operator/cuti" className="text-center text-[10px] font-bold text-amber-600 hover:underline">Semua Cuti</Link>
+                <Link to="/operator/surat" className="text-center text-[10px] font-bold text-blue-600 hover:underline">Semua Surat</Link>
               </div>
             </div>
           </div>

@@ -7,25 +7,13 @@ import {
   FileCheck, Megaphone, AlertTriangle, ChevronRight, LogOut, Menu,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { AppNotification, NotificationType, useNotifications } from "../hooks/useNotifications";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATION DATA & TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
-type NotifType = "logbook" | "riset" | "komentar" | "cuti" | "deadline" | "pengumuman" | "dokumen";
-
-interface Notif {
-  id: string;
-  type: NotifType;
-  title: string;
-  body: string;
-  time: string;           // display string
-  timeMs: number;         // for sorting
-  read: boolean;
-  link?: string;
-}
-
-const INITIAL_NOTIFS: Notif[] = [
+const INITIAL_NOTIFS: AppNotification[] = [
   {
     id: "n1",
     type: "deadline",
@@ -102,8 +90,8 @@ const INITIAL_NOTIFS: Notif[] = [
 // NOTIFICATION ICON helper
 // ─────────────────────────────────────────────────────────────────────────────
 
-function NotifIcon({ type }: { type: NotifType }) {
-  const map: Record<NotifType, { icon: React.ReactNode; bg: string; text: string }> = {
+function NotifIcon({ type }: { type: NotificationType }) {
+  const map: Record<NotificationType, { icon: React.ReactNode; bg: string; text: string }> = {
     logbook:     { icon: <BookMarked size={15} />,    bg: "bg-green-100",  text: "text-green-700" },
     riset:       { icon: <FlaskConical size={15} />,  bg: "bg-green-100",  text: "text-green-700" },
     komentar:    { icon: <MessageSquare size={15} />, bg: "bg-blue-100",    text: "text-blue-600"   },
@@ -131,7 +119,7 @@ function NotificationPanel({
   onDismiss,
   onClose,
 }: {
-  notifs: Notif[];
+  notifs: AppNotification[];
   onRead: (id: string) => void;
   onReadAll: () => void;
   onDismiss: (id: string) => void;
@@ -283,9 +271,8 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [notifs, setNotifs] = useState<Notif[]>(() => {
-    // Merge operator warnings from localStorage
-    const base = [...INITIAL_NOTIFS];
+  const fallbackNotifs = React.useMemo<AppNotification[]>(() => {
+    const base: AppNotification[] = [];
     try {
       const warnings = JSON.parse(localStorage.getItem("stas_operator_warnings") || "[]");
       warnings.forEach((w: any) => {
@@ -293,6 +280,10 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
       });
     } catch {}
     return base;
+  }, []);
+  const { notifs, unreadCount, markRead, markAllRead, dismiss } = useNotifications({
+    role: user?.role,
+    fallback: fallbackNotifs,
   });
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [warningPopup, setWarningPopup] = useState<{ title: string; body: string } | null>(() => {
@@ -303,8 +294,6 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     return null;
   });
   const bellRef = useRef<HTMLDivElement>(null);
-
-  const unreadCount = notifs.filter((n) => !n.read).length;
 
   // Close panel on outside click
   useEffect(() => {
@@ -322,15 +311,6 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     setIsPanelOpen(false); 
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
-
-  const markRead = (id: string) =>
-    setNotifs((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
-
-  const markAllRead = () =>
-    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
-
-  const dismiss = (id: string) =>
-    setNotifs((prev) => prev.filter((n) => n.id !== id));
 
   const navItems = [
     { name: "Dashboard",           path: "/dashboard",  icon: LayoutDashboard },

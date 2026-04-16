@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { DosenLayout } from "../../components/DosenLayout";
-import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
-import { Eye, CheckCircle2, Clock, XCircle, Search, X } from "lucide-react";
+import { apiGet, apiPatch, getStoredUser, resolveApiAssetUrl } from "../../lib/api";
+import { Eye, CheckCircle2, Clock, XCircle, Search, X, Download, Link as LinkIcon } from "lucide-react";
 
 type DraftStatus = "Menunggu Review" | "Dalam Review" | "Disetujui";
 
@@ -15,6 +15,11 @@ interface DraftItem {
   status: DraftStatus;
   comment?: string;
   riset: string;
+  version?: string;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileSize?: string | null;
+  format?: string | null;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -45,7 +50,12 @@ export default function ReviewDraft() {
               rows.map((row) => ({
                 ...row,
                 studentId: row.studentId || student.id,
-                studentName: row.studentName || student.name
+                studentName: row.studentName || student.name,
+                fileUrl: resolveApiAssetUrl(row.file_url || null),
+                fileName: row.file_name || null,
+                fileSize: row.fileSize || null,
+                format: row.format || null,
+                version: row.version || "v1.0"
               }))
             )
           )
@@ -159,15 +169,27 @@ export default function ReviewDraft() {
                     <td className="px-5 py-3.5 text-xs font-black text-foreground">{item.studentName}</td>
                     <td className="px-5 py-3.5">
                       <p className="font-black text-foreground text-sm line-clamp-1">{item.title}</p>
-                      <p className="text-[10px] text-muted-foreground">Upload: {item.uploadDate}</p>
+                      <p className="text-[10px] text-muted-foreground">Upload: {item.uploadDate} • {item.version || "v1.0"}</p>
+                      {item.fileName && (
+                        <p className="text-[10px] text-indigo-600 font-bold inline-flex items-center gap-1 mt-1">
+                          <LinkIcon size={10} /> {item.fileName}
+                        </p>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-xs font-bold text-muted-foreground">{item.type}</td>
                     <td className="px-5 py-3.5 text-xs font-bold text-muted-foreground">{item.riset}</td>
                     <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_STYLE[item.status]}`}>{item.status}</span></td>
                     <td className="px-5 py-3.5">
-                      <button onClick={() => { setSelected(item); setReviewNote(item.comment || ""); }} className="h-7 px-3 bg-green-50 hover:bg-green-100 text-green-700 text-[10px] font-black rounded-[8px] border border-green-200 flex items-center gap-1">
-                        <Eye size={11} /> Review
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => { setSelected(item); setReviewNote(item.comment || ""); }} className="h-7 px-3 bg-green-50 hover:bg-green-100 text-green-700 text-[10px] font-black rounded-[8px] border border-green-200 flex items-center gap-1">
+                          <Eye size={11} /> Review
+                        </button>
+                        {item.fileUrl && (
+                          <a href={item.fileUrl} target="_blank" rel="noreferrer" className="h-7 px-3 bg-slate-900 hover:bg-slate-700 text-white text-[10px] font-black rounded-[8px] flex items-center gap-1">
+                            <Download size={11} /> File
+                          </a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -187,7 +209,18 @@ export default function ReviewDraft() {
             <div className="p-6 flex flex-col gap-4">
               <div className="p-4 bg-slate-50 border border-border rounded-[12px] text-xs">
                 <p className="font-black text-foreground">{selected.title}</p>
-                <p className="text-muted-foreground mt-1">{selected.studentName} Â· {selected.type} Â· {selected.riset}</p>
+                <p className="text-muted-foreground mt-1">{selected.studentName} • {selected.type} • {selected.riset}</p>
+                {(selected.fileName || selected.fileUrl) && (
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    {selected.fileName && <span className="font-bold text-indigo-600 inline-flex items-center gap-1"><LinkIcon size={11} /> {selected.fileName}</span>}
+                    {(selected.fileSize || selected.format) && <span className="text-muted-foreground">{selected.fileSize || "-"} {selected.format ? `• ${selected.format}` : ""}</span>}
+                    {selected.fileUrl && (
+                      <a href={selected.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-bold">
+                        <Download size={11} /> Buka lampiran
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">Catatan Review</label>

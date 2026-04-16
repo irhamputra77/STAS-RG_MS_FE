@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Layout } from "../components/Layout";
 import { apiGet, apiPost, getStoredUser, resolveApiAssetUrl } from "../lib/api";
+import { formatDateYmd } from "../lib/date";
 import {
   Plus,
   X,
@@ -77,6 +78,7 @@ const suratJenisOptions = [
 
 export default function Documents() {
   const user = getStoredUser();
+  const [studentRecordId, setStudentRecordId] = useState("");
   const [activeTab, setActiveTab] = useState<"surat" | "sertifikat">("surat");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedJenis, setSelectedJenis] = useState("");
@@ -91,36 +93,54 @@ export default function Documents() {
   const [certProjectId, setCertProjectId] = useState("");
   const [certRequestNote, setCertRequestNote] = useState("");
   const [certFinishDate, setCertFinishDate] = useState("");
+  const effectiveStudentId = String(studentRecordId || user?.id || "").trim();
+
+  useEffect(() => {
+    const resolveStudentId = async () => {
+      if (!user?.id) return;
+
+      try {
+        const profile = await apiGet<any>(`/profile/${user.id}`);
+        const resolvedId = String(profile?.id || profile?.student_id || "").trim();
+        if (resolvedId) {
+          setStudentRecordId(resolvedId);
+        }
+      } catch {
+        // Fallback to user.id if profile lookup fails.
+        setStudentRecordId(String(user.id || ""));
+      }
+    };
+
+    resolveStudentId();
+  }, [user?.id]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const studentId = user?.id;
+        const studentId = effectiveStudentId;
         const [rows, certRows, projectRows] = await Promise.all([
-          apiGet<Array<any>>(`/letter-requests${studentId ? `?studentId=${studentId}` : ""}`),
-          apiGet<Array<any>>(`/certificates${studentId ? `?studentId=${studentId}` : ""}`),
-          studentId ? apiGet<Array<any>>(`/research/assigned?userId=${encodeURIComponent(studentId)}`) : Promise.resolve([])
+          apiGet<Array<any>>(`/letter-requests${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
+          apiGet<Array<any>>(`/certificates${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
+          user?.id ? apiGet<Array<any>>(`/research/assigned?userId=${encodeURIComponent(user.id)}`) : Promise.resolve([])
         ]);
         const mapped: SuratRecord[] = rows
-          .filter((item) => !studentId || item.student_id === studentId)
           .map((item) => ({
             id: item.id,
             jenis: item.jenis,
-            tanggal: item.tanggal,
+            tanggal: formatDateYmd(item.tanggal),
             tujuan: item.tujuan,
             status: item.status,
-            estimasi: item.estimasi || undefined,
+            estimasi: item.estimasi ? formatDateYmd(item.estimasi) : undefined,
             fileUrl: item.file_url || null
           }));
 
         const mappedCerts: CertificateRecord[] = certRows
-          .filter((item) => !studentId || item.student_id === studentId)
           .map((item) => ({
             id: item.id,
             projectId: item.project_id,
             projectName: item.project_name || "Riset",
             status: item.status,
-            issueDate: item.issue_date || null,
+            issueDate: item.issue_date ? formatDateYmd(item.issue_date) : null,
             certificateNumber: item.certificate_number || null,
             fileUrl: item.file_url || null
           }));
@@ -143,11 +163,13 @@ export default function Documents() {
       }
     };
 
-    loadData();
-  }, [user?.id]);
+    if (effectiveStudentId) {
+      loadData();
+    }
+  }, [effectiveStudentId, studentRecordId, user?.id]);
 
   const submitLetterRequest = async () => {
-    if (!user?.id) {
+    if (!studentRecordId) {
       setError("User tidak ditemukan. Silakan login ulang.");
       return;
     }
@@ -165,10 +187,11 @@ export default function Documents() {
 
       await apiPost<{ message: string }>("/letter-requests", {
         id,
-        studentId: user.id,
+        studentId: studentRecordId,
         jenis: selectedJenis,
         tanggal,
-        tujuan: tujuanPenggunaan
+        tujuan: tujuanPenggunaan,
+        projectId: selectedProjectId || null
       });
 
       setSuratData((prev) => [
@@ -186,7 +209,7 @@ export default function Documents() {
   };
 
   const submitCertificateRequest = async () => {
-    if (!user?.id) {
+    if (!studentRecordId || !user?.id) {
       setError("User tidak ditemukan. Silakan login ulang.");
       return;
     }
@@ -206,7 +229,7 @@ export default function Documents() {
       const requestId = `CR${Date.now()}`;
       await apiPost<{ message: string }>("/certificates", {
         id: requestId,
-        studentId: user.id,
+        studentId: studentRecordId,
         projectId: certProjectId,
         requestedBy: user.id,
         kontribusiSelesaiDate: certFinishDate || null,

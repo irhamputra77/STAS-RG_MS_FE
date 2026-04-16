@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { OperatorLayout } from "../../components/OperatorLayout";
-import { Search, Plus, Download, X, Pencil, ChevronRight, BookOpen, UserCheck, FlaskConical } from "lucide-react";
-import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2 } from "lucide-react";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
 
 type MahasiswaRecord = any;
 
@@ -35,18 +35,32 @@ function toInitials(name: string) {
   return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
 }
 
+function formatDateOnly(dateStr: string | null | undefined): string {
+  if (!dateStr || dateStr === "-") return "-";
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "-";
+    return date.toISOString().split("T")[0]; // Returns YYYY-MM-DD
+  } catch {
+    return "-";
+  }
+}
+
 export default function DatabaseMahasiswa() {
   const [mahasiswaList, setMahasiswaList] = useState<MahasiswaRecord[]>([]);
   const [logEntries, setLogEntries] = useState<any[]>([]);
+  const [risetOptions, setRisetOptions] = useState<Array<{ short: string; full: string }>>([]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterRiset, setFilterRiset] = useState("Semua");
   const [filterAngkatan, setFilterAngkatan] = useState("Semua");
   const [selected, setSelected] = useState<MahasiswaRecord | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<MahasiswaRecord | null>(null);
   const [modal, setModal] = useState<ModalMode>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     id: "",
     nim: "",
@@ -59,9 +73,7 @@ export default function DatabaseMahasiswa() {
     pembimbing: "",
     status: "Aktif" as MahasiswaRecord["status"],
     tipe: "Riset" as MahasiswaRecord["tipe"],
-    risetA: false,
-    risetB: false,
-    risetC: false
+    riset: [] as string[]
   });
   const PER_PAGE = 6;
 
@@ -77,6 +89,19 @@ export default function DatabaseMahasiswa() {
       
       const rows = await apiGet<Array<any>>("/students");
       const logRows = await apiGet<Array<any>>("/logbooks");
+      const researches = await apiGet<Array<any>>("/research");
+      
+      // Extract nama riset dengan short title
+      const risetNames = researches
+        .map((r: any) => {
+          const shortName = r.short_title || r.title || "Riset";
+          const fullName = r.title || r.short_title || "Riset";
+          return { short: shortName, full: fullName };
+        })
+        .filter((r) => r.short && r.full);
+      
+      setRisetOptions(risetNames);
+      
       const mapped: MahasiswaRecord[] = rows.map((item, index) => ({
         id: item.id,
         nim: item.nim,
@@ -89,8 +114,8 @@ export default function DatabaseMahasiswa() {
         phone: item.phone || "-",
         status: item.status,
         tipe: item.tipe,
-        riset: [],
-        bergabung: item.bergabung || "-",
+        riset: Array.isArray(item.research_projects) ? item.research_projects : [],
+        bergabung: formatDateOnly(item.bergabung),
         pembimbing: item.pembimbing || "-",
         kehadiran: Number(item.kehadiran) || 0,
         totalHari: Number(item.total_hari) || 0,
@@ -110,18 +135,62 @@ export default function DatabaseMahasiswa() {
     loadStudents();
   }, []);
 
+  useEffect(() => {
+    const loadStudentDetail = async () => {
+      if (!selected?.id) {
+        setSelectedDetail(null);
+        return;
+      }
+
+      try {
+        const detail = await apiGet<any>(`/students/${selected.id}`);
+        setSelectedDetail({
+          ...selected,
+          nim: detail?.nim || selected.nim,
+          name: detail?.name || selected.name,
+          initials: detail?.initials || selected.initials,
+          prodi: detail?.prodi || selected.prodi,
+          angkatan: String(detail?.angkatan || selected.angkatan || "-"),
+          email: detail?.email || selected.email,
+          phone: detail?.phone || selected.phone,
+          status: detail?.status || selected.status,
+          tipe: detail?.tipe || selected.tipe,
+          riset: Array.isArray(detail?.research_projects) ? detail.research_projects : selected.riset,
+          bergabung: formatDateOnly(detail?.bergabung || selected.bergabung),
+          pembimbing: detail?.pembimbing || selected.pembimbing,
+          kehadiran: Number(detail?.kehadiran) || selected.kehadiran || 0,
+          totalHari: Number(detail?.total_hari) || selected.totalHari || 0,
+          logbookCount: Number(detail?.logbook_count) || selected.logbookCount || 0,
+          jamMingguIni: Number(detail?.jam_minggu_ini) || selected.jamMingguIni || 0,
+          jamMingguTarget: Number(detail?.jam_minggu_target) || selected.jamMingguTarget || 0,
+        });
+      } catch (err: any) {
+        setSelectedDetail(selected);
+        setError(err?.message || "Gagal memuat detail mahasiswa.");
+      }
+    };
+
+    loadStudentDetail();
+  }, [selected?.id]);
+
   const filtered = useMemo(() => mahasiswaList.filter(m => {
     const q = search.toLowerCase();
     const matchQ = !q || m.name.toLowerCase().includes(q) || m.nim.includes(q) || m.email.toLowerCase().includes(q);
     const matchS = filterStatus === "Semua" || m.status === filterStatus;
-    const matchR = filterRiset === "Semua" || m.riset.includes(filterRiset);
+    const matchR = filterRiset === "Semua" || m.riset.some(r => {
+      // Match dengan short name atau full name
+      const matchedRiset = risetOptions.find(opt => opt.short === filterRiset || opt.full === filterRiset);
+      if (!matchedRiset) return false;
+      return r === matchedRiset.full || r === matchedRiset.short;
+    });
     const matchA = filterAngkatan === "Semua" || m.angkatan === filterAngkatan;
     return matchQ && matchS && matchR && matchA;
-  }), [mahasiswaList, search, filterStatus, filterRiset, filterAngkatan]);
+  }), [mahasiswaList, search, filterStatus, filterRiset, filterAngkatan, risetOptions]);
 
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
-  const studentLogs = selected ? logEntries.filter((l: any) => l.student_id === selected.id).slice(0, 3).map((l: any) => ({
+  const activeStudent = selectedDetail || selected;
+  const studentLogs = activeStudent ? logEntries.filter((l: any) => l.student_id === activeStudent.id).slice(0, 3).map((l: any) => ({
     title: l.title,
     date: l.date,
     riset: l.project_name || "Riset",
@@ -142,9 +211,7 @@ export default function DatabaseMahasiswa() {
       pembimbing: m.pembimbing,
       status: m.status,
       tipe: m.tipe,
-      risetA: m.riset.includes("Riset A"),
-      risetB: m.riset.includes("Riset B"),
-      risetC: m.riset.includes("Riset C")
+      riset: m.riset || []
     });
     setModal("edit");
   };
@@ -174,7 +241,8 @@ export default function DatabaseMahasiswa() {
         phone: form.phone.trim(),
         status: form.status,
         tipe: form.tipe,
-        pembimbing: form.pembimbing.trim()
+        pembimbing: form.pembimbing.trim(),
+        riset: form.riset
       };
 
       console.log("[DEBUG] Sending payload:", payload);
@@ -203,6 +271,25 @@ export default function DatabaseMahasiswa() {
     }
   };
 
+  const handleDelete = async (student: MahasiswaRecord, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const confirmed = window.confirm(`Hapus data mahasiswa "${student.name}"?`);
+    if (!confirmed) return;
+
+    setDeletingId(student.id);
+    setError("");
+    try {
+      await apiDelete(`/students/${student.id}`);
+      await loadStudents();
+      if (selected?.id === student.id) setSelected(null);
+      if (modal === "edit" && form.id === student.id) setModal(null);
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus data mahasiswa.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <OperatorLayout title="Database Mahasiswa">
       <div className="flex flex-col gap-5 pb-4">
@@ -222,7 +309,7 @@ export default function DatabaseMahasiswa() {
             </div>
             {[
               { label: "Status", value: filterStatus, setter: setFilterStatus, options: ["Semua", "Aktif", "Cuti", "Alumni", "Mengundurkan Diri"] },
-              { label: "Riset", value: filterRiset, setter: setFilterRiset, options: ["Semua", "Riset A", "Riset B", "Riset C"] },
+              { label: "Riset", value: filterRiset, setter: setFilterRiset, options: ["Semua", ...risetOptions.map(r => r.short)] },
               { label: "Angkatan", value: filterAngkatan, setter: setFilterAngkatan, options: ["Semua", "2019", "2020", "2021", "2022"] },
             ].map(f => (
               <select key={f.label} value={f.value} onChange={e => { f.setter(e.target.value); setPage(1); }}
@@ -248,9 +335,7 @@ export default function DatabaseMahasiswa() {
                 pembimbing: "",
                 status: "Aktif",
                 tipe: "Riset",
-                risetA: false,
-                risetB: false,
-                risetC: false
+                riset: []
               });
               setModal("add");
             }} className="flex items-center gap-2 h-9 px-4 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors shadow-sm shadow-amber-200">
@@ -301,6 +386,14 @@ export default function DatabaseMahasiswa() {
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={e => openEdit(m, e)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-amber-50 hover:text-amber-600 transition-colors" title="Edit"><Pencil size={14} /></button>
+                          <button
+                            onClick={e => handleDelete(m, e)}
+                            disabled={deletingId === m.id}
+                            className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                            title="Hapus"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -320,7 +413,7 @@ export default function DatabaseMahasiswa() {
           </div>
 
           {/* Side Detail Panel */}
-          {selected && (
+          {activeStudent && (
             <div className="w-[300px] shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-gradient-to-r from-amber-50 to-white">
                 <h3 className="text-sm font-black text-foreground">Profil Mahasiswa</h3>
@@ -328,21 +421,21 @@ export default function DatabaseMahasiswa() {
               </div>
               <div className="p-5">
                 <div className="flex flex-col items-center gap-3 mb-5 pb-5 border-b border-border">
-                  <Avatar initials={selected.initials} color={selected.color} size="lg" />
+                  <Avatar initials={activeStudent.initials} color={activeStudent.color} size="lg" />
                   <div className="text-center">
-                    <p className="font-black text-foreground">{selected.name}</p>
-                    <p className="text-xs font-mono text-muted-foreground">{selected.nim}</p>
-                    <span className={`inline-block mt-1.5 text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_STYLE[selected.status]}`}>{selected.status}</span>
+                    <p className="font-black text-foreground">{activeStudent.name}</p>
+                    <p className="text-xs font-mono text-muted-foreground">{activeStudent.nim}</p>
+                    <span className={`inline-block mt-1.5 text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_STYLE[activeStudent.status]}`}>{activeStudent.status}</span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2.5 text-xs mb-5 pb-5 border-b border-border">
                   {[
-                    { label: "Program Studi", value: selected.prodi },
-                    { label: "Angkatan", value: selected.angkatan },
-                    { label: "Email", value: selected.email },
-                    { label: "Telepon", value: selected.phone },
-                    { label: "Pembimbing", value: selected.pembimbing },
-                    { label: "Bergabung", value: selected.bergabung },
+                    { label: "Program Studi", value: activeStudent.prodi },
+                    { label: "Angkatan", value: activeStudent.angkatan },
+                    { label: "Email", value: activeStudent.email },
+                    { label: "Telepon", value: activeStudent.phone },
+                    { label: "Pembimbing", value: activeStudent.pembimbing },
+                    { label: "Bergabung", value: activeStudent.bergabung },
                   ].map(f => (
                     <div key={f.label} className="flex justify-between gap-2">
                       <span className="font-black text-muted-foreground">{f.label}</span>
@@ -354,15 +447,15 @@ export default function DatabaseMahasiswa() {
                 <div className="mb-5 pb-5 border-b border-border">
                   <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1"><UserCheck size={11} /> Kehadiran Bulan Ini</p>
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="flex-1 h-2 bg-slate-100 rounded-full"><div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${Math.round(selected.kehadiran / selected.totalHari * 100)}%` }} /></div>
-                    <span className="text-xs font-black text-emerald-600">{selected.kehadiran}/{selected.totalHari}</span>
+                    <div className="flex-1 h-2 bg-slate-100 rounded-full"><div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${activeStudent.totalHari ? Math.round((activeStudent.kehadiran / activeStudent.totalHari) * 100) : 0}%` }} /></div>
+                    <span className="text-xs font-black text-emerald-600">{activeStudent.kehadiran}/{activeStudent.totalHari}</span>
                   </div>
                 </div>
                 {/* Riset */}
                 <div className="mb-5 pb-5 border-b border-border">
                   <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1"><FlaskConical size={11} /> Keanggotaan Riset</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {selected.riset.length > 0 ? selected.riset.map(r => (
+                    {activeStudent.riset.length > 0 ? activeStudent.riset.map(r => (
                       <span key={r} className={`text-[10px] font-black px-2 py-0.5 rounded-md ${r === "Riset A" ? "bg-[#F8F5FF] text-[#6C47FF]" : r === "Riset B" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>{r}</span>
                     )) : <span className="text-xs text-muted-foreground">Belum bergabung riset</span>}
                   </div>
@@ -376,11 +469,20 @@ export default function DatabaseMahasiswa() {
                       <p className="text-[11px] font-bold text-foreground line-clamp-2">{l.title}</p>
                     </div>
                   )) : <p className="text-xs text-muted-foreground">Belum ada entri logbook.</p>}
-                  <p className="text-[10px] font-black text-amber-600 mt-1">Total: {selected.logbookCount} entri</p>
+                  <p className="text-[10px] font-black text-amber-600 mt-1">Total: {activeStudent.logbookCount} entri</p>
                 </div>
               </div>
               <div className="px-5 pb-4">
-                <button onClick={e => openEdit(selected, e)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Mahasiswa</button>
+                <div className="flex gap-2">
+                  <button onClick={e => openEdit(activeStudent, e)} className="flex-1 h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Mahasiswa</button>
+                  <button
+                    onClick={() => handleDelete(activeStudent)}
+                    disabled={deletingId === activeStudent.id}
+                    className="flex-1 h-9 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white text-xs font-black rounded-[10px] transition-colors"
+                  >
+                    {deletingId === activeStudent.id ? "Menghapus..." : "Hapus Data"}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -442,19 +544,29 @@ export default function DatabaseMahasiswa() {
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-black text-foreground block mb-1.5">Keanggotaan Riset</label>
-                <div className="flex gap-2">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={form.risetA} onChange={(e) => setForm((prev) => ({ ...prev, risetA: e.target.checked }))} className="accent-amber-500" />
-                    <span className="text-xs font-bold text-foreground">Riset A</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={form.risetB} onChange={(e) => setForm((prev) => ({ ...prev, risetB: e.target.checked }))} className="accent-amber-500" />
-                    <span className="text-xs font-bold text-foreground">Riset B</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={form.risetC} onChange={(e) => setForm((prev) => ({ ...prev, risetC: e.target.checked }))} className="accent-amber-500" />
-                    <span className="text-xs font-bold text-foreground">Riset C</span>
-                  </label>
+                <div className="flex flex-wrap gap-2">
+                  {risetOptions.length > 0 ? (
+                    risetOptions.map((r) => (
+                      <label key={r.full} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.riset.includes(r.full)}
+                          onChange={(e) => {
+                            setForm((prev) => ({
+                              ...prev,
+                              riset: e.target.checked
+                                ? [...prev.riset, r.full]
+                                : prev.riset.filter((x) => x !== r.full)
+                            }));
+                          }}
+                          className="accent-amber-500"
+                        />
+                        <span className="text-xs font-bold text-foreground" title={r.full}>{r.short}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Belum ada data riset</p>
+                  )}
                 </div>
               </div>
             </div>
