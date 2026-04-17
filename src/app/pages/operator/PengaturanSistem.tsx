@@ -57,11 +57,7 @@ function SaveRow({ onSave }: { onSave: () => Promise<void> }) {
 
 export default function PengaturanSistem() {
   const [tab, setTab] = useState("umum");
-  const [health, setHealth] = useState<{
-    ok: boolean;
-    service: string;
-    time: string;
-  } | null>(null);
+
   const [umum, setUmum] = useState({
     appName: "STAS-RG MS",
     universityName: "Telkom University",
@@ -105,10 +101,7 @@ export default function PengaturanSistem() {
   React.useEffect(() => {
     const loadSettings = async () => {
       try {
-        const [data, healthData] = await Promise.all([
-          apiGet<any>("/system-settings"),
-          apiGet<any>("/health").catch(() => null),
-        ]);
+        const data = await apiGet<any>("/system-settings");
         setUmum({
           appName: data?.umum?.appName || "STAS-RG MS",
           universityName: data?.umum?.universityName || "Telkom University",
@@ -143,13 +136,7 @@ export default function PengaturanSistem() {
           magangWorkDays: String(data?.attendanceRules?.magangWorkDays || "5"),
           earlyCheckoutWarning: Boolean(data?.attendanceRules?.earlyCheckoutWarning ?? true)
         });
-        if (healthData?.ok) {
-          setHealth({
-            ok: true,
-            service: healthData.service || "backend",
-            time: healthData.time || "",
-          });
-        }
+
       } catch (err: any) {
         setError(err?.message || "Gagal memuat pengaturan sistem");
       }
