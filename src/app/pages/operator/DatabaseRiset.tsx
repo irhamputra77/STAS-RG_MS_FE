@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
+import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../lib/api";
 import { Search, Plus, X, Target, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ChevronRight } from "lucide-react";
@@ -41,6 +42,7 @@ function statusColor(s: string) {
 }
 
 export default function DatabaseRiset() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
@@ -213,7 +215,14 @@ export default function DatabaseRiset() {
   };
 
   const handleDeleteResearch = async (risetId: string, risetTitle: string) => {
-    if (!confirm(`Hapus riset "${risetTitle}"?\n\nSemua data terkait (anggota, milestone, logbook) akan ikut terhapus.`)) return;
+    const confirmed = await confirm({
+      title: "Hapus riset?",
+      description: `Riset "${risetTitle}" akan dihapus bersama data terkait seperti anggota, milestone, dan logbook.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
+    if (!confirmed) return;
 
     try {
       await apiDelete(`/research/${risetId}`);
@@ -782,6 +791,7 @@ export default function DatabaseRiset() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </OperatorLayout>
   );
 }

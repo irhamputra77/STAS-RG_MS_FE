@@ -1,4 +1,4 @@
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://ms-api.stas-rg.com/api/v1";
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
 const API_ORIGIN = API_BASE_URL.replace(/\/api(?:\/v\d+)?\/?$/, "");
 
 export type BlobResponse = {

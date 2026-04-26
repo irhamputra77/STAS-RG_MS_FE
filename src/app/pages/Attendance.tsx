@@ -27,6 +27,27 @@ type GpsResult = {
   allowedRadiusMeters?: number | null;
 };
 
+type AttendanceHistoryItem = {
+  date: string;
+  in: string;
+  out: string;
+  duration: string;
+  status: string;
+  statusColor: string;
+  autoCheckout?: boolean;
+  checkoutSource?: string | null;
+  autoCheckoutReason?: string | null;
+};
+
+type AttendanceToday = {
+  checkIn: string;
+  checkOut: string;
+  status: string;
+  autoCheckout?: boolean;
+  checkoutSource?: string | null;
+  autoCheckoutReason?: string | null;
+};
+
 const DEFAULT_GPS_POLICY: GpsPolicy = {
   targetLatitude: 0,
   targetLongitude: 0,
@@ -61,13 +82,15 @@ export default function Attendance() {
   const [activeFilter, setActiveFilter] = useState("Semua");
   const [monthLabel, setMonthLabel] = useState("");
   const [chartData, setChartData] = useState<Array<{ name: string; value: number; color: string }>>([]);
-  const [historyData, setHistoryData] = useState<Array<{ date: string; in: string; out: string; duration: string; status: string; statusColor: string }>>([]);
-  const [todayData, setTodayData] = useState({ checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in" });
+  const [historyData, setHistoryData] = useState<AttendanceHistoryItem[]>([]);
+  const [todayData, setTodayData] = useState<AttendanceToday>({ checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in" });
   const [gpsInfo, setGpsInfo] = useState<GpsInfo | null>(null);
   const [gpsPolicy, setGpsPolicy] = useState<GpsPolicy | null>(null);
   const [attendanceRules, setAttendanceRules] = useState({
     magangMinCheckoutHours: 8,
-    earlyCheckoutWarning: true
+    earlyCheckoutWarning: true,
+    autoCheckoutEnabled: true,
+    autoCheckoutTime: "22:00"
   });
   const [studentType, setStudentType] = useState<string>(String(user?.tipe || ""));
   const [lastGpsAccuracy, setLastGpsAccuracy] = useState<number | null>(null);
@@ -94,7 +117,7 @@ export default function Attendance() {
       );
       setChartData(data.chartData || []);
       setHistoryData(data.history || []);
-      setTodayData(data.today || { checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in" });
+      setTodayData(data.today || { checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in", autoCheckout: false, checkoutSource: null, autoCheckoutReason: null });
       setGpsInfo(nextGpsInfo);
       setGpsPolicy(nextGpsPolicy);
       if (data?.student?.tipe || data?.studentType) {
@@ -103,7 +126,9 @@ export default function Attendance() {
       if (data?.attendanceRules) {
         setAttendanceRules({
           magangMinCheckoutHours: Number(data.attendanceRules.magangMinCheckoutHours) || 8,
-          earlyCheckoutWarning: Boolean(data.attendanceRules.earlyCheckoutWarning ?? true)
+          earlyCheckoutWarning: Boolean(data.attendanceRules.earlyCheckoutWarning ?? true),
+          autoCheckoutEnabled: Boolean(data.attendanceRules.autoCheckoutEnabled ?? true),
+          autoCheckoutTime: String(data.attendanceRules.autoCheckoutTime || "22:00")
         });
       }
       setError("");
@@ -171,7 +196,9 @@ export default function Attendance() {
         if (!active) return;
         setAttendanceRules({
           magangMinCheckoutHours: Number(settings?.attendanceRules?.magangMinCheckoutHours) || 8,
-          earlyCheckoutWarning: Boolean(settings?.attendanceRules?.earlyCheckoutWarning ?? true)
+          earlyCheckoutWarning: Boolean(settings?.attendanceRules?.earlyCheckoutWarning ?? true),
+          autoCheckoutEnabled: Boolean(settings?.attendanceRules?.autoCheckoutEnabled ?? true),
+          autoCheckoutTime: String(settings?.attendanceRules?.autoCheckoutTime || "22:00")
         });
         if (profile?.tipe) {
           setStudentType(String(profile.tipe));
@@ -477,6 +504,9 @@ export default function Attendance() {
     }
   };
 
+  const isSystemAutoCheckout = (item?: { autoCheckout?: boolean; checkoutSource?: string | null }) =>
+    Boolean(item?.autoCheckout || item?.checkoutSource === "SYSTEM_AUTO");
+
   const openGpsCoordinates = () => {
     const latitude = gpsPolicy?.targetLatitude ?? gpsInfo?.latitude;
     const longitude = gpsPolicy?.targetLongitude ?? gpsInfo?.longitude;
@@ -579,6 +609,19 @@ export default function Attendance() {
                     <span>Status: {todayData.status}</span>
                     {targetGps && <span>Radius: {targetGps.radius} m</span>}
                   </div>
+                  {attendanceRules.autoCheckoutEnabled && (
+                    <p className="text-[11px] text-white/60 mb-2">
+                      Sistem akan otomatis checkout mahasiswa yang masih aktif pada pukul {attendanceRules.autoCheckoutTime} WIB.
+                    </p>
+                  )}
+                  {isSystemAutoCheckout(todayData) && todayData.status === "Selesai" && (
+                    <div
+                      title="Checkout dilakukan otomatis oleh sistem karena belum checkout manual sampai batas waktu."
+                      className="mb-2 inline-flex rounded-full border border-sky-300/30 bg-sky-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-200"
+                    >
+                      Auto checkout sistem
+                    </div>
+                  )}
                   {targetGps && (
                     <button
                       onClick={openGpsCoordinates}
@@ -734,13 +777,35 @@ export default function Attendance() {
                       {row.in === "-" ? "-" : <span className="font-mono text-sm bg-background border border-border px-2 py-1 rounded-md">{row.in}</span>}
                     </td>
                     <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
-                      {row.out === "-" ? "-" : <span className="font-mono text-sm bg-background border border-border px-2 py-1 rounded-md">{row.out}</span>}
+                      {row.out === "-" ? "-" : (
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="font-mono text-sm bg-background border border-border px-2 py-1 rounded-md">{row.out}</span>
+                          {isSystemAutoCheckout(row) && (
+                            <span
+                              title="Checkout dilakukan otomatis oleh sistem karena belum checkout manual sampai batas waktu."
+                              className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700"
+                            >
+                              Auto checkout sistem
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{row.duration}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <span className={`px-3 py-1 text-xs font-bold rounded-full border ${getBadgeStyle(row.statusColor)}`}>
-                        {row.status}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`px-3 py-1 text-xs font-bold rounded-full border ${getBadgeStyle(row.statusColor)}`}>
+                          {row.status}
+                        </span>
+                        {isSystemAutoCheckout(row) && (
+                          <span
+                            title="Checkout dilakukan otomatis oleh sistem karena belum checkout manual sampai batas waktu."
+                            className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700"
+                          >
+                            Checkout otomatis {attendanceRules.autoCheckoutTime}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

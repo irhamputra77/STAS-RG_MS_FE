@@ -10,6 +10,7 @@ import {
   Image as ImageIcon, Folder, Plus, Trash2, MessageSquare,
   Paperclip, GitBranch, ExternalLink,
 } from "lucide-react";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
 
 type Milestone = {
@@ -346,6 +347,7 @@ export function SharedBoardView({
   accentText = "text-[#0AB600]",
   accentHover = "hover:text-[#0AB600]",
 }: SharedBoardViewProps) {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const currentUser = getStoredUser();
 
   const [availableProjects, setAvailableProjects] = useState<ProjectView[]>([]);
@@ -873,11 +875,23 @@ export function SharedBoardView({
     // Validate Ketua role
     if (newMemberPeran === "Ketua") {
       if (hasKetua) {
-        alert("Sudah ada Ketua di riset ini. Hanya boleh ada 1 Ketua.");
+        await confirm({
+          title: "Ketua sudah ada",
+          description: "Sudah ada Ketua di riset ini. Hanya boleh ada 1 Ketua.",
+          confirmLabel: "Mengerti",
+          variant: "warning",
+          hideCancel: true
+        });
         return;
       }
       if (candidate?.member_type !== "Dosen") {
-        alert("Ketua tim wajib Dosen. Mahasiswa tidak bisa menjadi Ketua.");
+        await confirm({
+          title: "Ketua harus dosen",
+          description: "Ketua tim wajib Dosen. Mahasiswa tidak bisa menjadi Ketua.",
+          confirmLabel: "Mengerti",
+          variant: "warning",
+          hideCancel: true
+        });
         return;
       }
     }
@@ -924,7 +938,13 @@ export function SharedBoardView({
       setNewMemberPeran("Anggota");
     } catch (err: any) {
       console.error("[Add Member] Error:", err);
-      alert(err?.message || "Gagal menambah anggota");
+      await confirm({
+        title: "Gagal menambah anggota",
+        description: err?.message || "Gagal menambah anggota.",
+        confirmLabel: "Mengerti",
+        variant: "danger",
+        hideCancel: true
+      });
     }
   };
 
@@ -932,7 +952,14 @@ export function SharedBoardView({
     const member = teamMembers.find(m => m.id === userId);
     if (!member) return;
 
-    if (!confirm(`Hapus ${member.name} dari tim riset?`)) return;
+    const confirmed = await confirm({
+      title: "Hapus anggota tim?",
+      description: `${member.name} akan dihapus dari tim riset ini.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
+    if (!confirmed) return;
 
     try {
       await apiDelete(`/research/${activeId}/members/${userId}`);
@@ -961,7 +988,13 @@ export function SharedBoardView({
       setTeamMembersMap(prev => ({ ...prev, [activeId]: updatedTeamMembers }));
     } catch (err: any) {
       console.error("Failed to remove member:", err);
-      alert(err?.message || "Gagal menghapus anggota");
+      await confirm({
+        title: "Gagal menghapus anggota",
+        description: err?.message || "Gagal menghapus anggota.",
+        confirmLabel: "Mengerti",
+        variant: "danger",
+        hideCancel: true
+      });
     }
   };
 
@@ -1151,7 +1184,13 @@ export function SharedBoardView({
       );
     } catch (err: any) {
       console.error("Failed to save attachment link:", err);
-      alert(err?.message || "Gagal menyimpan link lampiran");
+      await confirm({
+        title: "Gagal menyimpan link",
+        description: err?.message || "Gagal menyimpan link lampiran.",
+        confirmLabel: "Mengerti",
+        variant: "danger",
+        hideCancel: true
+      });
     } finally {
       setSavingAttachment(false);
     }
@@ -2412,6 +2451,7 @@ export function SharedBoardView({
           </div>
         </div>
       )}
+      {confirmDialog}
     </>
   );
 }

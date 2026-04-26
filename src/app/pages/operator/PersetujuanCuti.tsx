@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { Check, X, Eye, CalendarCheck, AlertTriangle, Download, Clock } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, getStoredUser } from "../../lib/api";
@@ -33,6 +34,7 @@ function TypeBadge({ jenis }: { jenis: RequestType }) {
 }
 
 export default function PersetujuanCuti() {
+  const { confirm: askConfirm, confirmDialog } = useConfirmDialog();
   const user = getStoredUser();
   const [leaves, setLeaves] = useState<LeaveRequestAll[]>([]);
   const [detail, setDetail] = useState<LeaveRequestAll | null>(null);
@@ -110,7 +112,13 @@ export default function PersetujuanCuti() {
   };
 
   const handleDelete = async (item: LeaveRequestAll) => {
-    const confirmed = window.confirm(`Hapus pengajuan ${item.jenis} milik ${item.mahasiswaNama}?`);
+    const confirmed = await askConfirm({
+      title: "Hapus pengajuan cuti?",
+      description: `Pengajuan ${REQUEST_TYPE_LABEL[item.jenis as RequestType] || item.jenis} milik ${item.mahasiswaNama} akan dihapus.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
     if (!confirmed) return;
 
     setDeletingId(item.id);
@@ -299,6 +307,7 @@ export default function PersetujuanCuti() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </OperatorLayout>
   );
 }

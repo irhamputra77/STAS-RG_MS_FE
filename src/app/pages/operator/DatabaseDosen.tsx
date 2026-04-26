@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
 import { Search, Plus, X, Eye, Pencil, FlaskConical, Trash2 } from "lucide-react";
@@ -12,6 +13,7 @@ const AVATAR_COLORS = ["bg-[#E74C3C] text-white", "bg-[#3498DB] text-white", "bg
 function toInitials(name: string) { return name?.split(" ")?.map(n => n[0])?.join("")?.toUpperCase()?.slice(0, 2) || "XX"; }
 
 export default function DatabaseDosen() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("Semua");
   const [filterStatus, setFilterStatus] = useState("Semua");
@@ -103,7 +105,13 @@ export default function DatabaseDosen() {
 
   const handleDeleteDosen = async (dosen: DosenRecord, event?: React.MouseEvent) => {
     event?.stopPropagation();
-    const confirmed = window.confirm(`Hapus data dosen "${dosen.name}"?`);
+    const confirmed = await confirm({
+      title: "Hapus data dosen?",
+      description: `Data dosen "${dosen.name}" akan dihapus dari database.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
     if (!confirmed) return;
 
     try {
@@ -324,6 +332,7 @@ export default function DatabaseDosen() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </OperatorLayout>
   );
 }

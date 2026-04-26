@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router";
+import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { FileText, Clock, CheckCircle2, Hourglass, Eye, Upload, X, Download, Check, Trash2, Plus, Search, Filter } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost, resolveApiAssetUrl } from "../../lib/api";
@@ -39,6 +40,7 @@ const emptyArchiveForm = {
 };
 
 export default function LayananSurat() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [letters, setLetters] = useState<LetterRequestAll[]>([]);
   const [detail, setDetail] = useState<LetterRequestAll | null>(null);
   const [uploadModal, setUploadModal] = useState<LetterRequestAll | null>(null);
@@ -166,7 +168,13 @@ export default function LayananSurat() {
   };
 
   const handleDelete = async (item: LetterRequestAll) => {
-    const confirmed = window.confirm(`Hapus pengajuan surat ${item.jenis} milik ${item.mahasiswaNama}?`);
+    const confirmed = await confirm({
+      title: "Hapus pengajuan surat?",
+      description: `Pengajuan surat ${item.jenis} milik ${item.mahasiswaNama} akan dihapus.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
     if (!confirmed) return;
 
     setDeletingId(item.id);
@@ -324,7 +332,13 @@ export default function LayananSurat() {
   };
 
   const handleDeleteArchiveLetter = async (item: LetterArchiveItem) => {
-    const confirmed = window.confirm(`Hapus data surat ${item.title}?`);
+    const confirmed = await confirm({
+      title: "Hapus data surat?",
+      description: `Data surat "${item.title}" akan dihapus dari database surat.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
     if (!confirmed) return;
 
     setDeletingArchiveId(item.id);
@@ -656,6 +670,7 @@ export default function LayananSurat() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </OperatorLayout>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2 } from "lucide-react";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
@@ -47,6 +48,7 @@ function formatDateOnly(dateStr: string | null | undefined): string {
 }
 
 export default function DatabaseMahasiswa() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [mahasiswaList, setMahasiswaList] = useState<MahasiswaRecord[]>([]);
   const [logEntries, setLogEntries] = useState<any[]>([]);
   const [risetOptions, setRisetOptions] = useState<Array<{ short: string; full: string }>>([]);
@@ -258,7 +260,13 @@ export default function DatabaseMahasiswa() {
       }
 
       console.log("[DEBUG] API response:", result);
-      alert(`Berhasil! ${result?.message || "Data tersimpan"}`);
+      await confirm({
+        title: "Data berhasil disimpan",
+        description: result?.message || "Data tersimpan.",
+        confirmLabel: "Mengerti",
+        variant: "primary",
+        hideCancel: true
+      });
 
       await loadStudents();
       setModal(null);
@@ -273,7 +281,13 @@ export default function DatabaseMahasiswa() {
 
   const handleDelete = async (student: MahasiswaRecord, event?: React.MouseEvent) => {
     event?.stopPropagation();
-    const confirmed = window.confirm(`Hapus data mahasiswa "${student.name}"?`);
+    const confirmed = await confirm({
+      title: "Hapus data mahasiswa?",
+      description: `Data mahasiswa "${student.name}" akan dihapus dari database.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
     if (!confirmed) return;
 
     setDeletingId(student.id);
@@ -577,6 +591,7 @@ export default function DatabaseMahasiswa() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </OperatorLayout>
   );
 }

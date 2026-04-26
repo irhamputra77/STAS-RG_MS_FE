@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { Globe, MapPin, CalendarOff, Bell, Save, Check, AlertTriangle, Crosshair } from "lucide-react";
 import { apiGet, apiPatch } from "../../lib/api";
@@ -86,6 +87,7 @@ function SaveRow({ onSave }: { onSave: () => Promise<void> }) {
 }
 
 export default function PengaturanSistem() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [tab, setTab] = useState("umum");
 
   const [umum, setUmum] = useState({
@@ -119,7 +121,9 @@ export default function PengaturanSistem() {
     magangDailyHours: 9,
     magangMinCheckoutHours: 8,
     magangWorkDays: "5",
-    earlyCheckoutWarning: true
+    earlyCheckoutWarning: true,
+    autoCheckoutEnabled: true,
+    autoCheckoutTime: "22:00"
   });
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
@@ -179,7 +183,9 @@ export default function PengaturanSistem() {
           magangDailyHours: Number(data?.attendanceRules?.magangDailyHours) || 9,
           magangMinCheckoutHours: Number(data?.attendanceRules?.magangMinCheckoutHours) || 8,
           magangWorkDays: String(data?.attendanceRules?.magangWorkDays || "5"),
-          earlyCheckoutWarning: Boolean(data?.attendanceRules?.earlyCheckoutWarning ?? true)
+          earlyCheckoutWarning: Boolean(data?.attendanceRules?.earlyCheckoutWarning ?? true),
+          autoCheckoutEnabled: Boolean(data?.attendanceRules?.autoCheckoutEnabled ?? true),
+          autoCheckoutTime: String(data?.attendanceRules?.autoCheckoutTime || "22:00")
         });
 
       } catch (err: any) {
@@ -453,6 +459,16 @@ export default function PengaturanSistem() {
         if (Array.isArray(latest?.notif?.events)) {
           setEvents(latest.notif.events);
         }
+        setAttendanceRules({
+          risetMinWeeklyHours: Number(latest?.attendanceRules?.risetMinWeeklyHours) || attendanceRules.risetMinWeeklyHours,
+          risetTargetWeeklyHours: Number(latest?.attendanceRules?.risetTargetWeeklyHours) || attendanceRules.risetTargetWeeklyHours,
+          magangDailyHours: Number(latest?.attendanceRules?.magangDailyHours) || attendanceRules.magangDailyHours,
+          magangMinCheckoutHours: Number(latest?.attendanceRules?.magangMinCheckoutHours) || attendanceRules.magangMinCheckoutHours,
+          magangWorkDays: String(latest?.attendanceRules?.magangWorkDays || attendanceRules.magangWorkDays),
+          earlyCheckoutWarning: Boolean(latest?.attendanceRules?.earlyCheckoutWarning ?? attendanceRules.earlyCheckoutWarning),
+          autoCheckoutEnabled: Boolean(latest?.attendanceRules?.autoCheckoutEnabled ?? attendanceRules.autoCheckoutEnabled),
+          autoCheckoutTime: String(latest?.attendanceRules?.autoCheckoutTime || attendanceRules.autoCheckoutTime)
+        });
         setWarning("");
         window.dispatchEvent(new CustomEvent("stas:settings-updated", { detail: latest }));
       }
@@ -471,9 +487,15 @@ export default function PengaturanSistem() {
   const gpsAccuracyLabel = lastGpsAccuracy == null ? null : `${Math.round(lastGpsAccuracy)} meter`;
   const gpsAccuracyIsGood = lastGpsAccuracy != null && lastGpsAccuracy <= gpsCalibrationMaxAccuracy;
 
-  const handleUseLowAccuracyCandidate = () => {
+  const handleUseLowAccuracyCandidate = async () => {
     if (!gpsCandidate) return;
-    const confirmed = gpsAccuracyIsGood || window.confirm("Akurasi GPS masih rendah. Yakin ingin memakai titik ini sebagai kandidat lokasi lab?");
+    const confirmed = gpsAccuracyIsGood || await confirm({
+      title: "Pakai titik GPS berakurasi rendah?",
+      description: "Akurasi GPS masih rendah. Titik ini bisa meleset, jadi sebaiknya dipakai hanya jika operator sudah memeriksa ulang koordinatnya.",
+      confirmLabel: "Pakai Tetap",
+      cancelLabel: "Batal",
+      variant: "warning"
+    });
     if (!confirmed) return;
     applyGpsCandidateToForm(gpsCandidate);
     setWarning(gpsAccuracyIsGood
@@ -762,6 +784,31 @@ export default function PengaturanSistem() {
                     </div>
                   </div>
                   <label className="flex items-center gap-2 mt-3 cursor-pointer"><input type="checkbox" checked={attendanceRules.earlyCheckoutWarning} onChange={(e) => setAttendanceRules((prev) => ({ ...prev, earlyCheckoutWarning: e.target.checked }))} className="accent-[#0AB600]" /><span className="text-xs font-bold text-foreground">Aktifkan peringatan check-out dini untuk mahasiswa magang</span></label>
+                  <div className="mt-4 rounded-[12px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={attendanceRules.autoCheckoutEnabled}
+                          onChange={(e) => setAttendanceRules((prev) => ({ ...prev, autoCheckoutEnabled: e.target.checked }))}
+                          className="accent-[#0AB600]"
+                        />
+                        <span className="text-xs font-bold text-foreground">Aktifkan auto checkout sistem</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-black text-muted-foreground">Waktu Auto Checkout</label>
+                        <input
+                          type="time"
+                          value={attendanceRules.autoCheckoutTime}
+                          onChange={(e) => setAttendanceRules((prev) => ({ ...prev, autoCheckoutTime: e.target.value }))}
+                          className="h-9 rounded-[8px] border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 transition-all"
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Sistem akan otomatis checkout mahasiswa yang masih aktif pada pukul {attendanceRules.autoCheckoutTime} WIB.
+                    </p>
+                  </div>
                 </div>
                 <SaveRow onSave={saveSystemSettings} />
               </div>
@@ -769,6 +816,7 @@ export default function PengaturanSistem() {
           </div>
         </div>
       </div>
+      {confirmDialog}
     </OperatorLayout>
   );
 }
