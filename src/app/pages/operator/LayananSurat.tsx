@@ -1,17 +1,41 @@
 import React, { useState } from "react";
 import { Link } from "react-router";
 import { OperatorLayout } from "../../components/OperatorLayout";
-import { FileText, Clock, CheckCircle2, Hourglass, Eye, Upload, X, Download, Check, Trash2 } from "lucide-react";
-import { apiDelete, apiGet, apiPatch, resolveApiAssetUrl } from "../../lib/api";
+import { FileText, Clock, CheckCircle2, Hourglass, Eye, Upload, X, Download, Check, Trash2, Plus, Search, Filter } from "lucide-react";
+import { apiDelete, apiGet, apiPatch, apiPost, resolveApiAssetUrl } from "../../lib/api";
 import { formatDateYmd } from "../../lib/date";
 
 type LetterRequestAll = any;
 type ToastState = { msg: string; type: "success" } | null;
+type LetterArchiveItem = {
+  id: string;
+  title: string;
+  category: string;
+  number?: string | null;
+  date?: string | null;
+  description?: string | null;
+  fileUrl?: string | null;
+  fileDataUrl?: string | null;
+  source: "request" | "operator";
+};
+type ArchiveMode = "create" | "edit";
 
 const STATUS_COLOR: Record<string, string> = {
   Menunggu: "bg-amber-100 text-amber-700 border border-amber-200",
   Diproses: "bg-blue-100 text-blue-700 border border-blue-200",
   "Siap Unduh": "bg-emerald-100 text-emerald-700 border border-emerald-200",
+};
+
+const DEFAULT_LETTER_CATEGORIES = ["Semua", "Akademik", "Magang", "Riset", "Laboratorium", "Rekomendasi", "Lainnya"];
+
+const emptyArchiveForm = {
+  title: "",
+  category: "Akademik",
+  number: "",
+  date: new Date().toISOString().slice(0, 10),
+  description: "",
+  fileDataUrl: "",
+  fileName: ""
 };
 
 export default function LayananSurat() {
@@ -24,6 +48,17 @@ export default function LayananSurat() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState("Semua");
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [archiveCategory, setArchiveCategory] = useState("Semua");
+  const [manualArchive, setManualArchive] = useState<LetterArchiveItem[]>([]);
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [archiveMode, setArchiveMode] = useState<ArchiveMode>("create");
+  const [editingArchiveId, setEditingArchiveId] = useState<string | null>(null);
+  const [archiveForm, setArchiveForm] = useState(emptyArchiveForm);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [deletingArchiveId, setDeletingArchiveId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadedFileDataUrl, setUploadedFileDataUrl] = useState("");
@@ -56,6 +91,20 @@ export default function LayananSurat() {
     loadLetters();
   }, []);
 
+  React.useEffect(() => {
+    const loadArchive = async () => {
+      try {
+        const rows = await apiGet<Array<any>>("/letter-database");
+        setManualArchive(rows.map(mapArchiveRow));
+      } catch (err: any) {
+        setError(err?.message || "Gagal memuat database surat.");
+        setManualArchive([]);
+      }
+    };
+
+    loadArchive();
+  }, []);
+
   const counts = {
     menunggu: letters.filter((l) => l.status === "Menunggu").length,
     diproses: letters.filter((l) => l.status === "Diproses").length,
@@ -63,11 +112,44 @@ export default function LayananSurat() {
     total: letters.length,
   };
   const filtered = filterStatus === "Semua" ? letters : letters.filter((l) => l.status === filterStatus);
+  const completedArchive: LetterArchiveItem[] = letters
+    .filter((letter) => letter.status === "Siap Unduh")
+    .map((letter) => ({
+      id: `request:${letter.id}`,
+      title: letter.jenis || "Surat",
+      category: getLetterCategory(letter.jenis),
+      number: letter.nomorSurat || null,
+      date: letter.tanggal || null,
+      description: letter.tujuan || null,
+      fileUrl: letter.fileUrl || null,
+      source: "request"
+    }));
+  const archiveItems = [...manualArchive, ...completedArchive];
+  const archiveCategories = Array.from(new Set([...DEFAULT_LETTER_CATEGORIES, ...customCategories, ...archiveItems.map((item) => item.category).filter(Boolean)]));
+  const editableArchiveCategories = archiveCategories.filter((item) => item !== "Semua");
+  const filteredArchive = archiveItems.filter((item) => {
+    const keyword = archiveSearch.trim().toLowerCase();
+    const matchKeyword = !keyword || [item.title, item.category, item.number, item.description]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(keyword));
+    const matchCategory = archiveCategory === "Semua" || item.category === archiveCategory;
+    return matchKeyword && matchCategory;
+  });
 
   const showToast = (msg: string) => {
     setToast({ msg, type: "success" });
     setTimeout(() => setToast(null), 3000);
   };
+
+  function getLetterCategory(jenis?: string) {
+    const value = String(jenis || "").toLowerCase();
+    if (value.includes("magang")) return "Magang";
+    if (value.includes("riset") || value.includes("penelitian")) return "Riset";
+    if (value.includes("laboratorium") || value.includes("lab")) return "Laboratorium";
+    if (value.includes("rekomendasi")) return "Rekomendasi";
+    if (value.includes("aktif") || value.includes("keterangan")) return "Akademik";
+    return "Lainnya";
+  }
 
   const handleProses = (id: string) => {
     setProcessingId(id);
@@ -150,6 +232,128 @@ export default function LayananSurat() {
     reader.readAsDataURL(file);
   };
 
+  const handleArchivePickedFile = (file?: File | null) => {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Ukuran file database surat maksimal 4 MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setArchiveForm((prev) => ({ ...prev, fileDataUrl: reader.result as string, fileName: file.name }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddArchiveLetter = async () => {
+    if (!archiveForm.title.trim()) {
+      setError("Judul surat wajib diisi.");
+      return;
+    }
+    if (!archiveForm.category.trim()) {
+      setError("Kategori surat wajib diisi.");
+      return;
+    }
+
+    const payload = {
+      title: archiveForm.title.trim(),
+      category: archiveForm.category.trim(),
+      number: archiveForm.number.trim() || null,
+      date: archiveForm.date || null,
+      description: archiveForm.description.trim() || null,
+      fileDataUrl: archiveForm.fileDataUrl || null,
+      fileName: archiveForm.fileName || null
+    };
+
+    try {
+      const saved = archiveMode === "edit" && editingArchiveId
+        ? await apiPatch<any>(`/letter-database/${editingArchiveId}`, payload)
+        : await apiPost<any>("/letter-database", payload);
+      const nextItem: LetterArchiveItem = mapArchiveRow(saved);
+      setManualArchive((prev) =>
+        archiveMode === "edit"
+          ? prev.map((item) => item.id === nextItem.id ? nextItem : item)
+          : [nextItem, ...prev]
+      );
+      showToast(archiveMode === "edit" ? "Data surat berhasil diperbarui." : "Surat berhasil ditambahkan ke database.");
+    } catch (err: any) {
+      setError(err?.message || "Gagal menyimpan database surat.");
+      return;
+    } finally {
+      setArchiveModalOpen(false);
+      setArchiveMode("create");
+      setEditingArchiveId(null);
+      setArchiveForm(emptyArchiveForm);
+    }
+  };
+
+  const mapArchiveRow = (item: any): LetterArchiveItem => ({
+    id: String(item.id),
+    title: item.title || "Surat",
+    category: item.category || "Lainnya",
+    number: item.number || null,
+    date: item.date || null,
+    description: item.description || null,
+    fileUrl: item.file_url || item.fileUrl || null,
+    source: "operator"
+  });
+
+  const openCreateArchiveModal = () => {
+    setArchiveMode("create");
+    setEditingArchiveId(null);
+    setArchiveForm(emptyArchiveForm);
+    setArchiveModalOpen(true);
+  };
+
+  const openEditArchiveModal = (item: LetterArchiveItem) => {
+    setArchiveMode("edit");
+    setEditingArchiveId(item.id);
+    setArchiveForm({
+      title: item.title,
+      category: item.category,
+      number: item.number || "",
+      date: item.date ? String(item.date).slice(0, 10) : "",
+      description: item.description || "",
+      fileDataUrl: "",
+      fileName: ""
+    });
+    setArchiveModalOpen(true);
+  };
+
+  const handleDeleteArchiveLetter = async (item: LetterArchiveItem) => {
+    const confirmed = window.confirm(`Hapus data surat ${item.title}?`);
+    if (!confirmed) return;
+
+    setDeletingArchiveId(item.id);
+    setError("");
+    try {
+      await apiDelete(`/letter-database/${item.id}`);
+      setManualArchive((prev) => prev.filter((archive) => archive.id !== item.id));
+      showToast("Data surat berhasil dihapus.");
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus data surat.");
+    } finally {
+      setDeletingArchiveId(null);
+    }
+  };
+
+  const handleAddCategory = () => {
+    const category = newCategoryName.trim();
+    if (!category) {
+      setError("Nama kategori wajib diisi.");
+      return;
+    }
+
+    setCustomCategories((prev) => Array.from(new Set([...prev, category])));
+    setArchiveForm((prev) => ({ ...prev, category }));
+    setNewCategoryName("");
+    setCategoryModalOpen(false);
+    setError("");
+  };
+
   return (
     <OperatorLayout title="Layanan Surat">
       <div className="flex flex-col gap-5 pb-4">
@@ -160,16 +364,6 @@ export default function LayananSurat() {
             <Check size={16} strokeWidth={3} /> {toast.msg}
           </div>
         )}
-
-        <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-black text-emerald-800">Pengelolaan Sertifikat</p>
-            <p className="text-xs text-emerald-700 mt-0.5">Sertifikat yang sudah diajukan mahasiswa juga bisa dikelola dari menu operator.</p>
-          </div>
-          <Link to="/operator/sertifikat" className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-[10px] bg-white border border-emerald-200 text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors">
-            <FileText size={14} /> Buka Sertifikat
-          </Link>
-        </div>
 
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           {[
@@ -253,6 +447,72 @@ export default function LayananSurat() {
             </table>
           </div>
         </div>
+
+        <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h2 className="text-sm font-black text-foreground flex items-center gap-2"><FileText size={16} className="text-[#0AB600]" /> Database Surat</h2>
+              <p className="text-xs text-muted-foreground mt-1">Arsip surat siap unduh dan surat yang ditambahkan operator.</p>
+            </div>
+            <button onClick={openCreateArchiveModal} className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#0AB600] px-4 text-xs font-black text-white hover:bg-[#099800] transition-colors">
+              <Plus size={14} strokeWidth={3} /> Tambah Surat
+            </button>
+          </div>
+          <div className="px-5 py-4 border-b border-border flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input value={archiveSearch} onChange={(e) => setArchiveSearch(e.target.value)} placeholder="Cari judul, nomor, kategori, atau deskripsi..." className="w-full h-10 rounded-[10px] border border-border bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
+            </div>
+            <div className="relative w-full lg:w-[220px]">
+              <Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <select value={archiveCategory} onChange={(e) => setArchiveCategory(e.target.value)} className="w-full h-10 rounded-[10px] border border-border bg-white pl-9 pr-3 text-sm font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20">
+                {archiveCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="divide-y divide-border">
+            {filteredArchive.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <p className="text-sm font-black text-foreground">Belum ada surat yang cocok</p>
+                <p className="text-xs text-muted-foreground mt-1">Coba ubah kata pencarian atau kategori.</p>
+              </div>
+            ) : (
+              filteredArchive.map((item) => {
+                const downloadUrl = resolveApiAssetUrl(item.fileUrl) || item.fileDataUrl || "#";
+                return (
+                  <div key={item.id} className="px-5 py-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-black text-foreground">{item.title}</p>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{item.category}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${item.source === "operator" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                          {item.source === "operator" ? "Operator" : "Pengajuan"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground line-clamp-1">{item.description || "Tidak ada deskripsi."}</p>
+                      <p className="mt-1 text-[10px] font-bold text-muted-foreground">{item.number || "Tanpa nomor"} {item.date ? `· ${formatDateYmd(item.date)}` : ""}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 lg:justify-end">
+                      <a href={downloadUrl} target="_blank" rel="noreferrer" className={`inline-flex h-9 items-center justify-center gap-2 rounded-[10px] border px-3 text-xs font-black transition-colors ${downloadUrl !== "#" ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "pointer-events-none border-slate-200 bg-slate-50 text-slate-400"}`}>
+                        <Download size={13} /> Unduh
+                      </a>
+                      {item.source === "operator" && (
+                        <>
+                          <button onClick={() => openEditArchiveModal(item)} className="inline-flex h-9 items-center justify-center rounded-[10px] border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 hover:bg-slate-50 transition-colors">
+                            Edit
+                          </button>
+                          <button onClick={() => handleDeleteArchiveLetter(item)} disabled={deletingArchiveId === item.id} className="inline-flex h-9 items-center justify-center gap-1 rounded-[10px] border border-red-200 bg-red-50 px-3 text-xs font-black text-red-600 hover:bg-red-100 disabled:opacity-60 transition-colors">
+                            <Trash2 size={12} /> {deletingArchiveId === item.id ? "Hapus..." : "Hapus"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
 
       {detail && (
@@ -322,6 +582,76 @@ export default function LayananSurat() {
             <div className="px-6 pb-6 flex gap-3">
               <button onClick={() => setUploadModal(null)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
               <button onClick={handleUpload} className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2"><Upload size={14} /> Submit & Selesai</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {archiveModalOpen && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setArchiveModalOpen(false)}>
+          <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[520px]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+              <h3 className="font-black text-foreground">{archiveMode === "edit" ? "Edit Surat Database" : "Tambah Surat ke Database"}</h3>
+              <button onClick={() => { setArchiveModalOpen(false); setArchiveMode("create"); setEditingArchiveId(null); setArchiveForm(emptyArchiveForm); }} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={16} /></button>
+            </div>
+            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="text-xs font-black text-foreground block mb-1.5">Judul Surat</label>
+                <input value={archiveForm.title} onChange={(e) => setArchiveForm((prev) => ({ ...prev, title: e.target.value }))} placeholder="Surat Keterangan Aktif Magang" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Kategori</label>
+                <div className="flex gap-2">
+                  <select value={archiveForm.category} onChange={(e) => setArchiveForm((prev) => ({ ...prev, category: e.target.value }))} className="min-w-0 flex-1 h-10 px-3 rounded-[10px] border border-border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20">
+                    {editableArchiveCategories.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setCategoryModalOpen(true)} className="h-10 w-10 shrink-0 rounded-[10px] bg-[#0AB600] text-white flex items-center justify-center hover:bg-[#099800] transition-colors" title="Tambah kategori surat">
+                    <Plus size={16} strokeWidth={3} />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Surat</label>
+                <input type="date" value={archiveForm.date} onChange={(e) => setArchiveForm((prev) => ({ ...prev, date: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-black text-foreground block mb-1.5">Nomor Surat</label>
+                <input value={archiveForm.number} onChange={(e) => setArchiveForm((prev) => ({ ...prev, number: e.target.value }))} placeholder="SK/2026/04/001" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-black text-foreground block mb-1.5">Deskripsi</label>
+                <textarea value={archiveForm.description} onChange={(e) => setArchiveForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} placeholder="Catatan singkat penggunaan atau konteks surat." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20 resize-none" />
+              </div>
+              <label className="sm:col-span-2 border-2 border-dashed border-green-200 rounded-[12px] p-6 text-center hover:bg-green-50 transition-colors cursor-pointer block">
+                <Upload size={22} className="text-[#0AB600] mx-auto mb-2" />
+                <p className="text-sm font-bold text-foreground">Upload file surat</p>
+                <p className="text-xs text-muted-foreground mt-1">PDF, DOC, DOCX, PNG, JPG maks. 4 MB</p>
+                <p className="text-xs font-bold text-emerald-600 mt-2">{archiveForm.fileName || "Belum ada file dipilih"}</p>
+                <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" className="hidden" onChange={(event) => handleArchivePickedFile(event.target.files?.[0])} />
+              </label>
+            </div>
+            <div className="px-6 pb-6 flex gap-3">
+              <button onClick={() => { setArchiveModalOpen(false); setArchiveMode("create"); setEditingArchiveId(null); setArchiveForm(emptyArchiveForm); }} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
+              <button onClick={handleAddArchiveLetter} className="flex-1 h-10 bg-[#0AB600] hover:bg-[#099800] text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2"><Plus size={14} /> {archiveMode === "edit" ? "Simpan" : "Tambahkan"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {categoryModalOpen && (
+        <div className="fixed inset-0 z-[360] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setCategoryModalOpen(false)}>
+          <div className="w-full max-w-[360px] rounded-[16px] bg-white shadow-2xl border border-border" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <h3 className="text-sm font-black text-foreground">Tambah Kategori Surat</h3>
+              <button onClick={() => setCategoryModalOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={15} /></button>
+            </div>
+            <div className="p-5">
+              <label className="text-xs font-black text-foreground block mb-1.5">Nama Kategori</label>
+              <input autoFocus value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddCategory(); }} placeholder="Contoh: Kerja Sama" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button onClick={() => setCategoryModalOpen(false)} className="flex-1 h-10 rounded-[10px] border border-border text-sm font-bold text-muted-foreground hover:bg-slate-50">Batal</button>
+              <button onClick={handleAddCategory} className="flex-1 h-10 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800]">Tambah</button>
             </div>
           </div>
         </div>

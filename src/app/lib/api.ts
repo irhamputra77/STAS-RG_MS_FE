@@ -7,6 +7,18 @@ export type BlobResponse = {
   fileName: string | null;
 };
 
+export class ApiError extends Error {
+  status: number;
+  body: any;
+
+  constructor(message: string, status: number, body: any) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 function getRoleHeader() {
   try {
     const raw = localStorage.getItem("stas_user");
@@ -69,7 +81,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message = body?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    throw new ApiError(message, response.status, body);
   }
 
   return body as T;

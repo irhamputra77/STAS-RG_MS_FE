@@ -8,6 +8,7 @@ export interface AuthUser {
   role: UserRole;
   initials: string;
   prodi?: string;
+  tipe?: "Riset" | "Magang" | string;
 }
 
 interface AuthContextValue {

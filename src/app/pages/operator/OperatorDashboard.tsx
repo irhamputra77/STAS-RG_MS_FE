@@ -36,6 +36,17 @@ type WarningData = {
   lowHours: WarningItem[];
 };
 
+type EarlyCheckoutAlert = {
+  id: string;
+  title: string;
+  body: string;
+  studentName: string;
+  studentInitials: string;
+  durationHours?: number | null;
+  requiredHours?: number | null;
+  read: boolean;
+};
+
 type DashboardSummary = {
   totalMahasiswa: number;
   totalRisetAktif: number;
@@ -99,11 +110,10 @@ function WarningSent({ visible }: { visible: boolean }) {
 
 function WarningInfo({ message, tone }: { message: string; tone: "success" | "warning" }) {
   return (
-    <div className={`fixed top-6 right-6 z-[400] flex items-center gap-3 px-5 py-3.5 rounded-[14px] shadow-xl border text-sm font-bold ${
-      tone === "success"
-        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-        : "bg-amber-50 border-amber-200 text-amber-700"
-    }`}>
+    <div className={`fixed top-6 right-6 z-[400] flex items-center gap-3 px-5 py-3.5 rounded-[14px] shadow-xl border text-sm font-bold ${tone === "success"
+      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+      : "bg-amber-50 border-amber-200 text-amber-700"
+      }`}>
       {tone === "success" ? <Check size={16} strokeWidth={3} /> : <AlertTriangle size={16} strokeWidth={3} />}
       {message}
     </div>
@@ -128,6 +138,7 @@ export default function OperatorDashboard() {
     attendanceAbsent: [],
     lowHours: []
   });
+  const [earlyCheckoutAlerts, setEarlyCheckoutAlerts] = useState<EarlyCheckoutAlert[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
@@ -195,6 +206,29 @@ export default function OperatorDashboard() {
       setWarnings(derivedWarnings);
     };
 
+    const mapEarlyCheckoutNotification = (item: any): EarlyCheckoutAlert | null => {
+      const title = String(item?.title || "");
+      const body = String(item?.body || "");
+      const content = `${title} ${body}`.toLowerCase();
+      if (!content.includes("checkout") || !content.includes("bawah batas")) return null;
+
+      const nameMatch = body.match(/^(.+?)\s*\(/);
+      const durationMatch = body.match(/setelah\s+([\d.,]+)/i);
+      const requiredMatch = body.match(/batas\s+([\d.,]+)/i);
+      const studentName = nameMatch?.[1]?.trim() || "Mahasiswa Magang";
+
+      return {
+        id: String(item?.id || `early-checkout-${Date.now()}`),
+        title: title || "Checkout Magang Kurang Jam",
+        body,
+        studentName,
+        studentInitials: studentName.split(" ").map((chunk) => chunk[0] || "").join("").slice(0, 2).toUpperCase() || "M",
+        durationHours: durationMatch?.[1] ? Number(durationMatch[1].replace(",", ".")) : null,
+        requiredHours: requiredMatch?.[1] ? Number(requiredMatch[1].replace(",", ".")) : null,
+        read: Boolean(item?.read_at || item?.readAt)
+      };
+    };
+
     const refreshWarnings = async () => {
       const warningsRes = await apiGet<OperatorWarningsResponse>("/dashboard/operator-warnings");
       applyWarnings(warningsRes);
@@ -244,6 +278,11 @@ export default function OperatorDashboard() {
             label: "pengunduran diri",
             request: apiGet<Array<any>>("/withdrawal-requests"),
           },
+          {
+            key: "notifications",
+            label: "notifikasi operator",
+            request: apiGet<Array<any>>("/notifications?limit=50"),
+          },
         ] as const;
 
         const settled = await Promise.allSettled(requests.map((item) => item.request));
@@ -284,6 +323,10 @@ export default function OperatorDashboard() {
         const withdrawalRes =
           settled[7].status === "fulfilled"
             ? settled[7].value
+            : [];
+        const notificationsRes =
+          settled[8].status === "fulfilled"
+            ? settled[8].value
             : [];
 
         if (failures.length === requests.length) {
@@ -401,6 +444,12 @@ export default function OperatorDashboard() {
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
         applyWarnings(warningsRes);
+        setEarlyCheckoutAlerts(
+          (notificationsRes || [])
+            .map(mapEarlyCheckoutNotification)
+            .filter(Boolean)
+            .slice(0, 5) as EarlyCheckoutAlert[]
+        );
         setResignationRequests(mappedWithdrawals);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat dashboard operator.");
@@ -507,8 +556,8 @@ export default function OperatorDashboard() {
   const notLogbookMhs = warnings.logbookMissing;
   const tidakHadirMhs = hasPassedAttendanceCutoff
     ? warnings.attendanceAbsent.filter((item) =>
-        item.attendanceStatus !== "Cuti" && !readAttendanceItems.includes(getAttendanceReadId(item))
-      )
+      item.attendanceStatus !== "Cuti" && !readAttendanceItems.includes(getAttendanceReadId(item))
+    )
     : [];
   const lowHoursMhs = warnings.lowHours;
   const risetLowHours = lowHoursMhs.filter(m => {
@@ -519,6 +568,18 @@ export default function OperatorDashboard() {
     const student = students.find((item) => item.id === m.studentId);
     return student?.tipe === "Magang";
   });
+  const unreadEarlyCheckoutAlerts = earlyCheckoutAlerts.filter((item) => !item.read);
+  const earlyCheckoutDisplay = unreadEarlyCheckoutAlerts.length > 0 ? unreadEarlyCheckoutAlerts : earlyCheckoutAlerts;
+  const jamTidakTerpenuhiCount = risetLowHours.length + magangLowHours.length + unreadEarlyCheckoutAlerts.length;
+
+  const markEarlyCheckoutAsRead = async (alert: EarlyCheckoutAlert) => {
+    setEarlyCheckoutAlerts((prev) => prev.map((item) => item.id === alert.id ? { ...item, read: true } : item));
+    try {
+      await apiPatch(`/notifications/${alert.id}/read`, {});
+    } catch {
+      // Keep optimistic read state even if the notification endpoint is briefly unavailable.
+    }
+  };
 
   const handleLeave = async (id: string, status: "Disetujui" | "Ditolak") => {
     try {
@@ -649,8 +710,23 @@ export default function OperatorDashboard() {
           {/* Jam Kurang */}
           <div className="bg-white border border-orange-200 rounded-[14px] shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-orange-100 bg-orange-50/50 flex items-center justify-between">
-              <h3 className="text-xs font-black text-foreground flex items-center gap-2"><TrendingDown size={13} className="text-orange-500" /> Jam Tidak Terpenuhi<span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{risetLowHours.length + magangLowHours.length}</span></h3>
+              <h3 className="text-xs font-black text-foreground flex items-center gap-2"><TrendingDown size={13} className="text-orange-500" /> Jam Tidak Terpenuhi<span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{jamTidakTerpenuhiCount}</span></h3>
             </div>
+            {earlyCheckoutDisplay.slice(0, 2).map(alert => (
+              <div key={alert.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-orange-100 bg-orange-50/40 hover:bg-orange-50 transition-colors">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-orange-500 text-white">{alert.studentInitials}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-foreground">{alert.studentName}</p>
+                  <p className="text-[10px] text-muted-foreground line-clamp-1">Checkout kurang dari batas magang</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-black text-orange-600">{alert.durationHours ?? "-"}j/{alert.requiredHours ?? "-"}j</p>
+                </div>
+                <button onClick={() => markEarlyCheckoutAsRead(alert)} className="flex items-center gap-1 h-6 px-2 bg-orange-100 hover:bg-orange-500 text-orange-600 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0">
+                  {alert.read ? "Dibaca" : "Baca"}
+                </button>
+              </div>
+            ))}
             {[...risetLowHours.slice(0, 2), ...magangLowHours.slice(0, 1)].map(m => (
               <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
@@ -758,7 +834,7 @@ export default function OperatorDashboard() {
                   <div key={r.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-black text-foreground line-clamp-1">{r.title}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{r.supervisor} Â· {r.mahasiswaCount + r.dosenCount} anggota</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{r.supervisor} {r.mahasiswaCount + r.dosenCount} anggota</p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="w-24 h-1.5 bg-slate-100 rounded-full"><div className="bg-[#0AB600] h-1.5 rounded-full" style={{ width: `${r.progress}%` }} /></div>
@@ -787,7 +863,7 @@ export default function OperatorDashboard() {
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${l.mahasiswaColor}`}>{l.mahasiswaInitials}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground">{l.mahasiswaNama}</p>
-                        <p className="text-[10px] text-muted-foreground">{l.periodeStart} Â· {l.durasi}h</p>
+                        <p className="text-[10px] text-muted-foreground">{l.periodeStart} {l.durasi}h</p>
                         <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Cuti</span>
                       </div>
                     </div>

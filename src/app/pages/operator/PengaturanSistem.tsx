@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { OperatorLayout } from "../../components/OperatorLayout";
-import { Globe, MapPin, CalendarOff, Bell, Save, Check } from "lucide-react";
+import { Globe, MapPin, CalendarOff, Bell, Save, Check, AlertTriangle, Crosshair } from "lucide-react";
 import { apiGet, apiPatch } from "../../lib/api";
 
 const TABS = [
@@ -18,6 +18,36 @@ const NOTIF_EVENTS = [
   { id: "low_attendance", label: "Kehadiran Rendah (< 75%)", enabled: true },
   { id: "logbook_missing", label: "Logbook Tidak Diisi 3+ Hari", enabled: true },
 ];
+
+type GpsPolicy = {
+  targetLatitude: number;
+  targetLongitude: number;
+  radiusMeters: number;
+  maxAccuracyMeters: number;
+  sampleCount: number;
+  timeoutMs: number;
+};
+
+type GpsCandidate = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  capturedAt: Date;
+};
+
+const DEFAULT_GPS_POLICY: GpsPolicy = {
+  targetLatitude: 0,
+  targetLongitude: 0,
+  radiusMeters: 15,
+  maxAccuracyMeters: 100,
+  sampleCount: 2,
+  timeoutMs: 6000
+};
+
+const normalizeNumber = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
   return (
@@ -87,14 +117,20 @@ export default function PengaturanSistem() {
     risetMinWeeklyHours: 4,
     risetTargetWeeklyHours: 6,
     magangDailyHours: 9,
+    magangMinCheckoutHours: 8,
     magangWorkDays: "5",
     earlyCheckoutWarning: true
   });
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [gpsUpdating, setGpsUpdating] = useState(false);
   const [liveCalibrating, setLiveCalibrating] = useState(false);
   const [liveUpdatedAt, setLiveUpdatedAt] = useState<Date | null>(null);
-  const gpsRef = React.useRef(gps);
+  const [lastGpsAccuracy, setLastGpsAccuracy] = useState<number | null>(null);
+  const [gpsPolicy, setGpsPolicy] = useState<GpsPolicy>(DEFAULT_GPS_POLICY);
+  const [gpsCandidate, setGpsCandidate] = useState<GpsCandidate | null>(null);
+  const [showLowAccuracyOptions, setShowLowAccuracyOptions] = useState(false);
+  const latitudeInputRef = React.useRef<HTMLInputElement | null>(null);
   const liveTimerRef = React.useRef<number | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -113,6 +149,14 @@ export default function PengaturanSistem() {
           latitude: Number(data?.gps?.latitude) || -7.5571,
           longitude: Number(data?.gps?.longitude) || 110.8316,
           radius: Number(data?.gps?.radius) || 15
+        });
+        setGpsPolicy({
+          targetLatitude: normalizeNumber(data?.gpsPolicy?.targetLatitude, normalizeNumber(data?.gps?.latitude, DEFAULT_GPS_POLICY.targetLatitude)),
+          targetLongitude: normalizeNumber(data?.gpsPolicy?.targetLongitude, normalizeNumber(data?.gps?.longitude, DEFAULT_GPS_POLICY.targetLongitude)),
+          radiusMeters: normalizeNumber(data?.gpsPolicy?.radiusMeters, normalizeNumber(data?.gps?.radius, DEFAULT_GPS_POLICY.radiusMeters)),
+          maxAccuracyMeters: normalizeNumber(data?.gpsPolicy?.maxAccuracyMeters, DEFAULT_GPS_POLICY.maxAccuracyMeters),
+          sampleCount: Math.min(5, Math.max(1, normalizeNumber(data?.gpsPolicy?.sampleCount, DEFAULT_GPS_POLICY.sampleCount))),
+          timeoutMs: Math.max(3000, normalizeNumber(data?.gpsPolicy?.timeoutMs, DEFAULT_GPS_POLICY.timeoutMs))
         });
         setCuti({
           maxSemesterDays: Number(data?.cuti?.maxSemesterDays) || 3,
@@ -133,6 +177,7 @@ export default function PengaturanSistem() {
           risetMinWeeklyHours: Number(data?.attendanceRules?.risetMinWeeklyHours) || 4,
           risetTargetWeeklyHours: Number(data?.attendanceRules?.risetTargetWeeklyHours) || 6,
           magangDailyHours: Number(data?.attendanceRules?.magangDailyHours) || 9,
+          magangMinCheckoutHours: Number(data?.attendanceRules?.magangMinCheckoutHours) || 8,
           magangWorkDays: String(data?.attendanceRules?.magangWorkDays || "5"),
           earlyCheckoutWarning: Boolean(data?.attendanceRules?.earlyCheckoutWarning ?? true)
         });
@@ -146,10 +191,6 @@ export default function PengaturanSistem() {
   }, []);
 
   React.useEffect(() => {
-    gpsRef.current = gps;
-  }, [gps]);
-
-  React.useEffect(() => {
     return () => {
       if (liveTimerRef.current != null) {
         window.clearInterval(liveTimerRef.current);
@@ -159,52 +200,161 @@ export default function PengaturanSistem() {
 
   const toggleEvent = (id: string) => setEvents(p => p.map(e => e.id === id ? { ...e, enabled: !e.enabled } : e));
 
+  const assertGeolocationAvailable = () => {
+    if (!navigator.geolocation) {
+      throw new Error("Browser tidak mendukung geolocation.");
+    }
+
+    if (!window.isSecureContext) {
+      throw new Error("Geolocation hanya berjalan di HTTPS atau localhost. Pastikan aplikasi dibuka melalui HTTPS atau localhost.");
+    }
+  };
+
   const getCurrentPosition = () =>
     new Promise<GeolocationPosition>((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error("Browser tidak mendukung geolocation."));
-        return;
-      }
-
-      if (!window.isSecureContext) {
-        reject(new Error("Geolocation hanya berjalan di HTTPS atau localhost."));
+      try {
+        assertGeolocationAvailable();
+      } catch (err) {
+        reject(err);
         return;
       }
 
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: gpsPolicy.timeoutMs || 6000,
         maximumAge: 0
       });
     });
 
-  const syncCurrentLocationToSettings = async () => {
-    const position = await getCurrentPosition();
-    const nextGps = {
+  const getBestWatchedPosition = async () => {
+    assertGeolocationAvailable();
+
+    const sampleTarget = gpsPolicy.sampleCount || 2;
+    const watchDuration = Math.min(10000, Math.max(6000, gpsPolicy.timeoutMs || 6000));
+    const samples: GeolocationPosition[] = [];
+
+    return new Promise<GeolocationPosition>((resolve, reject) => {
+      let settled = false;
+      let watchId: number | null = null;
+      let fallbackTimer: number | null = null;
+      let finishTimer: number | null = null;
+
+      const cleanup = () => {
+        if (watchId != null) navigator.geolocation.clearWatch(watchId);
+        if (fallbackTimer != null) window.clearTimeout(fallbackTimer);
+        if (finishTimer != null) window.clearTimeout(finishTimer);
+      };
+
+      const finish = () => {
+        if (settled || samples.length === 0) return;
+        settled = true;
+        cleanup();
+        resolve(samples.reduce((best, current) =>
+          current.coords.accuracy < best.coords.accuracy ? current : best
+        ));
+      };
+
+      finishTimer = window.setTimeout(() => {
+        finish();
+        if (!settled) {
+          settled = true;
+          cleanup();
+          reject(new Error("Gagal mengambil sample lokasi."));
+        }
+      }, watchDuration);
+
+      fallbackTimer = window.setTimeout(async () => {
+        if (samples.length > 0 || settled) return;
+        try {
+          const position = await getCurrentPosition();
+          samples.push(position);
+          finish();
+        } catch (err) {
+          if (!settled) {
+            settled = true;
+            cleanup();
+            reject(err);
+          }
+        }
+      }, 1500);
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          samples.push(position);
+          if (
+            samples.length >= sampleTarget &&
+            position.coords.accuracy <= (gpsPolicy.maxAccuracyMeters || 100)
+          ) {
+            finish();
+          }
+        },
+        (err) => {
+          if (samples.length > 0) {
+            finish();
+            return;
+          }
+          if (!settled) {
+            settled = true;
+            cleanup();
+            reject(err);
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: gpsPolicy.timeoutMs || 6000,
+          maximumAge: 0
+        }
+      );
+    });
+  };
+
+  const applyGpsCandidateToForm = (candidate: GpsCandidate) => {
+    setGps((prev) => ({ ...prev, latitude: candidate.latitude, longitude: candidate.longitude }));
+    setLastGpsAccuracy(candidate.accuracy);
+    setLiveUpdatedAt(new Date());
+    setWarning("");
+    setShowLowAccuracyOptions(false);
+  };
+
+  const collectCurrentLocationCandidate = async () => {
+    const position = await getBestWatchedPosition();
+    const accuracy = Number(position.coords.accuracy);
+    const candidate: GpsCandidate = {
       latitude: Number(position.coords.latitude),
       longitude: Number(position.coords.longitude),
-      radius: gpsRef.current.radius
+      accuracy,
+      capturedAt: new Date()
     };
 
-    await apiPatch<any>("/system-settings", {
-      gps: nextGps
-    });
-
-    setGps((prev) => ({ ...prev, latitude: nextGps.latitude, longitude: nextGps.longitude }));
+    setGpsCandidate(candidate);
+    setLastGpsAccuracy(Number.isFinite(accuracy) ? accuracy : null);
     setLiveUpdatedAt(new Date());
+
+    if (!Number.isFinite(accuracy) || accuracy > gpsCalibrationMaxAccuracy) {
+      const accuracyLabel = Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : "tidak tersedia";
+      setWarning(`Akurasi GPS masih rendah (${accuracyLabel}). Coba pindah ke area terbuka, aktifkan mode akurasi tinggi, atau pilih titik manual di peta.`);
+      setShowLowAccuracyOptions(true);
+      return null;
+    }
+
+    setWarning(`Sample GPS didapat dengan akurasi ${Math.round(accuracy)}m. Periksa titik kandidat, lalu klik "Gunakan Titik Ini" jika sudah benar.`);
+    setShowLowAccuracyOptions(true);
+    return candidate;
   };
 
   const handleUseCurrentLocation = async () => {
     setError("");
+    setWarning("");
     setGpsUpdating(true);
+    setShowLowAccuracyOptions(false);
 
     try {
-      await syncCurrentLocationToSettings();
+      await collectCurrentLocationCandidate();
     } catch (err: any) {
       if (err?.code === 1) {
-        setError("Izin lokasi ditolak. Buka Site settings browser dan ubah Location menjadi Allow.");
+        setError("Izin lokasi ditolak. Buka Site settings browser dan ubah Location menjadi Allow. Di iOS aktifkan Precise Location untuk browser, dan di Android aktifkan Location Accuracy.");
       } else if (err?.code === 2) {
-        setError("Lokasi tidak tersedia. Pastikan GPS/lokasi device aktif.");
+        setError("Lokasi tidak tersedia. Pastikan GPS/lokasi device aktif dan mode akurasi tinggi/precise location menyala.");
       } else if (err?.code === 3) {
         setError("Permintaan lokasi timeout. Coba lagi di area dengan sinyal GPS stabil.");
       } else {
@@ -225,14 +375,16 @@ export default function PengaturanSistem() {
 
   const startLiveCalibration = async () => {
     setError("");
+    setWarning("");
     setGpsUpdating(true);
+    setShowLowAccuracyOptions(false);
 
     try {
-      await syncCurrentLocationToSettings();
+      await collectCurrentLocationCandidate();
 
       liveTimerRef.current = window.setInterval(async () => {
         try {
-          await syncCurrentLocationToSettings();
+          await collectCurrentLocationCandidate();
         } catch (err: any) {
           if (err?.code === 1) {
             setError("Izin lokasi ditolak. Live kalibrasi dihentikan.");
@@ -301,6 +453,7 @@ export default function PengaturanSistem() {
         if (Array.isArray(latest?.notif?.events)) {
           setEvents(latest.notif.events);
         }
+        setWarning("");
         window.dispatchEvent(new CustomEvent("stas:settings-updated", { detail: latest }));
       }
     } catch (err: any) {
@@ -312,6 +465,27 @@ export default function PengaturanSistem() {
 
   const handleLogoPick = () => {
     logoInputRef.current?.click();
+  };
+
+  const gpsCalibrationMaxAccuracy = Math.min(gpsPolicy.maxAccuracyMeters || 100, Math.max(10, gps.radius));
+  const gpsAccuracyLabel = lastGpsAccuracy == null ? null : `${Math.round(lastGpsAccuracy)} meter`;
+  const gpsAccuracyIsGood = lastGpsAccuracy != null && lastGpsAccuracy <= gpsCalibrationMaxAccuracy;
+
+  const handleUseLowAccuracyCandidate = () => {
+    if (!gpsCandidate) return;
+    const confirmed = gpsAccuracyIsGood || window.confirm("Akurasi GPS masih rendah. Yakin ingin memakai titik ini sebagai kandidat lokasi lab?");
+    if (!confirmed) return;
+    applyGpsCandidateToForm(gpsCandidate);
+    setWarning(gpsAccuracyIsGood
+      ? "Titik GPS dimuat ke form. Periksa ulang koordinat sebelum menyimpan."
+      : "Titik GPS berakurasi rendah dimuat ke form karena dikonfirmasi operator. Periksa ulang koordinat sebelum menyimpan."
+    );
+  };
+
+  const handleManualPick = () => {
+    setShowLowAccuracyOptions(false);
+    setWarning("Silakan isi latitude dan longitude secara manual berdasarkan titik peta yang benar, lalu klik Simpan Perubahan.");
+    latitudeInputRef.current?.focus();
   };
 
   const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -362,13 +536,18 @@ export default function PengaturanSistem() {
   return (
     <OperatorLayout title="Pengaturan Sistem">
       <div className="flex flex-col gap-4 pb-4">
-        <div className="flex gap-6 items-start">
-          {error && (
-            <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
-              {error}
-            </div>
-          )}
-          <div className="w-[200px] shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
+        {error && (
+          <div className="w-full px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
+            {error}
+          </div>
+        )}
+        {warning && (
+          <div className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-700">
+            {warning}
+          </div>
+        )}
+        <div className="flex flex-col gap-6 items-stretch xl:flex-row xl:items-start">
+          <div className="w-full xl:w-[200px] xl:shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-border"><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Pengaturan</p></div>
             <nav className="p-2 flex flex-col gap-0.5">
               {TABS.map(t => (
@@ -380,7 +559,7 @@ export default function PengaturanSistem() {
             </nav>
           </div>
 
-          <div className="flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
+          <div className="min-w-0 flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
 
             {/* Umum */}
             {tab === "umum" && (
@@ -427,6 +606,21 @@ export default function PengaturanSistem() {
                 {/* Map placeholder */}
                 <button type="button" onClick={openCoordinateMap} className="h-48 w-full bg-slate-100 rounded-[14px] border border-border flex flex-col items-center justify-center gap-2 relative overflow-hidden hover:bg-slate-200/70 transition-colors text-left" title="Buka koordinat di Google Maps">
                   <div className="absolute inset-0 opacity-5" style={{ backgroundImage: "linear-gradient(#0AB600 1px, transparent 1px), linear-gradient(90deg, #0AB600 1px, transparent 1px)", backgroundSize: "30px 30px" }} />
+                  {gpsCandidate && (
+                    <>
+                      <div
+                        className="absolute rounded-full border-2 border-sky-400/60 bg-sky-300/20"
+                        style={{
+                          width: `${Math.min(150, Math.max(34, gpsCandidate.accuracy))}px`,
+                          height: `${Math.min(150, Math.max(34, gpsCandidate.accuracy))}px`
+                        }}
+                      />
+                      <div className="absolute left-4 top-4 flex items-center gap-2 rounded-[10px] border border-sky-200 bg-white/90 px-3 py-2 text-[10px] font-bold text-sky-700 shadow-sm">
+                        <Crosshair size={13} />
+                        Sample GPS {Math.round(gpsCandidate.accuracy)}m
+                      </div>
+                    </>
+                  )}
                   <MapPin size={32} className="text-[#0AB600]" />
                   <p className="text-sm font-black text-foreground">Peta Lokasi Lab</p>
                   <p className="text-xs text-muted-foreground">Klik untuk melihat koordinat</p>
@@ -440,7 +634,7 @@ export default function PengaturanSistem() {
                   >
                     {gpsUpdating ? "Mengambil Lokasi..." : "Gunakan Posisi Saya Saat Ini"}
                   </button>
-                  <span className="text-[11px] text-muted-foreground">Pusat radius akan dipindah, radius tetap.</span>
+                  <span className="text-[11px] text-muted-foreground">Titik lab berubah jika sample valid atau dikonfirmasi.</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <button
@@ -454,8 +648,37 @@ export default function PengaturanSistem() {
                     {liveUpdatedAt ? `Sinkron terakhir: ${liveUpdatedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}` : "Belum ada sinkron live"}
                   </span>
                 </div>
+                {gpsAccuracyLabel && (
+                  <div className={`rounded-[10px] border px-3 py-2 text-[11px] font-semibold ${gpsAccuracyIsGood ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                    Akurasi GPS terakhir: {gpsAccuracyLabel}. Batas aman kalibrasi: {Math.round(gpsCalibrationMaxAccuracy)} meter. {gpsAccuracyIsGood ? "Klik Gunakan Titik Ini jika kandidat sudah benar." : "Titik lab belum dipindahkan otomatis. Coba lagi di area terbuka atau pilih titik manual."}
+                  </div>
+                )}
+                {showLowAccuracyOptions && gpsCandidate && (
+                  <div className={`rounded-[12px] border p-3 ${gpsAccuracyIsGood ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+                    <div className={`mb-3 flex items-start gap-2 ${gpsAccuracyIsGood ? "text-green-800" : "text-amber-800"}`}>
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                      <p className="text-xs font-bold leading-relaxed">
+                        {gpsAccuracyIsGood
+                          ? `Sample GPS ${Math.round(gpsCandidate.accuracy)}m sudah masuk batas aman, tetapi titik lab belum diubah sampai Anda konfirmasi.`
+                          : `Akurasi GPS masih rendah (${Math.round(gpsCandidate.accuracy)}m). Jangan pakai titik ini kecuali sudah dipastikan benar.`
+                        }
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={handleUseCurrentLocation} className="h-8 rounded-[8px] bg-amber-500 px-3 text-xs font-black text-white hover:bg-amber-600">
+                        Coba Lagi
+                      </button>
+                      <button type="button" onClick={handleUseLowAccuracyCandidate} className={`h-8 rounded-[8px] border bg-white px-3 text-xs font-black ${gpsAccuracyIsGood ? "border-green-300 text-green-700 hover:bg-green-100" : "border-amber-300 text-amber-700 hover:bg-amber-100"}`}>
+                        {gpsAccuracyIsGood ? "Gunakan Titik Ini" : "Pakai Tetap"}
+                      </button>
+                      <button type="button" onClick={handleManualPick} className="h-8 rounded-[8px] border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
+                        Pilih Manual di Peta
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs font-black text-foreground block mb-1.5">Latitude</label><input value={gps.latitude} onChange={(e) => setGps((prev) => ({ ...prev, latitude: Number(e.target.value) || 0 }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0AB600]/30 transition-all" /></div>
+                  <div><label className="text-xs font-black text-foreground block mb-1.5">Latitude</label><input ref={latitudeInputRef} value={gps.latitude} onChange={(e) => setGps((prev) => ({ ...prev, latitude: Number(e.target.value) || 0 }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0AB600]/30 transition-all" /></div>
                   <div><label className="text-xs font-black text-foreground block mb-1.5">Longitude</label><input value={gps.longitude} onChange={(e) => setGps((prev) => ({ ...prev, longitude: Number(e.target.value) || 0 }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0AB600]/30 transition-all" /></div>
                 </div>
                 <div>
@@ -533,6 +756,7 @@ export default function PengaturanSistem() {
                       <p className="text-xs font-black text-emerald-700 mb-3">Mahasiswa Magang</p>
                       <div className="flex flex-col gap-2">
                         <div><label className="text-[10px] font-black text-muted-foreground block mb-1">Jam Kerja/Hari</label><input type="number" value={attendanceRules.magangDailyHours} onChange={(e) => setAttendanceRules((prev) => ({ ...prev, magangDailyHours: Number(e.target.value) || 0 }))} className="w-full h-9 px-3 rounded-[8px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 transition-all" /></div>
+                        <div><label className="text-[10px] font-black text-muted-foreground block mb-1">Min. Jam Sebelum Check-out</label><input type="number" min={1} max={24} step={0.5} value={attendanceRules.magangMinCheckoutHours} onChange={(e) => setAttendanceRules((prev) => ({ ...prev, magangMinCheckoutHours: Number(e.target.value) || 0 }))} className="w-full h-9 px-3 rounded-[8px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 transition-all" /></div>
                         <div><label className="text-[10px] font-black text-muted-foreground block mb-1">Hari Kerja</label><select value={attendanceRules.magangWorkDays} onChange={(e) => setAttendanceRules((prev) => ({ ...prev, magangWorkDays: e.target.value }))} className="w-full h-9 px-3 rounded-[8px] border border-border text-xs focus:outline-none cursor-pointer"><option value="5">Senin – Jumat (5 hari)</option><option value="6">Senin – Sabtu (6 hari)</option></select></div>
                       </div>
                     </div>

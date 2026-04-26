@@ -1,8 +1,60 @@
 import React, { useState, useEffect } from "react";
 import { Layout } from "../components/Layout";
-import { MapPin, Clock, LogIn, LogOut, Search, Filter } from "lucide-react";
+import { AlertTriangle, MapPin, Clock, LogIn, LogOut, Search } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { apiGet, apiPost, getStoredUser } from "../lib/api";
+import { ApiError, apiGet, apiPost, getStoredUser } from "../lib/api";
+
+type GpsInfo = {
+  latitude: number;
+  longitude: number;
+  radius: number;
+};
+
+type GpsPolicy = {
+  targetLatitude: number;
+  targetLongitude: number;
+  radiusMeters: number;
+  maxAccuracyMeters: number;
+  sampleCount: number;
+  timeoutMs: number;
+};
+
+type GpsResult = {
+  reason?: string | null;
+  accuracyMeters?: number | null;
+  maxAccuracyMeters?: number | null;
+  distanceMeters?: number | null;
+  allowedRadiusMeters?: number | null;
+};
+
+const DEFAULT_GPS_POLICY: GpsPolicy = {
+  targetLatitude: 0,
+  targetLongitude: 0,
+  radiusMeters: 15,
+  maxAccuracyMeters: 100,
+  sampleCount: 2,
+  timeoutMs: 6000
+};
+
+const EXTREME_GPS_ACCURACY_THRESHOLD = 1000;
+
+const normalizeNumber = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeGpsPolicy = (policy: any, gps?: GpsInfo | null): GpsPolicy | null => {
+  if (!policy && !gps) return null;
+
+  return {
+    targetLatitude: normalizeNumber(policy?.targetLatitude, normalizeNumber(gps?.latitude, DEFAULT_GPS_POLICY.targetLatitude)),
+    targetLongitude: normalizeNumber(policy?.targetLongitude, normalizeNumber(gps?.longitude, DEFAULT_GPS_POLICY.targetLongitude)),
+    radiusMeters: normalizeNumber(policy?.radiusMeters, normalizeNumber(gps?.radius, DEFAULT_GPS_POLICY.radiusMeters)),
+    maxAccuracyMeters: normalizeNumber(policy?.maxAccuracyMeters, DEFAULT_GPS_POLICY.maxAccuracyMeters),
+    sampleCount: Math.min(5, Math.max(1, normalizeNumber(policy?.sampleCount, DEFAULT_GPS_POLICY.sampleCount))),
+    timeoutMs: Math.max(3000, normalizeNumber(policy?.timeoutMs, DEFAULT_GPS_POLICY.timeoutMs))
+  };
+};
 
 export default function Attendance() {
   const user = getStoredUser();
@@ -11,14 +63,30 @@ export default function Attendance() {
   const [chartData, setChartData] = useState<Array<{ name: string; value: number; color: string }>>([]);
   const [historyData, setHistoryData] = useState<Array<{ date: string; in: string; out: string; duration: string; status: string; statusColor: string }>>([]);
   const [todayData, setTodayData] = useState({ checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in" });
-  const [gpsInfo, setGpsInfo] = useState<{ latitude: number; longitude: number; radius: number } | null>(null);
+  const [gpsInfo, setGpsInfo] = useState<GpsInfo | null>(null);
+  const [gpsPolicy, setGpsPolicy] = useState<GpsPolicy | null>(null);
+  const [attendanceRules, setAttendanceRules] = useState({
+    magangMinCheckoutHours: 8,
+    earlyCheckoutWarning: true
+  });
+  const [studentType, setStudentType] = useState<string>(String(user?.tipe || ""));
+  const [lastGpsAccuracy, setLastGpsAccuracy] = useState<number | null>(null);
+  const [lastGpsResult, setLastGpsResult] = useState<GpsResult | null>(null);
+  const [gpsWarning, setGpsWarning] = useState("");
+  const [earlyCheckoutWarning, setEarlyCheckoutWarning] = useState<{
+    elapsedHours: number;
+    requiredHours: number;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [isDesktopAttendanceBlocked, setIsDesktopAttendanceBlocked] = useState(false);
 
   const loadAttendance = async () => {
-    if (!user?.id) return;
+    if (!user?.id) return null;
     try {
-      const data = await apiGet<any>(`/attendance?studentId=${encodeURIComponent(user.id)}`);
+      const data = await apiGet<any>(`/attendance?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`);
+      const nextGpsInfo = data.gps || null;
+      const nextGpsPolicy = normalizeGpsPolicy(data?.gpsPolicy, nextGpsInfo);
       setMonthLabel(
         data?.month
           ? new Date(`${data.month}-01`).toLocaleDateString("id-ID", { month: "long", year: "numeric" })
@@ -27,10 +95,22 @@ export default function Attendance() {
       setChartData(data.chartData || []);
       setHistoryData(data.history || []);
       setTodayData(data.today || { checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in" });
-      setGpsInfo(data.gps || null);
+      setGpsInfo(nextGpsInfo);
+      setGpsPolicy(nextGpsPolicy);
+      if (data?.student?.tipe || data?.studentType) {
+        setStudentType(String(data?.student?.tipe || data?.studentType));
+      }
+      if (data?.attendanceRules) {
+        setAttendanceRules({
+          magangMinCheckoutHours: Number(data.attendanceRules.magangMinCheckoutHours) || 8,
+          earlyCheckoutWarning: Boolean(data.attendanceRules.earlyCheckoutWarning ?? true)
+        });
+      }
       setError("");
+      return nextGpsPolicy;
     } catch (err: any) {
       setError(err?.message || "Gagal memuat data kehadiran");
+      return null;
     }
   };
 
@@ -38,7 +118,76 @@ export default function Attendance() {
     loadAttendance();
   }, [user?.id]);
 
-  const getCurrentPosition = () =>
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const refreshOnFocus = () => {
+      loadAttendance();
+    };
+
+    const refreshOnVisible = () => {
+      if (document.visibilityState === "visible") {
+        loadAttendance();
+      }
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisible);
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisible);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const detectDesktopLikeDevice = () => {
+      const userAgent = navigator.userAgent || "";
+      const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+      const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+      const narrowViewport = window.innerWidth <= 1024;
+      setIsDesktopAttendanceBlocked(!mobileUserAgent && !coarsePointer && !narrowViewport);
+    };
+
+    detectDesktopLikeDevice();
+    window.addEventListener("resize", detectDesktopLikeDevice);
+    return () => {
+      window.removeEventListener("resize", detectDesktopLikeDevice);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+
+    const loadSupportingData = async () => {
+      try {
+        const [settings, profile] = await Promise.all([
+          apiGet<any>("/system-settings"),
+          apiGet<any>(`/profile/${encodeURIComponent(user.id)}`)
+        ]);
+
+        if (!active) return;
+        setAttendanceRules({
+          magangMinCheckoutHours: Number(settings?.attendanceRules?.magangMinCheckoutHours) || 8,
+          earlyCheckoutWarning: Boolean(settings?.attendanceRules?.earlyCheckoutWarning ?? true)
+        });
+        if (profile?.tipe) {
+          setStudentType(String(profile.tipe));
+        }
+      } catch {
+        // Attendance can still work with defaults if supporting endpoints lag behind.
+      }
+    };
+
+    loadSupportingData();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  const getCurrentPosition = (policy = gpsPolicy) =>
     new Promise<GeolocationPosition>((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error("Browser tidak mendukung geolocation."));
@@ -52,10 +201,108 @@ export default function Attendance() {
 
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: policy?.timeoutMs || DEFAULT_GPS_POLICY.timeoutMs,
         maximumAge: 0
       });
     });
+
+  const getBestCurrentPosition = async (policy = gpsPolicy) => {
+    const sampleCount = Math.max(3, policy?.sampleCount || DEFAULT_GPS_POLICY.sampleCount);
+    const targetAccuracy = Math.max(20, policy?.maxAccuracyMeters || DEFAULT_GPS_POLICY.maxAccuracyMeters);
+    const watchDuration = Math.min(15000, Math.max(10000, (policy?.timeoutMs || DEFAULT_GPS_POLICY.timeoutMs) * 2));
+    const samples: GeolocationPosition[] = [];
+
+    if (!navigator.geolocation) {
+      throw new Error("Browser tidak mendukung geolocation.");
+    }
+
+    if (!window.isSecureContext) {
+      throw new Error("Geolocation hanya berjalan di HTTPS atau localhost. Buka aplikasi via http://localhost:5173 atau gunakan HTTPS.");
+    }
+
+    return new Promise<GeolocationPosition>((resolve, reject) => {
+      let settled = false;
+      let watchId: number | null = null;
+      let fallbackTimer: number | null = null;
+      let finishTimer: number | null = null;
+
+      const cleanup = () => {
+        if (watchId != null) navigator.geolocation.clearWatch(watchId);
+        if (fallbackTimer != null) window.clearTimeout(fallbackTimer);
+        if (finishTimer != null) window.clearTimeout(finishTimer);
+      };
+
+      const finish = () => {
+        if (settled || samples.length === 0) return;
+        settled = true;
+        cleanup();
+        resolve(samples.reduce((best, current) =>
+          current.coords.accuracy < best.coords.accuracy ? current : best
+        ));
+      };
+
+      finishTimer = window.setTimeout(() => {
+        finish();
+        if (!settled) {
+          settled = true;
+          cleanup();
+          reject(new Error("Gagal mengambil sample lokasi."));
+        }
+      }, watchDuration);
+
+      fallbackTimer = window.setTimeout(async () => {
+        if (samples.length > 0 || settled) return;
+        try {
+          const position = await getCurrentPosition(policy);
+          samples.push(position);
+          if (position.coords.accuracy <= targetAccuracy) {
+            finish();
+            return;
+          }
+
+          if (!settled) {
+            settled = true;
+            cleanup();
+            resolve(position);
+          }
+        } catch (err) {
+          if (!settled) {
+            settled = true;
+            cleanup();
+            reject(err);
+          }
+        }
+      }, Math.max(4000, watchDuration - 1500));
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          if (!Number.isFinite(position.coords.accuracy) || position.coords.accuracy <= 0) {
+            return;
+          }
+          samples.push(position);
+          if (samples.length >= sampleCount && position.coords.accuracy <= targetAccuracy) {
+            finish();
+          }
+        },
+        (err) => {
+          if (samples.length > 0) {
+            finish();
+            return;
+          }
+          if (!settled) {
+            settled = true;
+            cleanup();
+            reject(err);
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: policy?.timeoutMs || DEFAULT_GPS_POLICY.timeoutMs,
+          maximumAge: 0
+        }
+      );
+    });
+  };
 
   const getLocationPermissionState = async (): Promise<"granted" | "denied" | "prompt" | "unknown"> => {
     try {
@@ -67,33 +314,125 @@ export default function Attendance() {
     }
   };
 
-  const handleAttendanceAction = async () => {
+  const getElapsedCheckoutHours = () => {
+    if (!todayData.checkIn || todayData.checkIn === "--:--") return null;
+    const [hours, minutes] = todayData.checkIn.split(":").map(Number);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+    const checkInTime = new Date();
+    checkInTime.setHours(hours, minutes, 0, 0);
+    const diffMs = Date.now() - checkInTime.getTime();
+    if (diffMs < 0) return null;
+    return diffMs / (1000 * 60 * 60);
+  };
+
+  const shouldWarnEarlyCheckout = () => {
+    if (todayData.status !== "Berlangsung") return null;
+    if (!attendanceRules.earlyCheckoutWarning) return null;
+    if (String(studentType).toLowerCase() !== "magang") return null;
+
+    const elapsedHours = getElapsedCheckoutHours();
+    const requiredHours = Number(attendanceRules.magangMinCheckoutHours) || 8;
+    if (elapsedHours == null || elapsedHours >= requiredHours) return null;
+
+    return { elapsedHours, requiredHours };
+  };
+
+  const handleAttendanceAction = async (forceEarlyCheckout = false) => {
     if (!user?.id || submitting) return;
+    if (isDesktopAttendanceBlocked) {
+      setGpsWarning("");
+      setError("Absensi GPS mahasiswa harus dilakukan dari HP/perangkat mobile dengan Precise Location atau High Accuracy aktif.");
+      return;
+    }
+    const earlyWarning = shouldWarnEarlyCheckout();
+    if (earlyWarning && !forceEarlyCheckout) {
+      setEarlyCheckoutWarning(earlyWarning);
+      return;
+    }
+
     setSubmitting(true);
     setError("");
+    setGpsWarning("");
+    setLastGpsResult(null);
+    setEarlyCheckoutWarning(null);
 
     try {
+      const latestGpsPolicy = await loadAttendance();
+      const effectiveGpsPolicy = latestGpsPolicy || gpsPolicy;
       const permissionState = await getLocationPermissionState();
       if (permissionState === "denied") {
         throw new Error("Izin lokasi sedang diblokir browser. Buka ikon gembok di address bar > Site settings > Location > Allow, lalu refresh halaman.");
       }
 
-      const position = await getCurrentPosition();
+      const position = await getBestCurrentPosition(effectiveGpsPolicy);
+      const accuracy = Number(position.coords.accuracy);
+      setLastGpsAccuracy(Number.isFinite(accuracy) ? accuracy : null);
+
+      if (Number.isFinite(accuracy) && accuracy >= EXTREME_GPS_ACCURACY_THRESHOLD) {
+        setGpsWarning("");
+        throw new Error(`Lokasi perangkat masih terlalu kasar (${Math.round(accuracy)}m). Aktifkan precise location / high accuracy, matikan mode hemat baterai, lalu coba lagi di area terbuka.`);
+      }
+
+      if (
+        Number.isFinite(accuracy) &&
+        effectiveGpsPolicy?.maxAccuracyMeters &&
+        accuracy > effectiveGpsPolicy.maxAccuracyMeters
+      ) {
+        setGpsWarning(`Akurasi GPS perangkat ${Math.round(accuracy)}m. Koordinat tetap dikirim dan keputusan valid/tidak valid mengikuti hasil validasi server.`);
+      }
+
       const payload = {
         studentId: user.id,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy
+        accuracy,
+        forceEarlyCheckout,
+        earlyCheckoutAcknowledged: forceEarlyCheckout
       };
 
       if (todayData.status === "Berlangsung") {
-        await apiPost("/attendance/check-out", payload);
+        const result = await apiPost<any>("/attendance/check-out", payload);
+        setLastGpsResult({
+          accuracyMeters: normalizeNumber(result?.accuracyMeters, accuracy),
+          maxAccuracyMeters: result?.maxAccuracyMeters ?? effectiveGpsPolicy?.maxAccuracyMeters ?? null,
+          distanceMeters: result?.distanceMeters ?? null,
+          allowedRadiusMeters: result?.allowedRadiusMeters ?? effectiveGpsPolicy?.radiusMeters ?? null
+        });
       } else {
-        await apiPost("/attendance/check-in", payload);
+        const result = await apiPost<any>("/attendance/check-in", payload);
+        setLastGpsResult({
+          accuracyMeters: normalizeNumber(result?.accuracyMeters, accuracy),
+          maxAccuracyMeters: result?.maxAccuracyMeters ?? effectiveGpsPolicy?.maxAccuracyMeters ?? null,
+          distanceMeters: result?.distanceMeters ?? null,
+          allowedRadiusMeters: result?.allowedRadiusMeters ?? effectiveGpsPolicy?.radiusMeters ?? null
+        });
       }
 
       await loadAttendance();
     } catch (err: any) {
+      const errorBody = err instanceof ApiError ? err.body : null;
+      if (errorBody?.earlyCheckoutWarning) {
+        setEarlyCheckoutWarning({
+          elapsedHours: Number(errorBody.durationHours) || 0,
+          requiredHours: Number(errorBody.requiredHours) || attendanceRules.magangMinCheckoutHours
+        });
+        setError("");
+        return;
+      }
+
+      if (errorBody?.reason) {
+        setLastGpsResult({
+          reason: errorBody.reason,
+          accuracyMeters: errorBody.accuracyMeters ?? null,
+          maxAccuracyMeters: errorBody.maxAccuracyMeters ?? gpsPolicy?.maxAccuracyMeters ?? null,
+          distanceMeters: errorBody.distanceMeters ?? null,
+          allowedRadiusMeters: errorBody.allowedRadiusMeters ?? gpsPolicy?.radiusMeters ?? null
+        });
+        setError(errorBody.message || err?.message || "Validasi GPS ditolak server.");
+        return;
+      }
+
       if (err?.code === 1) {
         setError("Izin lokasi ditolak. Klik ikon gembok di address bar, ubah Location menjadi Allow, lalu refresh halaman.");
       } else if (err?.code === 2) {
@@ -139,27 +478,73 @@ export default function Attendance() {
   };
 
   const openGpsCoordinates = () => {
-    if (!gpsInfo) return;
-    const url = `https://www.google.com/maps?q=${gpsInfo.latitude},${gpsInfo.longitude}`;
+    const latitude = gpsPolicy?.targetLatitude ?? gpsInfo?.latitude;
+    const longitude = gpsPolicy?.targetLongitude ?? gpsInfo?.longitude;
+    if (latitude == null || longitude == null) return;
+    const url = `https://www.google.com/maps?q=${latitude},${longitude}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
+
+  const targetGps = gpsPolicy
+    ? {
+      latitude: gpsPolicy.targetLatitude,
+      longitude: gpsPolicy.targetLongitude,
+      radius: gpsPolicy.radiusMeters
+    }
+    : gpsInfo;
 
   return (
     <Layout title="Kehadiran (GPS)">
       <div className="flex flex-col gap-6 w-full mx-auto pb-4">
+        {earlyCheckoutWarning && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 px-4">
+            <div className="w-full max-w-[420px] rounded-[16px] border border-amber-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-amber-100 text-amber-600">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-foreground">Check-out kurang dari batas jam</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Durasi hadir Anda baru {earlyCheckoutWarning.elapsedHours.toFixed(1)} jam. Batas mahasiswa magang adalah {earlyCheckoutWarning.requiredHours} jam.
+                  </p>
+                </div>
+              </div>
+              <p className="mb-5 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                Jika tetap check-out, operator akan menerima notifikasi untuk ditinjau.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEarlyCheckoutWarning(null)}
+                  className="h-10 rounded-[10px] border border-border px-4 text-sm font-bold text-muted-foreground hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAttendanceAction(true)}
+                  className="h-10 rounded-[10px] bg-amber-500 px-4 text-sm font-black text-white hover:bg-amber-600"
+                >
+                  Tetap Check-out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
             {error}
           </div>
         )}
-        
+
         {/* Top Section: 2 Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
+
           {/* Left Column: Dark GPS Card */}
           <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-[14px] p-6 text-white shadow-md relative overflow-hidden flex flex-col justify-between h-full border border-slate-800 min-h-[300px]">
             <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '12px 12px' }}></div>
-            
+
             <div className="relative z-10 flex flex-col gap-5 h-full">
               {/* Header */}
               <div className="flex items-start justify-between">
@@ -192,16 +577,37 @@ export default function Attendance() {
                 <div className="flex-1">
                   <div className="flex items-center justify-between text-xs text-white/70 mb-2">
                     <span>Status: {todayData.status}</span>
-                    {gpsInfo && <span>Radius: {gpsInfo.radius} m</span>}
+                    {targetGps && <span>Radius: {targetGps.radius} m</span>}
                   </div>
-                  {gpsInfo && (
+                  {targetGps && (
                     <button
                       onClick={openGpsCoordinates}
                       type="button"
                       className="text-[11px] text-white/80 hover:text-white underline underline-offset-2 mb-2"
                     >
-                      Lihat titik absensi ({gpsInfo.latitude.toFixed(5)}, {gpsInfo.longitude.toFixed(5)})
+                      Lihat titik absensi ({targetGps.latitude.toFixed(5)}, {targetGps.longitude.toFixed(5)})
                     </button>
+                  )}
+                  {lastGpsAccuracy != null && (
+                    <p className="text-[11px] text-white/70 mb-2">
+                      Akurasi GPS perangkat: {Math.round(lastGpsAccuracy)} m
+                    </p>
+                  )}
+                  {lastGpsResult?.distanceMeters != null && (
+                    <p className="text-[11px] text-white/70 mb-2">
+                      Jarak terakhir: {Math.round(lastGpsResult.distanceMeters)} m
+                      {lastGpsResult.allowedRadiusMeters != null ? ` dari radius ${Math.round(lastGpsResult.allowedRadiusMeters)} m` : ""}
+                    </p>
+                  )}
+                  {gpsWarning && (
+                    <p className="text-[11px] text-amber-200 mb-2">
+                      {gpsWarning}
+                    </p>
+                  )}
+                  {isDesktopAttendanceBlocked && (
+                    <p className="text-[11px] text-amber-200 mb-2">
+                      Perangkat ini terdeteksi sebagai desktop/laptop. Absensi GPS mahasiswa harus dilakukan dari HP agar lokasi presisi bisa terbaca.
+                    </p>
                   )}
                   <div className="w-full bg-white/10 rounded-full h-1.5">
                     <div
@@ -211,18 +617,20 @@ export default function Attendance() {
                   </div>
                 </div>
                 <button
-                  onClick={handleAttendanceAction}
-                  disabled={submitting || todayData.status === "Selesai"}
+                  onClick={() => handleAttendanceAction()}
+                  disabled={submitting || todayData.status === "Selesai" || isDesktopAttendanceBlocked}
                   className="bg-primary hover:bg-primary-light disabled:bg-slate-500 disabled:cursor-not-allowed text-white px-6 py-3 rounded-[12px] font-bold shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                 >
                   {todayData.status === "Berlangsung" ? <LogOut size={18} /> : <MapPin size={18} />}
                   {todayData.status === "Selesai"
                     ? "Absensi Selesai"
-                    : submitting
-                      ? "Memproses..."
-                      : todayData.status === "Berlangsung"
-                        ? "Check-Out Sekarang"
-                        : "Check-In Sekarang"}
+                    : isDesktopAttendanceBlocked
+                      ? "Gunakan HP untuk Absensi"
+                      : submitting
+                        ? "Memproses..."
+                        : todayData.status === "Berlangsung"
+                          ? "Check-Out Sekarang"
+                          : "Check-In Sekarang"}
                 </button>
               </div>
             </div>
@@ -231,7 +639,7 @@ export default function Attendance() {
           {/* Right Column: Attendance Donut Chart */}
           <div className="bg-card border border-border rounded-[14px] p-6 shadow-sm flex flex-col h-full min-h-[300px]">
             <h2 className="text-lg font-bold text-foreground mb-4">Rekap Kehadiran {monthLabel ? monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1) : "Bulan Ini"}</h2>
-            
+
             <div className="flex-1 flex flex-col sm:flex-row items-center gap-8">
               {/* Chart */}
               <div className="relative w-48 h-48 shrink-0">
@@ -251,13 +659,13 @@ export default function Attendance() {
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value: number) => [`${value} Hari`, "Total"]}
                       contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
-                
+
                 {/* Center Text */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <span className="text-3xl font-bold text-foreground">{hadirPercentage}%</span>
@@ -279,7 +687,7 @@ export default function Attendance() {
               </div>
             </div>
           </div>
-          
+
         </div>
 
         {/* Bottom Section: History Table */}
@@ -289,24 +697,23 @@ export default function Attendance() {
             <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
               <Clock size={20} className="text-primary" /> Riwayat Kehadiran
             </h2>
-            
+
             <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 hide-scrollbar">
               {filters.map((filter) => (
                 <button
                   key={filter}
                   onClick={() => setActiveFilter(filter)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap border ${
-                    activeFilter === filter
+                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap border ${activeFilter === filter
                       ? "bg-primary text-white border-primary"
                       : "bg-background text-muted-foreground border-border hover:bg-muted"
-                  }`}
+                    }`}
                 >
                   {filter}
                 </button>
               ))}
             </div>
           </div>
-          
+
           {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse min-w-[800px]">
@@ -339,7 +746,7 @@ export default function Attendance() {
                 ))}
               </tbody>
             </table>
-            
+
             {filteredData.length === 0 && (
               <div className="p-8 text-center flex flex-col items-center justify-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground">

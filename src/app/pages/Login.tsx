@@ -33,7 +33,7 @@ export default function Login() {
 
     setSubmitting(true);
     try {
-      const result = await apiPost<{ user: { id: string; name: string; initials: string; role: UserRole; prodi?: string } }>("/auth/login", {
+      const result = await apiPost<{ user: { id: string; name: string; initials: string; role: UserRole; prodi?: string; tipe?: string } }>("/auth/login", {
         identifier: identifier.trim(),
         password
       });
@@ -44,7 +44,8 @@ export default function Login() {
         name: result.user.name,
         initials: result.user.initials,
         role,
-        prodi: result.user.prodi
+        prodi: result.user.prodi,
+        tipe: result.user.tipe
       });
       navigate(ROLE_DESTINATION[role] || "/dashboard");
     } catch (err: any) {
