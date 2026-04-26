@@ -47,6 +47,10 @@ function formatDateOnly(dateStr: string | null | undefined): string {
   }
 }
 
+function getFacultyLabel(item: any): string {
+  return item?.fakultas || item?.faculty || item?.facultyName || item?.fakultas_nama || item?.faculty_name || "-";
+}
+
 export default function DatabaseMahasiswa() {
   const { confirm, confirmDialog } = useConfirmDialog();
   const [mahasiswaList, setMahasiswaList] = useState<MahasiswaRecord[]>([]);
@@ -56,8 +60,11 @@ export default function DatabaseMahasiswa() {
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterRiset, setFilterRiset] = useState("Semua");
   const [filterAngkatan, setFilterAngkatan] = useState("Semua");
+  const [filterFakultas, setFilterFakultas] = useState("Semua");
+  const [filterTipe, setFilterTipe] = useState("Semua");
   const [selected, setSelected] = useState<MahasiswaRecord | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<MahasiswaRecord | null>(null);
+  const [infoModal, setInfoModal] = useState<{ label: string; value: string } | null>(null);
   const [modal, setModal] = useState<ModalMode>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
@@ -72,7 +79,9 @@ export default function DatabaseMahasiswa() {
     email: "",
     phone: "",
     prodi: "",
+    fakultas: "",
     pembimbing: "",
+    bergabung: "",
     status: "Aktif" as MahasiswaRecord["status"],
     tipe: "Riset" as MahasiswaRecord["tipe"],
     riset: [] as string[]
@@ -82,13 +91,6 @@ export default function DatabaseMahasiswa() {
   const loadStudents = async () => {
     setError("");
     try {
-      // Cek role user yang login
-      const raw = localStorage.getItem("stas_user");
-      if (raw) {
-        const user = JSON.parse(raw);
-        console.log("[DEBUG] Current user:", user);
-      }
-      
       const rows = await apiGet<Array<any>>("/students");
       const logRows = await apiGet<Array<any>>("/logbooks");
       const researches = await apiGet<Array<any>>("/research");
@@ -111,6 +113,7 @@ export default function DatabaseMahasiswa() {
         initials: item.initials || toInitials(item.name),
         color: AVATAR_COLORS[index % AVATAR_COLORS.length],
         prodi: item.prodi || "-",
+        fakultas: getFacultyLabel(item),
         angkatan: String(item.angkatan || "-"),
         email: item.email || "-",
         phone: item.phone || "-",
@@ -146,12 +149,14 @@ export default function DatabaseMahasiswa() {
 
       try {
         const detail = await apiGet<any>(`/students/${selected.id}`);
+        const detailFakultas = getFacultyLabel(detail);
         setSelectedDetail({
           ...selected,
           nim: detail?.nim || selected.nim,
           name: detail?.name || selected.name,
           initials: detail?.initials || selected.initials,
           prodi: detail?.prodi || selected.prodi,
+          fakultas: detailFakultas !== "-" ? detailFakultas : selected.fakultas || "-",
           angkatan: String(detail?.angkatan || selected.angkatan || "-"),
           email: detail?.email || selected.email,
           phone: detail?.phone || selected.phone,
@@ -179,6 +184,8 @@ export default function DatabaseMahasiswa() {
     const q = search.toLowerCase();
     const matchQ = !q || m.name.toLowerCase().includes(q) || m.nim.includes(q) || m.email.toLowerCase().includes(q);
     const matchS = filterStatus === "Semua" || m.status === filterStatus;
+    const matchF = filterFakultas === "Semua" || m.fakultas === filterFakultas;
+    const matchT = filterTipe === "Semua" || m.tipe === filterTipe;
     const matchR = filterRiset === "Semua" || m.riset.some(r => {
       // Match dengan short name atau full name
       const matchedRiset = risetOptions.find(opt => opt.short === filterRiset || opt.full === filterRiset);
@@ -186,12 +193,24 @@ export default function DatabaseMahasiswa() {
       return r === matchedRiset.full || r === matchedRiset.short;
     });
     const matchA = filterAngkatan === "Semua" || m.angkatan === filterAngkatan;
-    return matchQ && matchS && matchR && matchA;
-  }), [mahasiswaList, search, filterStatus, filterRiset, filterAngkatan, risetOptions]);
+    return matchQ && matchS && matchR && matchA && matchF && matchT;
+  }), [mahasiswaList, search, filterStatus, filterRiset, filterAngkatan, filterFakultas, filterTipe, risetOptions]);
 
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const activeStudent = selectedDetail || selected;
+  const angkatanOptions = useMemo(
+    () => Array.from(new Set(mahasiswaList.map((item) => item.angkatan).filter((item) => item && item !== "-"))).sort(),
+    [mahasiswaList]
+  );
+  const fakultasOptions = useMemo(
+    () => Array.from(new Set(mahasiswaList.map((item) => item.fakultas).filter((item) => item && item !== "-"))).sort(),
+    [mahasiswaList]
+  );
+  const tipeOptions = useMemo(
+    () => Array.from(new Set(mahasiswaList.map((item) => item.tipe).filter(Boolean))).sort(),
+    [mahasiswaList]
+  );
   const studentLogs = activeStudent ? logEntries.filter((l: any) => l.student_id === activeStudent.id).slice(0, 3).map((l: any) => ({
     title: l.title,
     date: l.date,
@@ -199,21 +218,46 @@ export default function DatabaseMahasiswa() {
     output: l.output || "-"
   })) : [];
 
-  const openEdit = (m: MahasiswaRecord, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openEdit = async (m: MahasiswaRecord, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    let target = m;
+    try {
+      const detail = await apiGet<any>(`/students/${m.id}`);
+      const detailFakultas = getFacultyLabel(detail);
+      target = {
+        ...m,
+        nim: detail?.nim || m.nim,
+        name: detail?.name || m.name,
+        angkatan: String(detail?.angkatan || m.angkatan || ""),
+        email: detail?.email || m.email,
+        phone: detail?.phone || m.phone,
+        prodi: detail?.prodi || m.prodi,
+        fakultas: detailFakultas !== "-" ? detailFakultas : m.fakultas || "",
+        pembimbing: detail?.pembimbing || m.pembimbing,
+        bergabung: formatDateOnly(detail?.bergabung || m.bergabung),
+        status: detail?.status || m.status,
+        tipe: detail?.tipe || m.tipe,
+        riset: Array.isArray(detail?.research_projects) ? detail.research_projects : m.riset || []
+      };
+    } catch {
+      target = m;
+    }
+
     setForm({
-      id: m.id,
-      nim: m.nim,
-      name: m.name,
+      id: target.id,
+      nim: target.nim,
+      name: target.name,
       password: "",
-      angkatan: m.angkatan,
-      email: m.email,
-      phone: m.phone,
-      prodi: m.prodi,
-      pembimbing: m.pembimbing,
-      status: m.status,
-      tipe: m.tipe,
-      riset: m.riset || []
+      angkatan: target.angkatan === "-" ? "" : target.angkatan,
+      email: target.email === "-" ? "" : target.email,
+      phone: target.phone === "-" ? "" : target.phone,
+      prodi: target.prodi === "-" ? "" : target.prodi,
+      fakultas: target.fakultas === "-" ? "" : target.fakultas || "",
+      pembimbing: target.pembimbing === "-" ? "" : target.pembimbing,
+      bergabung: target.bergabung === "-" ? "" : target.bergabung,
+      status: target.status,
+      tipe: target.tipe,
+      riset: target.riset || []
     });
     setModal("edit");
   };
@@ -237,6 +281,7 @@ export default function DatabaseMahasiswa() {
         name: form.name.trim(),
         initials: toInitials(form.name),
         prodi: form.prodi.trim(),
+        fakultas: form.fakultas.trim() || null,
         password: form.password.trim() || null,
         angkatan: form.angkatan.trim(),
         email: form.email.trim(),
@@ -244,22 +289,17 @@ export default function DatabaseMahasiswa() {
         status: form.status,
         tipe: form.tipe,
         pembimbing: form.pembimbing.trim(),
+        bergabung: form.bergabung || null,
         riset: form.riset
       };
 
-      console.log("[DEBUG] Sending payload:", payload);
-      console.log("[DEBUG] Modal mode:", modal);
-
       let result;
       if (modal === "add") {
-        console.log("[DEBUG] Calling POST /students");
         result = await apiPost<{ message: string }>("/students", payload);
       } else {
-        console.log("[DEBUG] Calling PUT /students/" + form.id);
         result = await apiPut<{ message: string }>(`/students/${form.id}`, payload);
       }
 
-      console.log("[DEBUG] API response:", result);
       await confirm({
         title: "Data berhasil disimpan",
         description: result?.message || "Data tersimpan.",
@@ -324,11 +364,13 @@ export default function DatabaseMahasiswa() {
             {[
               { label: "Status", value: filterStatus, setter: setFilterStatus, options: ["Semua", "Aktif", "Cuti", "Alumni", "Mengundurkan Diri"] },
               { label: "Riset", value: filterRiset, setter: setFilterRiset, options: ["Semua", ...risetOptions.map(r => r.short)] },
-              { label: "Angkatan", value: filterAngkatan, setter: setFilterAngkatan, options: ["Semua", "2019", "2020", "2021", "2022"] },
+              { label: "Angkatan", value: filterAngkatan, setter: setFilterAngkatan, options: ["Semua", ...angkatanOptions] },
+              { label: "Fakultas", value: filterFakultas, setter: setFilterFakultas, options: ["Semua", ...fakultasOptions] },
+              { label: "Tipe", value: filterTipe, setter: setFilterTipe, options: ["Semua", ...tipeOptions] },
             ].map(f => (
               <select key={f.label} value={f.value} onChange={e => { f.setter(e.target.value); setPage(1); }}
                 className="h-9 px-3 bg-white border border-border rounded-[10px] text-sm font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer">
-                {f.options.map(o => <option key={o}>{o}</option>)}
+                {f.options.map(o => <option key={o} value={o}>{o === "Semua" ? `Semua ${f.label}` : o}</option>)}
               </select>
             ))}
           </div>
@@ -346,7 +388,9 @@ export default function DatabaseMahasiswa() {
                 email: "",
                 phone: "",
                 prodi: "",
+                fakultas: "",
                 pembimbing: "",
+                bergabung: "",
                 status: "Aktif",
                 tipe: "Riset",
                 riset: []
@@ -362,11 +406,15 @@ export default function DatabaseMahasiswa() {
           {/* Table */}
           <div className={`flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all ${selected ? "min-w-0" : ""}`}>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="w-full min-w-[1280px] text-left text-sm">
                 <thead><tr className="bg-slate-50 border-b border-border">
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Mahasiswa</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">NIM</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Angkatan</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Tipe</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden lg:table-cell">Program Studi</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Fakultas</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Pembimbing</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Riset</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Bergabung</th>
@@ -379,14 +427,22 @@ export default function DatabaseMahasiswa() {
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <Avatar initials={m.initials} color={m.color} size="sm" />
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-black text-foreground text-sm">{m.name}</p>
-                            <p className="text-[11px] text-muted-foreground">{m.email}</p>
+                            <p className="max-w-[240px] truncate text-[11px] text-muted-foreground">{m.email}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-3.5 font-mono text-sm text-foreground">{m.nim}</td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground">{m.angkatan}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${m.tipe === "Magang" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
+                          {m.tipe || "-"}
+                        </span>
+                      </td>
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{m.prodi}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.fakultas || "-"}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.pembimbing || "-"}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex flex-wrap gap-1">
                           {m.riset.map(r => (
@@ -445,7 +501,9 @@ export default function DatabaseMahasiswa() {
                 <div className="flex flex-col gap-2.5 text-xs mb-5 pb-5 border-b border-border">
                   {[
                     { label: "Program Studi", value: activeStudent.prodi },
+                    { label: "Fakultas", value: activeStudent.fakultas || "-" },
                     { label: "Angkatan", value: activeStudent.angkatan },
+                    { label: "Tipe Mahasiswa", value: activeStudent.tipe || "-" },
                     { label: "Email", value: activeStudent.email },
                     { label: "Telepon", value: activeStudent.phone },
                     { label: "Pembimbing", value: activeStudent.pembimbing },
@@ -453,7 +511,17 @@ export default function DatabaseMahasiswa() {
                   ].map(f => (
                     <div key={f.label} className="flex justify-between gap-2">
                       <span className="font-black text-muted-foreground">{f.label}</span>
-                      <span className="font-bold text-foreground text-right">{f.value}</span>
+                      {f.label === "Email" && String(f.value || "").length > 22 ? (
+                        <button
+                          onClick={() => setInfoModal({ label: f.label, value: String(f.value || "-") })}
+                          className="max-w-[140px] truncate text-right font-bold text-amber-600 hover:underline"
+                          title={String(f.value || "-")}
+                        >
+                          Lihat email
+                        </button>
+                      ) : (
+                        <span className="font-bold text-foreground text-right">{f.value}</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -540,6 +608,14 @@ export default function DatabaseMahasiswa() {
                 <label className="text-xs font-black text-foreground block mb-1.5">Program Studi</label>
                 <input value={form.prodi} onChange={(e) => setForm((prev) => ({ ...prev, prodi: e.target.value }))} placeholder="S1 Teknik Informatika" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
               </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Fakultas</label>
+                <input value={form.fakultas} onChange={(e) => setForm((prev) => ({ ...prev, fakultas: e.target.value }))} placeholder="Fakultas" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Bergabung</label>
+                <input type="date" value={form.bergabung} onChange={(e) => setForm((prev) => ({ ...prev, bergabung: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
+              </div>
               <div className="col-span-2">
                 <label className="text-xs font-black text-foreground block mb-1.5">Pembimbing</label>
                 <input value={form.pembimbing} onChange={(e) => setForm((prev) => ({ ...prev, pembimbing: e.target.value }))} placeholder="Nama dosen pembimbing" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
@@ -587,6 +663,23 @@ export default function DatabaseMahasiswa() {
             <div className="px-6 pb-6 flex gap-3">
               <button onClick={() => setModal(null)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
               <button onClick={handleSave} disabled={saving} className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors shadow-sm disabled:opacity-60">{saving ? "Menyimpan..." : "Simpan"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {infoModal && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setInfoModal(null)}>
+          <div className="w-full max-w-[420px] rounded-[18px] border border-border bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h3 className="text-sm font-black text-foreground">{infoModal.label}</h3>
+              <button onClick={() => setInfoModal(null)} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100">
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="break-all rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-foreground">
+                {infoModal.value}
+              </p>
             </div>
           </div>
         </div>
