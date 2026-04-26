@@ -482,9 +482,10 @@ export default function DatabaseMahasiswa() {
             </div>
           </div>
 
-          {/* Side Detail Panel */}
+          {/* Detail Modal */}
           {activeStudent && (
-            <div className="w-[300px] shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
+            <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setSelected(null)}>
+            <div className="w-full max-w-[640px] max-h-[90vh] overflow-y-auto bg-white border border-border rounded-[18px] shadow-2xl" onClick={(event) => event.stopPropagation()}>
               <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-gradient-to-r from-amber-50 to-white">
                 <h3 className="text-sm font-black text-foreground">Profil Mahasiswa</h3>
                 <button onClick={() => setSelected(null)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={14} /></button>
@@ -511,17 +512,7 @@ export default function DatabaseMahasiswa() {
                   ].map(f => (
                     <div key={f.label} className="flex justify-between gap-2">
                       <span className="font-black text-muted-foreground">{f.label}</span>
-                      {f.label === "Email" && String(f.value || "").length > 22 ? (
-                        <button
-                          onClick={() => setInfoModal({ label: f.label, value: String(f.value || "-") })}
-                          className="max-w-[140px] truncate text-right font-bold text-amber-600 hover:underline"
-                          title={String(f.value || "-")}
-                        >
-                          Lihat email
-                        </button>
-                      ) : (
-                        <span className="font-bold text-foreground text-right">{f.value}</span>
-                      )}
+                      <span className={`font-bold text-foreground text-right ${f.label === "Email" ? "max-w-[360px] break-all" : ""}`}>{f.value}</span>
                     </div>
                   ))}
                 </div>
@@ -556,7 +547,15 @@ export default function DatabaseMahasiswa() {
               </div>
               <div className="px-5 pb-4">
                 <div className="flex gap-2">
-                  <button onClick={e => openEdit(activeStudent, e)} className="flex-1 h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-[10px] transition-colors">Edit Data Mahasiswa</button>
+                  <button
+                    onClick={async (e) => {
+                      await openEdit(activeStudent, e);
+                      setSelected(null);
+                    }}
+                    className="flex-1 h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-[10px] transition-colors"
+                  >
+                    Edit Data Mahasiswa
+                  </button>
                   <button
                     onClick={() => handleDelete(activeStudent)}
                     disabled={deletingId === activeStudent.id}
@@ -566,6 +565,7 @@ export default function DatabaseMahasiswa() {
                   </button>
                 </div>
               </div>
+            </div>
             </div>
           )}
         </div>
