@@ -18,6 +18,8 @@ export interface AppNotification {
   time: string;
   timeMs: number;
   read: boolean;
+  readAt?: string | null;
+  read_at?: string | null;
   link?: string;
 }
 
@@ -116,20 +118,35 @@ function getLink(role: string | undefined, type: NotificationType) {
   }
 }
 
+function isNotificationRead(item: any) {
+  if (typeof item?.read === "boolean") {
+    return item.read;
+  }
+
+  return Boolean(
+    item?.read_at ||
+    item?.readAt
+  );
+}
+
 function mapNotificationRows(rows: Array<any>, role?: string): AppNotification[] {
   return (rows || []).map((item: any) => {
     const createdAt = item?.created_at || item?.createdAt || new Date().toISOString();
     const timeMs = new Date(createdAt).getTime();
     const type = normalizeType(item?.type);
+    const id = String(item?.id || `notif-${timeMs}`);
+    const readAt = item?.readAt || item?.read_at || null;
 
     return {
-      id: String(item?.id || `notif-${timeMs}`),
+      id,
       type,
       title: item?.title || "Notifikasi",
       body: item?.body || "",
       time: formatRelativeTime(createdAt),
       timeMs: Number.isNaN(timeMs) ? Date.now() : timeMs,
-      read: Boolean(item?.read_at || item?.readAt),
+      read: isNotificationRead(item),
+      readAt,
+      read_at: item?.read_at || readAt,
       link: getLink(role, type),
     };
   });
@@ -176,14 +193,26 @@ export function useNotifications({
     );
 
     try {
-      await apiPatch(`/notifications/${id}/read`, {});
+      const response = await apiPatch<{ read_at?: string | null; readAt?: string | null; read?: boolean }>(
+        `/notifications/${id}/read`,
+        {}
+      );
+      const readAt = response?.readAt || response?.read_at || new Date().toISOString();
+      setNotifs((prev) =>
+        prev.map((notif) =>
+          notif.id === id
+            ? { ...notif, read: response?.read ?? true, readAt, read_at: response?.read_at || readAt }
+            : notif
+        )
+      );
     } catch {
       // Keep optimistic UI even if backend mark-read fails.
     }
   };
 
   const markAllRead = async () => {
-    setNotifs((prev) => prev.map((notif) => ({ ...notif, read: true })));
+    const readAt = new Date().toISOString();
+    setNotifs((prev) => prev.map((notif) => ({ ...notif, read: true, readAt, read_at: readAt })));
 
     try {
       await apiPatch("/notifications/read-all", {});

@@ -225,7 +225,7 @@ export default function OperatorDashboard() {
         studentInitials: studentName.split(" ").map((chunk) => chunk[0] || "").join("").slice(0, 2).toUpperCase() || "M",
         durationHours: durationMatch?.[1] ? Number(durationMatch[1].replace(",", ".")) : null,
         requiredHours: requiredMatch?.[1] ? Number(requiredMatch[1].replace(",", ".")) : null,
-        read: Boolean(item?.read_at || item?.readAt)
+        read: typeof item?.read === "boolean" ? item.read : Boolean(item?.read_at || item?.readAt)
       };
     };
 
