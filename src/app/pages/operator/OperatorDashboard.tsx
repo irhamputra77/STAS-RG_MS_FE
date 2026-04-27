@@ -4,7 +4,7 @@ import { OperatorLayout } from "../../components/OperatorLayout";
 import {
   Users, FlaskConical, CalendarCheck, FileText, BookOpen, Kanban,
   AlertTriangle, Check, X, ChevronRight, Clock,
-  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell, LockOpen,
+  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../lib/api";
 import { formatDateYmd } from "../../lib/date";
@@ -28,6 +28,10 @@ type WarningItem = {
   attendanceStatus?: string | null;
   currentHours?: number | null;
   targetHours?: number | null;
+};
+
+type AttendanceAbsentItem = WarningItem & {
+  accessLock?: StudentAccessLock;
 };
 
 type WarningData = {
@@ -635,10 +639,29 @@ export default function OperatorDashboard() {
   const hadirHariIniMhs = students.filter((item) => presentIdSet.has(String(item.id)));
   const getAccessLockForStudent = (studentId: string) =>
     accessLocks.find((item) => String(item.studentId) === String(studentId));
+  const lockedAbsentMhs: AttendanceAbsentItem[] = accessLocks.map((lock) => ({
+    id: lock.id || `lock-${lock.studentId}`,
+    type: "attendance_absent",
+    studentId: String(lock.studentId || ""),
+    recipientUserId: String(lock.studentId || ""),
+    studentName: lock.studentName || "Mahasiswa",
+    studentInitials: lock.studentInitials || lock.studentName?.slice(0, 2)?.toUpperCase() || "M",
+    studentColor: "bg-red-500 text-white",
+    nim: lock.nim || "-",
+    referenceDate: lock.date || getJakartaDateKey(),
+    attendanceStatus: "Tidak Hadir",
+    accessLock: lock,
+  }));
+  const warningAbsentMhs: AttendanceAbsentItem[] = warnings.attendanceAbsent
+    .filter((item) => item.attendanceStatus !== "Cuti")
+    .map((item) => ({ ...item, accessLock: getAccessLockForStudent(item.studentId) }));
   const tidakHadirMhs = hasPassedAttendanceCutoff
-    ? warnings.attendanceAbsent.filter((item) =>
-      item.attendanceStatus !== "Cuti" && !readAttendanceItems.includes(getAttendanceReadId(item))
-    )
+    ? [
+      ...warningAbsentMhs,
+      ...lockedAbsentMhs.filter((lockItem) =>
+        !warningAbsentMhs.some((warningItem) => String(warningItem.studentId) === String(lockItem.studentId))
+      )
+    ]
     : [];
   const lowHoursMhs = warnings.lowHours;
   const risetLowHours = lowHoursMhs.filter(m => {
@@ -754,47 +777,13 @@ export default function OperatorDashboard() {
           <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/riset" />
         </div>
 
-        {accessLocks.length > 0 && (
-          <div className="bg-white border border-red-200 rounded-[14px] shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-red-100 bg-red-50/60 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-black text-foreground flex items-center gap-2">
-                <UserX size={15} className="text-red-500" /> Akses Mahasiswa Terkunci
-                <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{accessLocks.length}</span>
-              </h2>
-              <p className="hidden md:block text-[11px] font-bold text-red-500">Operator perlu membuka akses secara manual.</p>
-            </div>
-            <div className="max-h-[240px] overflow-y-auto divide-y divide-red-100">
-              {accessLocks.map((lock) => (
-                <div key={lock.id || lock.studentId} className="flex flex-col gap-3 px-5 py-3.5 md:flex-row md:items-center">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 bg-red-500 text-white">{lock.studentInitials || "M"}</div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-black text-foreground truncate">{lock.studentName}</p>
-                      <p className="text-[11px] font-medium text-muted-foreground truncate">{lock.nim || "-"} - {getLockReasonLabel(lock.reason)} {lock.date ? lock.date : ""}</p>
-                      {lock.lockedAt && (
-                        <p className="text-[10px] font-bold text-red-500">Dikunci: {new Date(lock.lockedAt).toLocaleString("id-ID")}</p>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleUnlockAccess(lock)}
-                    className="h-9 px-3 rounded-[10px] bg-emerald-500 text-xs font-black text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <LockOpen size={13} /> Buka Akses
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Alert Sections */}
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 [@media(min-width:1900px)]:grid-cols-4 gap-5">
 
           {/* Hadir Hari Ini */}
           <div className="bg-white border border-emerald-200 rounded-[14px] shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/50 flex items-center justify-between">
-              <h3 className="text-xs font-black text-foreground flex items-center gap-2"><UserCheck size={13} className="text-emerald-500" /> Hadir Hari Ini<span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{hadirHariIniMhs.length}</span></h3>
+            <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/50 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><UserCheck size={13} className="text-emerald-500 shrink-0" /> Hadir Hari Ini<span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{hadirHariIniMhs.length}</span></h3>
             </div>
             {hadirHariIniMhs.length === 0 ? (
               <div className="px-4 py-8 text-center">
@@ -807,7 +796,7 @@ export default function OperatorDashboard() {
                   <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-black text-foreground">{m.name}</p>
+                      <p className="text-xs font-black text-foreground truncate">{m.name}</p>
                       <p className="text-[10px] text-muted-foreground">{m.nim}</p>
                     </div>
                     <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-700">
@@ -821,14 +810,14 @@ export default function OperatorDashboard() {
 
           {/* Belum Isi Logbook */}
           <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
-              <h3 className="text-xs font-black text-foreground flex items-center gap-2"><BookOpen size={13} className="text-amber-500" /> Belum Isi Logbook (Kemarin)<span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{notLogbookMhs.length}</span></h3>
+            <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><BookOpen size={13} className="text-amber-500 shrink-0" /> Belum Isi Logbook (Kemarin)<span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{notLogbookMhs.length}</span></h3>
             </div>
             <div className="max-h-[360px] overflow-y-auto">
               {notLogbookMhs.map(m => (
                 <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
-                  <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.studentName}</p><p className="text-[10px] text-muted-foreground">{m.nim}</p></div>
+                  <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground truncate">{m.studentName}</p><p className="text-[10px] text-muted-foreground">{m.nim}</p></div>
                   <button onClick={() => handleSendWarning(m)} className="flex items-center gap-1 h-6 px-2 bg-amber-100 hover:bg-amber-500 text-amber-700 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>
                 </div>
               ))}
@@ -837,8 +826,8 @@ export default function OperatorDashboard() {
 
           {/* Tidak Hadir */}
           <div className="bg-white border border-red-200 rounded-[14px] shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-red-100 bg-red-50/50 flex items-center justify-between">
-              <h3 className="text-xs font-black text-foreground flex items-center gap-2"><UserX size={13} className="text-red-500" /> Tidak Hadir Hari Ini<span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{tidakHadirMhs.length}</span></h3>
+            <div className="px-4 py-3 border-b border-red-100 bg-red-50/50 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><UserX size={13} className="text-red-500 shrink-0" /> Tidak Hadir Hari Ini<span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{tidakHadirMhs.length}</span></h3>
             </div>
             {!hasPassedAttendanceCutoff ? (
               <div className="px-4 py-8 text-center">
@@ -853,28 +842,28 @@ export default function OperatorDashboard() {
             ) : (
               <div className="max-h-[360px] overflow-y-auto">
                 {tidakHadirMhs.map(m => (
-                  <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-black text-foreground">{m.studentName}</p>
-                      <p className="text-[10px] text-muted-foreground">Lewat batas presensi 10.00 WIB</p>
+                  <div key={m.id} className="px-4 py-3 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-foreground leading-snug break-words">{m.studentName}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {m.referenceDate ? `${getLockReasonLabel(m.accessLock?.reason || "ATTENDANCE_ABSENT")} - ${m.referenceDate}` : "Lewat batas presensi 10.00 WIB"}
+                        </p>
+                        {m.accessLock?.lockedAt && (
+                          <p className="text-[10px] font-bold text-red-500 mt-0.5">Dikunci: {new Date(m.accessLock.lockedAt).toLocaleString("id-ID")}</p>
+                        )}
+                      </div>
                     </div>
-                    <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600">
-                      Belum Hadir
-                    </span>
-                    <button
-                      onClick={() => markAttendanceAsRead(m)}
-                      className="shrink-0 rounded-[6px] border border-slate-200 px-2 py-1 text-[9px] font-black text-slate-600 transition-colors hover:bg-slate-100"
-                    >
-                      Mark as Read
-                    </button>
-                    {getAccessLockForStudent(m.studentId) && (
-                      <button
-                        onClick={() => handleUnlockAccess(getAccessLockForStudent(m.studentId)!)}
-                        className="shrink-0 rounded-[6px] bg-emerald-500 px-2 py-1 text-[9px] font-black text-white transition-colors hover:bg-emerald-600"
-                      >
-                        Buka Akses
-                      </button>
+                    {m.accessLock && (
+                      <div className="mt-3 flex flex-wrap gap-2 pl-11">
+                        <button
+                          onClick={() => handleUnlockAccess(m.accessLock!)}
+                          className="h-7 rounded-[7px] bg-emerald-500 px-2.5 text-[9px] font-black text-white transition-colors hover:bg-emerald-600"
+                        >
+                          Buka Akses
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -884,8 +873,8 @@ export default function OperatorDashboard() {
 
           {/* Jam Kurang */}
           <div className="bg-white border border-orange-200 rounded-[14px] shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-orange-100 bg-orange-50/50 flex items-center justify-between">
-              <h3 className="text-xs font-black text-foreground flex items-center gap-2"><TrendingDown size={13} className="text-orange-500" /> Jam Tidak Terpenuhi<span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{jamTidakTerpenuhiCount}</span></h3>
+            <div className="px-4 py-3 border-b border-orange-100 bg-orange-50/50 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><TrendingDown size={13} className="text-orange-500 shrink-0" /> Jam Tidak Terpenuhi<span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{jamTidakTerpenuhiCount}</span></h3>
             </div>
             {earlyCheckoutDisplay.slice(0, 2).map(alert => (
               <div key={alert.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-orange-100 bg-orange-50/40 hover:bg-orange-50 transition-colors">

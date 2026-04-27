@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
 import { Layout } from "../components/Layout";
 import { AlertTriangle, MapPin, Clock, LogIn, LogOut, Search } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
@@ -64,6 +65,20 @@ const normalizeNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const getJakartaDateKey = (date = new Date()) =>
+  new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Jakarta" }).format(date);
+
+const normalizeDateKey = (value?: string | null) => {
+  if (!value) return "";
+  const text = String(value).trim();
+  const directDate = text.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (directDate) return directDate;
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return getJakartaDateKey(parsed);
+};
+
 const parseTimeParts = (value?: string | null) => {
   const [hours, minutes] = String(value || "").split(/[:.]/).map(Number);
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
@@ -118,6 +133,7 @@ const normalizeGpsPolicy = (policy: any, gps?: GpsInfo | null): GpsPolicy | null
 };
 
 export default function Attendance() {
+  const navigate = useNavigate();
   const user = getStoredUser();
   const [activeFilter, setActiveFilter] = useState("Semua");
   const [monthLabel, setMonthLabel] = useState("");
@@ -140,6 +156,9 @@ export default function Attendance() {
     elapsedHours: number;
     requiredHours: number;
   } | null>(null);
+  const [logbookRequiredOpen, setLogbookRequiredOpen] = useState(false);
+  const [logbookRequiredMessage, setLogbookRequiredMessage] = useState("Isi logbook hari ini terlebih dahulu sebelum check-out.");
+  const [checkingLogbook, setCheckingLogbook] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [isDesktopAttendanceBlocked, setIsDesktopAttendanceBlocked] = useState(false);
@@ -406,12 +425,39 @@ export default function Attendance() {
     return { elapsedHours, requiredHours };
   };
 
+  const hasLogbookToday = async () => {
+    if (!user?.id) return false;
+    const todayKey = getJakartaDateKey();
+    const entries = await apiGet<Array<any>>(`/logbooks?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`);
+    return (entries || []).some((entry) => {
+      const dateKey = normalizeDateKey(entry?.date || entry?.tanggal || entry?.created_at || entry?.createdAt);
+      return dateKey === todayKey;
+    });
+  };
+
   const handleAttendanceAction = async (forceEarlyCheckout = false) => {
-    if (!user?.id || submitting) return;
+    if (!user?.id || submitting || checkingLogbook) return;
     if (isDesktopAttendanceBlocked) {
       setGpsWarning("");
       setError("Absensi GPS mahasiswa harus dilakukan dari HP/perangkat mobile dengan Precise Location atau High Accuracy aktif.");
       return;
+    }
+    if (todayData.status === "Berlangsung") {
+      try {
+        setCheckingLogbook(true);
+        const logbookReady = await hasLogbookToday();
+        if (!logbookReady) {
+          setEarlyCheckoutWarning(null);
+          setLogbookRequiredMessage("Isi logbook hari ini terlebih dahulu sebelum check-out.");
+          setLogbookRequiredOpen(true);
+          return;
+        }
+      } catch (err: any) {
+        setError(err?.message || "Gagal mengecek logbook hari ini. Coba lagi sebelum check-out.");
+        return;
+      } finally {
+        setCheckingLogbook(false);
+      }
     }
     const earlyWarning = shouldWarnEarlyCheckout();
     if (earlyWarning && !forceEarlyCheckout) {
@@ -480,6 +526,14 @@ export default function Attendance() {
       await loadAttendance();
     } catch (err: any) {
       const errorBody = err instanceof ApiError ? err.body : null;
+      if (errorBody?.logbookRequired) {
+        setEarlyCheckoutWarning(null);
+        setLogbookRequiredMessage(errorBody.message || "Isi logbook hari ini terlebih dahulu sebelum check-out.");
+        setLogbookRequiredOpen(true);
+        setError("");
+        return;
+      }
+
       if (errorBody?.earlyCheckoutWarning) {
         setEarlyCheckoutWarning({
           elapsedHours: Number(errorBody.durationHours) || 0,
@@ -603,6 +657,45 @@ export default function Attendance() {
             </div>
           </div>
         )}
+        {logbookRequiredOpen && (
+          <div className="fixed inset-0 z-[520] flex items-center justify-center bg-black/50 px-4">
+            <div className="w-full max-w-[430px] rounded-[16px] border border-indigo-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-indigo-100 text-indigo-600">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-foreground">Logbook Diperlukan</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    {logbookRequiredMessage}
+                  </p>
+                </div>
+              </div>
+              <p className="mb-5 rounded-[12px] border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700">
+                Setelah logbook tersimpan, kembali ke halaman Kehadiran lalu tekan check-out lagi.
+              </p>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLogbookRequiredOpen(false)}
+                  className="h-10 rounded-[10px] border border-border px-4 text-sm font-bold text-muted-foreground hover:bg-slate-50"
+                >
+                  Nanti
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogbookRequiredOpen(false);
+                    navigate("/logbook/new");
+                  }}
+                  className="h-10 rounded-[10px] bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-700"
+                >
+                  Isi Logbook
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
             {error}
@@ -702,7 +795,7 @@ export default function Attendance() {
                 </div>
                 <button
                   onClick={() => handleAttendanceAction()}
-                  disabled={submitting || todayData.status === "Selesai" || isDesktopAttendanceBlocked}
+                  disabled={submitting || checkingLogbook || todayData.status === "Selesai" || isDesktopAttendanceBlocked}
                   className="bg-primary hover:bg-primary-light disabled:bg-slate-500 disabled:cursor-not-allowed text-white px-6 py-3 rounded-[12px] font-bold shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                 >
                   {todayData.status === "Berlangsung" ? <LogOut size={18} /> : <MapPin size={18} />}
@@ -710,7 +803,9 @@ export default function Attendance() {
                     ? "Absensi Selesai"
                     : isDesktopAttendanceBlocked
                       ? "Gunakan HP untuk Absensi"
-                      : submitting
+                      : checkingLogbook
+                        ? "Mengecek Logbook..."
+                        : submitting
                         ? "Memproses..."
                         : todayData.status === "Berlangsung"
                           ? "Check-Out Sekarang"
