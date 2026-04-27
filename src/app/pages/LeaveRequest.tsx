@@ -201,6 +201,9 @@ export default function LeaveRequest() {
       await apiPost<{ message: string }>("/leave-requests", {
         id: requestId,
         studentId: studentId || user?.id || "S001",
+        jenis: formData.jenis,
+        jenisPengajuan: formData.jenis,
+        countsAgainstLeaveQuota: formData.jenis === "cuti",
         periodeStart: formData.periodeMulai,
         periodeEnd: formData.periodeSelesai,
         durasi: duration,

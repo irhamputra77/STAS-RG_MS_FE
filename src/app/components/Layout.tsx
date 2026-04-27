@@ -5,9 +5,35 @@ import {
   GraduationCap, MapPin, Award, ScrollText, FlaskConical,
   Check, X, CheckCheck, BookMarked, MessageSquare, CalendarClock,
   FileCheck, Megaphone, AlertTriangle, ChevronRight, LogOut, Menu,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { AppNotification, NotificationType, useNotifications } from "../hooks/useNotifications";
+import { apiGet } from "../lib/api";
+
+type StudentAccessLock = {
+  id?: string;
+  locked?: boolean;
+  active?: boolean;
+  status?: string;
+  studentId?: string;
+  studentName?: string;
+  date?: string;
+  reason?: string;
+  attendanceStatus?: string;
+  message?: string;
+  lockedAt?: string;
+};
+
+function isActiveAccessLock(lock: StudentAccessLock | null) {
+  if (!lock) return false;
+  return Boolean(lock.locked || lock.active || String(lock.status || "").toUpperCase() === "LOCKED");
+}
+
+function getAccessLockReasonLabel(reason?: string | null) {
+  if (reason === "ATTENDANCE_ABSENT") return "Tidak Hadir";
+  return reason || "-";
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATION DATA & TYPES
@@ -293,7 +319,27 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     } catch {}
     return null;
   });
+  const [accessLock, setAccessLock] = useState<StudentAccessLock | null>(null);
+  const [checkingAccessLock, setCheckingAccessLock] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
+
+  const refreshAccessLock = React.useCallback(async () => {
+    if (user?.role !== "mahasiswa") {
+      setAccessLock(null);
+      return;
+    }
+
+    try {
+      setCheckingAccessLock(true);
+      const data = await apiGet<StudentAccessLock>("/student-access-locks/me");
+      setAccessLock(isActiveAccessLock(data) ? data : null);
+    } catch {
+      // If another endpoint already raised the lock event, keep that state.
+    }
+    finally {
+      setCheckingAccessLock(false);
+    }
+  }, [user?.role]);
 
   // Close panel on outside click
   useEffect(() => {
@@ -311,6 +357,47 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     setIsPanelOpen(false); 
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    refreshAccessLock();
+  }, [location.pathname, refreshAccessLock]);
+
+  useEffect(() => {
+    if (user?.role !== "mahasiswa") return;
+
+    const onFocus = () => refreshAccessLock();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshAccessLock();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    const interval = window.setInterval(refreshAccessLock, 60000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(interval);
+    };
+  }, [refreshAccessLock, user?.role]);
+
+  useEffect(() => {
+    const onAccessLocked = (event: Event) => {
+      if (user?.role !== "mahasiswa") return;
+      const detail = (event as CustomEvent).detail || {};
+      setAccessLock({
+        id: detail.id || undefined,
+        locked: true,
+        active: true,
+        status: "LOCKED",
+        reason: detail.reason || "ATTENDANCE_ABSENT",
+        date: detail.date || null,
+        message: detail.message || "Akses dikunci karena terdeteksi tidak hadir. Hubungi operator.",
+      });
+    };
+
+    window.addEventListener("stas:access-locked", onAccessLocked);
+    return () => window.removeEventListener("stas:access-locked", onAccessLocked);
+  }, [user?.role]);
 
   const navItems = [
     { name: "Dashboard",           path: "/dashboard",  icon: LayoutDashboard },
@@ -474,6 +561,58 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
               }} className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-[12px] transition-colors">
                 Saya Mengerti
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isActiveAccessLock(accessLock) && (
+        <div className="fixed inset-0 z-[900] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-[460px] overflow-hidden rounded-[22px] border border-red-200 bg-white shadow-2xl">
+            <div className="bg-red-600 px-6 py-5 flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 text-white">
+                <Lock size={24} />
+              </div>
+              <div>
+                <p className="text-lg font-black text-white">Akses Website Dikunci</p>
+                <p className="text-xs font-bold text-white/80">Status kehadiran membutuhkan verifikasi operator</p>
+              </div>
+            </div>
+            <div className="p-6">
+              <h3 className="mb-2 text-base font-black text-foreground">
+                Akses Dikunci
+              </h3>
+              <p className="text-sm font-medium leading-relaxed text-muted-foreground">
+                {accessLock?.message ||
+                  `Akun Anda dikunci karena terdeteksi tidak hadir pada ${accessLock?.date || "hari ini"}. Hubungi operator untuk membuka kembali akses website.`}
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-2 rounded-[14px] border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Tanggal</span>
+                  <span>{accessLock?.date || "-"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Alasan</span>
+                  <span>{getAccessLockReasonLabel(accessLock?.reason)}</span>
+                </div>
+              </div>
+              <div className="mt-5 rounded-[14px] border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
+                Selama akses terkunci, Anda tidak dapat menggunakan fitur website sampai operator membuka akses.
+              </div>
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  onClick={refreshAccessLock}
+                  disabled={checkingAccessLock}
+                  className="h-10 rounded-[12px] bg-red-600 text-sm font-black text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {checkingAccessLock ? "Mengecek..." : "Cek Ulang Status"}
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="h-10 rounded-[12px] border border-border bg-white text-sm font-black text-muted-foreground transition-colors hover:bg-slate-50 hover:text-foreground"
+                >
+                  Keluar
+                </button>
+              </div>
             </div>
           </div>
         </div>

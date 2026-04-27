@@ -4,7 +4,7 @@ import { OperatorLayout } from "../../components/OperatorLayout";
 import {
   Users, FlaskConical, CalendarCheck, FileText, BookOpen, Kanban,
   AlertTriangle, Check, X, ChevronRight, Clock,
-  TrendingDown, UserX, AlertCircle, ArrowRight, Bell,
+  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell, LockOpen,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../lib/api";
 import { formatDateYmd } from "../../lib/date";
@@ -34,6 +34,27 @@ type WarningData = {
   logbookMissing: WarningItem[];
   attendanceAbsent: WarningItem[];
   lowHours: WarningItem[];
+};
+
+type AttendanceMonitorToday = {
+  date?: string;
+  presentIds?: string[];
+  leaveIds?: string[];
+  absentIds?: string[];
+};
+
+type StudentAccessLock = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentInitials?: string;
+  nim?: string;
+  date?: string;
+  reason?: string;
+  status?: string;
+  locked?: boolean;
+  active?: boolean;
+  lockedAt?: string;
 };
 
 type EarlyCheckoutAlert = {
@@ -124,6 +145,18 @@ function getJakartaDateKey(date = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Jakarta" }).format(date);
 }
 
+function getLeaveTypeLabel(jenis?: string) {
+  const type = String(jenis || "").toLowerCase();
+  if (type === "izin") return "Izin";
+  if (type === "sakit") return "Sakit";
+  return "Cuti";
+}
+
+function getLockReasonLabel(reason?: string | null) {
+  if (reason === "ATTENDANCE_ABSENT") return "Tidak Hadir";
+  return reason || "-";
+}
+
 export default function OperatorDashboard() {
   const user = getStoredUser();
   const attendanceReadStorageKey = `operator-attendance-read:${getJakartaDateKey()}`;
@@ -139,6 +172,8 @@ export default function OperatorDashboard() {
     lowHours: []
   });
   const [earlyCheckoutAlerts, setEarlyCheckoutAlerts] = useState<EarlyCheckoutAlert[]>([]);
+  const [attendanceMonitor, setAttendanceMonitor] = useState<AttendanceMonitorToday | null>(null);
+  const [accessLocks, setAccessLocks] = useState<StudentAccessLock[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
@@ -250,7 +285,7 @@ export default function OperatorDashboard() {
           },
           {
             key: "leave",
-            label: "pengajuan cuti",
+            label: "pengajuan cuti/izin",
             request: apiGet<Array<any>>("/leave-requests?status=Menunggu"),
           },
           {
@@ -274,6 +309,16 @@ export default function OperatorDashboard() {
             request: apiGet<OperatorWarningsResponse>("/dashboard/operator-warnings"),
           },
           {
+            key: "attendanceMonitor",
+            label: "monitor absensi hari ini",
+            request: apiGet<AttendanceMonitorToday>("/attendance/monitor/today"),
+          },
+          {
+            key: "accessLocks",
+            label: "akses terkunci",
+            request: apiGet<Array<any>>("/student-access-locks?status=active"),
+          },
+          {
             key: "withdrawals",
             label: "pengunduran diri",
             request: apiGet<Array<any>>("/withdrawal-requests"),
@@ -288,7 +333,9 @@ export default function OperatorDashboard() {
         const settled = await Promise.allSettled(requests.map((item) => item.request));
         const failures = settled.flatMap((result, index) =>
           result.status === "rejected"
-            ? `${requests[index].label}: ${result.reason?.message || "gagal dimuat"}`
+            ? requests[index].key === "accessLocks"
+              ? []
+              : `${requests[index].label}: ${result.reason?.message || "gagal dimuat"}`
             : []
         );
 
@@ -320,13 +367,21 @@ export default function OperatorDashboard() {
           settled[6].status === "fulfilled"
             ? settled[6].value
             : [];
-        const withdrawalRes =
+        const attendanceMonitorRes =
           settled[7].status === "fulfilled"
             ? settled[7].value
-            : [];
-        const notificationsRes =
+            : null;
+        const accessLockRes =
           settled[8].status === "fulfilled"
             ? settled[8].value
+            : [];
+        const withdrawalRes =
+          settled[9].status === "fulfilled"
+            ? settled[9].value
+            : [];
+        const notificationsRes =
+          settled[10].status === "fulfilled"
+            ? settled[10].value
             : [];
 
         if (failures.length === requests.length) {
@@ -364,6 +419,7 @@ export default function OperatorDashboard() {
           mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
+          jenis: item.jenis_pengajuan || item.jenis || "cuti",
           riset: item.project_name || "-",
           periodeStart: formatDateYmd(item.periode_start),
           periodeEnd: formatDateYmd(item.periode_end),
@@ -406,6 +462,25 @@ export default function OperatorDashboard() {
           advisorNote: item.advisor_note || null
         }));
 
+        const accessRows = Array.isArray(accessLockRes)
+          ? accessLockRes
+          : ((accessLockRes as any)?.items || (accessLockRes as any)?.locks || []);
+        const mappedAccessLocks: StudentAccessLock[] = (accessRows || [])
+          .filter((item: any) => Boolean(item?.locked ?? item?.active ?? String(item?.status || "").toUpperCase() === "LOCKED"))
+          .map((item: any) => ({
+            id: String(item.id || item.lock_id || item.lockId || ""),
+            studentId: String(item.student_id || item.studentId || ""),
+            studentName: item.student_name || item.studentName || "Mahasiswa",
+            studentInitials: item.student_initials || item.studentInitials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
+            nim: item.nim || item.student_nim || "-",
+            date: item.date || item.reference_date || item.referenceDate || null,
+            reason: item.reason || item.lock_reason || item.lockReason || "Tidak hadir",
+            status: item.status || "LOCKED",
+            locked: Boolean(item.locked ?? true),
+            active: Boolean(item.active ?? true),
+            lockedAt: item.locked_at || item.lockedAt || null,
+          }));
+
         const mappedAudit: AuditLogEntry[] = auditRes.map((item: any) => ({
           id: item.id,
           timestamp: new Date(item.logged_at).toLocaleString("id-ID"),
@@ -443,6 +518,8 @@ export default function OperatorDashboard() {
         setPendingSurat(mappedLetters.slice(0, 2));
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
+        setAttendanceMonitor(attendanceMonitorRes);
+        setAccessLocks(mappedAccessLocks);
         applyWarnings(warningsRes);
         setEarlyCheckoutAlerts(
           (notificationsRes || [])
@@ -554,6 +631,10 @@ export default function OperatorDashboard() {
   const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
   const notLogbookMhs = warnings.logbookMissing;
+  const presentIdSet = new Set((attendanceMonitor?.presentIds || []).map(String));
+  const hadirHariIniMhs = students.filter((item) => presentIdSet.has(String(item.id)));
+  const getAccessLockForStudent = (studentId: string) =>
+    accessLocks.find((item) => String(item.studentId) === String(studentId));
   const tidakHadirMhs = hasPassedAttendanceCutoff
     ? warnings.attendanceAbsent.filter((item) =>
       item.attendanceStatus !== "Cuti" && !readAttendanceItems.includes(getAttendanceReadId(item))
@@ -572,6 +653,26 @@ export default function OperatorDashboard() {
   const earlyCheckoutDisplay = unreadEarlyCheckoutAlerts.length > 0 ? unreadEarlyCheckoutAlerts : earlyCheckoutAlerts;
   const jamTidakTerpenuhiCount = risetLowHours.length + magangLowHours.length + unreadEarlyCheckoutAlerts.length;
 
+  const handleUnlockAccess = async (lock: StudentAccessLock) => {
+    if (!lock?.id && !lock?.studentId) return;
+    try {
+      if (lock.id) {
+        await apiPatch(`/student-access-locks/${encodeURIComponent(lock.id)}/unlock`, {
+          unlockedBy: user?.id,
+        });
+      } else {
+        await apiPost("/student-access-locks/unlock", {
+          studentId: lock.studentId,
+          unlockedBy: user?.id,
+        });
+      }
+      setAccessLocks((prev) => prev.filter((item) => item.id !== lock.id && item.studentId !== lock.studentId));
+      showWarningInfo(`Akses ${lock.studentName} berhasil dibuka.`, "success");
+    } catch (err: any) {
+      setError(err?.message || "Gagal membuka akses mahasiswa.");
+    }
+  };
+
   const markEarlyCheckoutAsRead = async (alert: EarlyCheckoutAlert) => {
     setEarlyCheckoutAlerts((prev) => prev.map((item) => item.id === alert.id ? { ...item, read: true } : item));
     try {
@@ -586,7 +687,7 @@ export default function OperatorDashboard() {
       await apiPatch<{ message: string }>(`/leave-requests/${id}/status`, { status });
       setPendingCuti(p => p.filter(l => l.id !== id));
     } catch (err: any) {
-      setError(err?.message || "Gagal memproses pengajuan cuti.");
+      setError(err?.message || "Gagal memproses pengajuan.");
     }
   };
 
@@ -637,7 +738,7 @@ export default function OperatorDashboard() {
           <div>
             <h1 className="text-2xl font-black text-foreground">Selamat datang, {user?.name || "Operator"}!</h1>
             <p className="text-sm font-medium text-muted-foreground mt-1">{todayLabel}
-              {cutiMenunggu > 0 && <span className="text-amber-600 font-black ml-1">{cutiMenunggu} cuti menunggu</span>}
+              {cutiMenunggu > 0 && <span className="text-amber-600 font-black ml-1">{cutiMenunggu} pengajuan menunggu</span>}
               {resignCount > 0 && <span className="text-red-500 font-black ml-1">{resignCount} pengunduran diri aktif</span>}
             </p>
           </div>
@@ -647,14 +748,76 @@ export default function OperatorDashboard() {
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           <MiniStatCard icon={<Users size={22} className="text-blue-600" />} label="Mahasiswa Aktif" value={aktifCount} color="bg-blue-100" href="/operator/mahasiswa" />
           <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset" />
-          <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
+          <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti/Izin Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
           <MiniStatCard icon={<FileText size={22} className="text-blue-500" />} label="Surat Menunggu" value={suratMenunggu} color="bg-blue-100" href="/operator/surat" urgent />
           <MiniStatCard icon={<BookOpen size={22} className="text-emerald-600" />} label="Logbook Hari Ini" value={logbookHariIni} color="bg-emerald-100" href="/operator/logbook" />
           <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/riset" />
         </div>
 
+        {accessLocks.length > 0 && (
+          <div className="bg-white border border-red-200 rounded-[14px] shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-red-100 bg-red-50/60 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-black text-foreground flex items-center gap-2">
+                <UserX size={15} className="text-red-500" /> Akses Mahasiswa Terkunci
+                <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{accessLocks.length}</span>
+              </h2>
+              <p className="hidden md:block text-[11px] font-bold text-red-500">Operator perlu membuka akses secara manual.</p>
+            </div>
+            <div className="max-h-[240px] overflow-y-auto divide-y divide-red-100">
+              {accessLocks.map((lock) => (
+                <div key={lock.id || lock.studentId} className="flex flex-col gap-3 px-5 py-3.5 md:flex-row md:items-center">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 bg-red-500 text-white">{lock.studentInitials || "M"}</div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-foreground truncate">{lock.studentName}</p>
+                      <p className="text-[11px] font-medium text-muted-foreground truncate">{lock.nim || "-"} - {getLockReasonLabel(lock.reason)} {lock.date ? lock.date : ""}</p>
+                      {lock.lockedAt && (
+                        <p className="text-[10px] font-bold text-red-500">Dikunci: {new Date(lock.lockedAt).toLocaleString("id-ID")}</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleUnlockAccess(lock)}
+                    className="h-9 px-3 rounded-[10px] bg-emerald-500 text-xs font-black text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <LockOpen size={13} /> Buka Akses
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Alert Sections */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
+
+          {/* Hadir Hari Ini */}
+          <div className="bg-white border border-emerald-200 rounded-[14px] shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/50 flex items-center justify-between">
+              <h3 className="text-xs font-black text-foreground flex items-center gap-2"><UserCheck size={13} className="text-emerald-500" /> Hadir Hari Ini<span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{hadirHariIniMhs.length}</span></h3>
+            </div>
+            {hadirHariIniMhs.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Belum ada mahasiswa hadir</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Daftar akan terisi setelah check-in tercatat di database.</p>
+              </div>
+            ) : (
+              <div className="max-h-[360px] overflow-y-auto">
+                {hadirHariIniMhs.map(m => (
+                  <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-black text-foreground">{m.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{m.nim}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-700">
+                      Hadir
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Belum Isi Logbook */}
           <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden">
@@ -705,6 +868,14 @@ export default function OperatorDashboard() {
                     >
                       Mark as Read
                     </button>
+                    {getAccessLockForStudent(m.studentId) && (
+                      <button
+                        onClick={() => handleUnlockAccess(getAccessLockForStudent(m.studentId)!)}
+                        className="shrink-0 rounded-[6px] bg-emerald-500 px-2 py-1 text-[9px] font-black text-white transition-colors hover:bg-emerald-600"
+                      >
+                        Buka Akses
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -867,8 +1038,8 @@ export default function OperatorDashboard() {
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${l.mahasiswaColor}`}>{l.mahasiswaInitials}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground">{l.mahasiswaNama}</p>
-                        <p className="text-[10px] text-muted-foreground">{l.periodeStart} {l.durasi}h</p>
-                        <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Cuti</span>
+                        <p className="text-[10px] text-muted-foreground">{l.periodeStart} {l.durasi} hari</p>
+                        <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{getLeaveTypeLabel(l.jenis)}</span>
                       </div>
                     </div>
                     <div className="flex gap-1.5">
@@ -892,7 +1063,7 @@ export default function OperatorDashboard() {
                 ))}
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-slate-50/50 grid grid-cols-2 gap-2">
-                <Link to="/operator/cuti" className="text-center text-[10px] font-bold text-amber-600 hover:underline">Semua Cuti</Link>
+                <Link to="/operator/cuti" className="text-center text-[10px] font-bold text-amber-600 hover:underline">Semua Pengajuan</Link>
                 <Link to="/operator/surat" className="text-center text-[10px] font-bold text-blue-600 hover:underline">Semua Surat</Link>
               </div>
             </div>

@@ -71,7 +71,7 @@ export default function PersetujuanCuti() {
         }));
         setLeaves(mapped);
       } catch (err: any) {
-        setError(err?.message || "Gagal memuat data cuti.");
+        setError(err?.message || "Gagal memuat data pengajuan.");
       }
     };
 
@@ -103,17 +103,18 @@ export default function PersetujuanCuti() {
       const reviewedAt = formatDateYmd(new Date().toISOString());
       setLeaves((prev) => prev.map((leave) => leave.id === confirm.item.id ? { ...leave, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt, reviewNote: note } : leave));
       setDetail((prev) => prev?.id === confirm.item.id ? { ...prev, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt, reviewNote: note } : prev);
-      showToast(`Pengajuan cuti ${confirm.item.mahasiswaNama} berhasil ${confirm.action === "Setujui" ? "disetujui" : "ditolak"}.`, confirm.action === "Setujui" ? "success" : "error");
+      const jenisLabel = REQUEST_TYPE_LABEL[confirm.item.jenis as RequestType] || "Pengajuan";
+      showToast(`Pengajuan ${jenisLabel.toLowerCase()} ${confirm.item.mahasiswaNama} berhasil ${confirm.action === "Setujui" ? "disetujui" : "ditolak"}.`, confirm.action === "Setujui" ? "success" : "error");
       setConfirm(null);
       setNote("");
     } catch (err: any) {
-      setError(err?.message || "Gagal memperbarui status cuti.");
+      setError(err?.message || "Gagal memperbarui status pengajuan.");
     }
   };
 
   const handleDelete = async (item: LeaveRequestAll) => {
     const confirmed = await askConfirm({
-      title: "Hapus pengajuan cuti?",
+      title: "Hapus pengajuan?",
       description: `Pengajuan ${REQUEST_TYPE_LABEL[item.jenis as RequestType] || item.jenis} milik ${item.mahasiswaNama} akan dihapus.`,
       confirmLabel: "Hapus",
       cancelLabel: "Batal",
@@ -129,14 +130,14 @@ export default function PersetujuanCuti() {
       setDetail((prev) => prev?.id === item.id ? null : prev);
       showToast(`Pengajuan ${item.mahasiswaNama} berhasil dihapus.`, "success");
     } catch (err: any) {
-      setError(err?.message || "Gagal menghapus pengajuan cuti.");
+      setError(err?.message || "Gagal menghapus pengajuan.");
     } finally {
       setDeletingId(null);
     }
   };
 
   return (
-    <OperatorLayout title="Persetujuan Cuti">
+    <OperatorLayout title="Persetujuan Cuti / Izin">
       <div className="flex flex-col gap-5 pb-4">
         {error && <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">{error}</div>}
 
@@ -182,7 +183,7 @@ export default function PersetujuanCuti() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="bg-slate-50 border-b border-border">
-                    {["Mahasiswa", "Jenis", "Riset", "Periode Cuti", "Durasi", "Alasan", "Pengajuan", "Status", "Aksi"].map((h) => (
+                    {["Mahasiswa", "Jenis", "Riset", "Periode", "Durasi", "Alasan", "Pengajuan", "Status", "Aksi"].map((h) => (
                       <th key={h} className="px-5 py-3 text-xs font-black text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -202,7 +203,7 @@ export default function PersetujuanCuti() {
                       <td className="px-5 py-3.5"><TypeBadge jenis={l.jenis} /></td>
                       <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded ${l.riset === "Riset A" ? "bg-[#F8F5FF] text-[#6C47FF]" : "bg-emerald-50 text-emerald-700"}`}>{l.riset}</span></td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground whitespace-nowrap">{l.periodeStart}{l.periodeEnd !== l.periodeStart ? ` - ${l.periodeEnd}` : ""}</td>
-                      <td className="px-5 py-3.5 text-xs font-bold text-foreground">{l.durasi}h</td>
+                      <td className="px-5 py-3.5 text-xs font-bold text-foreground">{l.durasi} hari</td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground max-w-[160px]"><p className="line-clamp-1">{l.alasan}</p></td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground whitespace-nowrap">{l.tanggalPengajuan}</td>
                       <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_STYLE[l.status]}`}>{l.status}</span></td>
@@ -233,7 +234,7 @@ export default function PersetujuanCuti() {
         <div className="fixed inset-0 z-[200] flex items-center justify-end bg-black/30 backdrop-blur-sm" onClick={() => setDetail(null)}>
           <div className="h-full w-full max-w-[420px] bg-white shadow-2xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-border flex items-center justify-between sticky top-0 bg-white z-10">
-              <h3 className="font-black text-foreground">Detail Pengajuan Cuti</h3>
+              <h3 className="font-black text-foreground">Detail Pengajuan</h3>
               <button onClick={() => setDetail(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={16} /></button>
             </div>
             <div className="p-6 flex flex-col gap-5">
@@ -294,8 +295,8 @@ export default function PersetujuanCuti() {
             <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${confirm.action === "Setujui" ? "bg-emerald-100" : "bg-red-100"}`}>
               {confirm.action === "Setujui" ? <Check size={22} className="text-emerald-600" strokeWidth={3} /> : <X size={22} className="text-red-600" strokeWidth={3} />}
             </div>
-            <h3 className="text-center font-black text-foreground mb-1">{confirm.action} Pengajuan Cuti</h3>
-            <p className="text-center text-sm text-muted-foreground mb-4">Anda akan <strong>{confirm.action === "Setujui" ? "menyetujui" : "menolak"}</strong> cuti {confirm.item.durasi} hari dari <strong>{confirm.item.mahasiswaNama}</strong></p>
+            <h3 className="text-center font-black text-foreground mb-1">{confirm.action} Pengajuan</h3>
+            <p className="text-center text-sm text-muted-foreground mb-4">Anda akan <strong>{confirm.action === "Setujui" ? "menyetujui" : "menolak"}</strong> pengajuan {(REQUEST_TYPE_LABEL[confirm.item.jenis as RequestType] || "ini").toLowerCase()} {confirm.item.durasi} hari dari <strong>{confirm.item.mahasiswaNama}</strong></p>
             <div className="mb-4">
               <label className="text-xs font-black text-foreground block mb-1.5">Catatan (opsional)</label>
               <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Tambahkan catatan untuk mahasiswa..." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all resize-none" />

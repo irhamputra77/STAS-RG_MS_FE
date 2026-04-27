@@ -81,6 +81,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message = body?.message || `HTTP ${response.status}`;
+    if (response.status === 423 && body?.accessLocked && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("stas:access-locked", {
+        detail: {
+          message,
+          accessLocked: true,
+          reason: body?.reason || null,
+          date: body?.date || null
+        }
+      }));
+    }
     throw new ApiError(message, response.status, body);
   }
 
@@ -132,14 +142,26 @@ export async function apiGetBlob(path: string): Promise<BlobResponse> {
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
     let message = `HTTP ${response.status}`;
+    let parsedBody: any = null;
 
     if (errorText) {
       try {
-        const parsed = JSON.parse(errorText);
-        message = parsed?.message || message;
+        parsedBody = JSON.parse(errorText);
+        message = parsedBody?.message || message;
       } catch {
         message = errorText;
       }
+    }
+
+    if (response.status === 423 && parsedBody?.accessLocked && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("stas:access-locked", {
+        detail: {
+          message,
+          accessLocked: true,
+          reason: parsedBody?.reason || null,
+          date: parsedBody?.date || null
+        }
+      }));
     }
 
     throw new Error(message);

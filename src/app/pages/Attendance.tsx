@@ -64,6 +64,46 @@ const normalizeNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const parseTimeParts = (value?: string | null) => {
+  const [hours, minutes] = String(value || "").split(/[:.]/).map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return { hours, minutes };
+};
+
+const isFilledTime = (value?: string | null) => {
+  const text = String(value || "").trim();
+  return Boolean(text && text !== "-" && text !== "--:--" && text !== "--.--");
+};
+
+const getTodayHistoryRow = (history: AttendanceHistoryItem[]) => {
+  const today = new Date();
+  const day = new Intl.DateTimeFormat("id-ID", { day: "numeric", timeZone: "Asia/Jakarta" }).format(today);
+  const month = new Intl.DateTimeFormat("id-ID", { month: "short", timeZone: "Asia/Jakarta" }).format(today).toLowerCase();
+  const year = new Intl.DateTimeFormat("id-ID", { year: "numeric", timeZone: "Asia/Jakarta" }).format(today);
+  const dayPattern = new RegExp(`(^|\\D)0?${day}(\\D|$)`);
+
+  return history.find((row) => {
+    const label = String(row.date || "").toLowerCase();
+    return dayPattern.test(label) && label.includes(month) && label.includes(year);
+  });
+};
+
+const normalizeTodayData = (today: AttendanceToday | undefined, history: AttendanceHistoryItem[]): AttendanceToday => {
+  const nextToday = today || { checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in" };
+  const todayHistory = getTodayHistoryRow(history);
+  if (!todayHistory) return nextToday;
+
+  return {
+    ...nextToday,
+    checkIn: isFilledTime(todayHistory.in) ? todayHistory.in : nextToday.checkIn,
+    checkOut: isFilledTime(todayHistory.out) ? todayHistory.out : nextToday.checkOut,
+    status: todayHistory.status || nextToday.status,
+    autoCheckout: todayHistory.autoCheckout ?? nextToday.autoCheckout,
+    checkoutSource: todayHistory.checkoutSource ?? nextToday.checkoutSource,
+    autoCheckoutReason: todayHistory.autoCheckoutReason ?? nextToday.autoCheckoutReason
+  };
+};
+
 const normalizeGpsPolicy = (policy: any, gps?: GpsInfo | null): GpsPolicy | null => {
   if (!policy && !gps) return null;
 
@@ -116,8 +156,9 @@ export default function Attendance() {
           : ""
       );
       setChartData(data.chartData || []);
-      setHistoryData(data.history || []);
-      setTodayData(data.today || { checkIn: "--:--", checkOut: "--:--", status: "Belum Check-in", autoCheckout: false, checkoutSource: null, autoCheckoutReason: null });
+      const nextHistory = data.history || [];
+      setHistoryData(nextHistory);
+      setTodayData(normalizeTodayData(data.today, nextHistory));
       setGpsInfo(nextGpsInfo);
       setGpsPolicy(nextGpsPolicy);
       if (data?.student?.tipe || data?.studentType) {
@@ -343,11 +384,11 @@ export default function Attendance() {
 
   const getElapsedCheckoutHours = () => {
     if (!todayData.checkIn || todayData.checkIn === "--:--") return null;
-    const [hours, minutes] = todayData.checkIn.split(":").map(Number);
-    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    const parsedTime = parseTimeParts(todayData.checkIn);
+    if (!parsedTime) return null;
 
     const checkInTime = new Date();
-    checkInTime.setHours(hours, minutes, 0, 0);
+    checkInTime.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
     const diffMs = Date.now() - checkInTime.getTime();
     if (diffMs < 0) return null;
     return diffMs / (1000 * 60 * 60);

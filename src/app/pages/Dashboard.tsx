@@ -34,6 +34,20 @@ function getTaskAssigneeIds(task: any) {
   return [];
 }
 
+function getLeaveTypeLabel(item: any) {
+  const type = String(item?.jenis_pengajuan || item?.jenis || item?.jenisPengajuan || "cuti").toLowerCase();
+  if (type === "izin") return "Izin";
+  if (type === "sakit") return "Sakit";
+  return "Cuti";
+}
+
+function getLeaveTypeStyle(item: any) {
+  const label = getLeaveTypeLabel(item);
+  if (label === "Izin") return "bg-amber-100 text-amber-700";
+  if (label === "Sakit") return "bg-rose-100 text-rose-700";
+  return "bg-indigo-100 text-indigo-700";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,7 +278,7 @@ export default function Dashboard() {
   const quickLinks = [
     { label: "Logbook", icon: <BookOpen size={18} />, href: "/logbook", color: "bg-indigo-50 text-indigo-600 border-indigo-100" },
     { label: "Riset & Board", icon: <FlaskConical size={18} />, href: "/research", color: "bg-[#F0FFF0] text-[#0AB600] border-green-200" },
-    { label: "Pengajuan Cuti", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
+    { label: "Cuti / Izin", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
     { label: "Dokumen & Sertifikat", icon: <Award size={18} />, href: "/documents", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
     { label: "Draft TA / Jurnal", icon: <ScrollText size={18} />, href: "/draft", color: "bg-blue-50 text-blue-600 border-blue-100" },
     { label: "Kehadiran GPS", icon: <MapPin size={18} />, href: "/attendance", color: "bg-rose-50 text-rose-600 border-rose-100" },
@@ -340,7 +354,7 @@ export default function Dashboard() {
             icon={<CalendarOff size={20} className="md:w-[22px] md:h-[22px] text-amber-500" />}
             label="Sisa Cuti"
             value={<><span>{sisaCuti}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{totalCuti}</span></>}
-            sub="Jatah hari ini"
+            sub="Hanya terpakai oleh cuti"
             barPct={cutiPct}
             barColor="bg-amber-500"
             href="/leave"
@@ -579,9 +593,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Pengajuan Cuti */}
+            {/* Pengajuan Cuti / Izin */}
             <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
-              <SectionHeader icon={<Calendar size={16} className="text-amber-600" />} title="Pengajuan Cuti" href="/leave" linkLabel="Ajukan" />
+              <SectionHeader icon={<Calendar size={16} className="text-amber-600" />} title="Pengajuan Cuti / Izin" href="/leave" linkLabel="Ajukan" />
               <div className="p-4 md:p-5 flex flex-col gap-2 md:gap-3">
                 {/* Sisa cuti visual */}
                 <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-100 rounded-[10px]">
@@ -602,7 +616,12 @@ export default function Dashboard() {
                 {cutiRecent.map((c: any) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">
                     <div className="flex flex-col min-w-0">
-                      <p className="text-[10px] font-black text-muted-foreground">{c.id}</p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="text-[10px] font-black text-muted-foreground truncate">{c.id}</p>
+                        <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded ${getLeaveTypeStyle(c)}`}>
+                          {getLeaveTypeLabel(c)}
+                        </span>
+                      </div>
                       <p className="text-xs font-bold text-foreground">{c.period}</p>
                       <p className="text-[10px] font-medium text-muted-foreground">{c.durasi}</p>
                     </div>
@@ -612,7 +631,7 @@ export default function Dashboard() {
                   </div>
                 ))}
                 {cutiRecent.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Belum ada riwayat cuti terbaru.</p>
+                  <p className="text-xs text-muted-foreground">Belum ada riwayat pengajuan terbaru.</p>
                 )}
               </div>
             </div>
