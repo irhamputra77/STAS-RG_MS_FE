@@ -282,7 +282,7 @@ export default function LeaveRequest() {
   return (
     <Layout title={isRisetStudent ? "Pengajuan Izin dan Sakit" : "Pengajuan Cuti, Izin, dan Sakit"}>
       <div className="flex flex-col gap-4 sm:gap-5 p-4 sm:p-6 max-w-4xl">
-        {error && (
+        {!requestModal && error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
             {error}
           </div>
@@ -384,6 +384,12 @@ export default function LeaveRequest() {
               </div>
 
               <div className="p-5 sm:p-6 flex flex-col gap-4">
+                {error && (
+                  <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
+                    {error}
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs font-black text-foreground block mb-1.5">Jenis Pengajuan</label>
                   <select

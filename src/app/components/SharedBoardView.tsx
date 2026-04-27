@@ -8,10 +8,11 @@ import {
   ChevronLeft, Edit2, AlertTriangle, Check, X,
   UploadCloud, Download, Send, FileText,
   Image as ImageIcon, Folder, Plus, Trash2, MessageSquare,
-  Paperclip, GitBranch, ExternalLink,
+  Paperclip, GitBranch, ExternalLink, Link as LinkIcon,
 } from "lucide-react";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
+import { formatDateReadable } from "../lib/date";
 
 type Milestone = {
   id?: number;
@@ -585,7 +586,7 @@ export function SharedBoardView({
           <p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Progress Board</p>
           <h2 className="mt-2 text-xl font-black text-foreground">Belum ada proyek riset</h2>
           <p className="mt-2 text-sm font-medium text-muted-foreground">
-            {loadError || "Data board akan muncul setelah operator menambahkan data riset di menu database riset."}
+            {loadError || "Data board akan muncul setelah admin menambahkan data riset di menu database riset."}
           </p>
         </div>
       </div>
@@ -1485,7 +1486,7 @@ export function SharedBoardView({
                   onClick={() => { setAttachmentLink(project.attachment_link || ""); setIsEditingAttachment(!isEditingAttachment); }}
                   className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all shadow-sm"
                 >
-                  <Link size={10} strokeWidth={3} /> {isEditingAttachment ? "Batal" : "Edit"}
+                  <LinkIcon size={10} strokeWidth={3} /> {isEditingAttachment ? "Batal" : "Edit"}
                 </button>
               </div>
               {isEditingAttachment ? (
@@ -1512,7 +1513,7 @@ export function SharedBoardView({
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 px-3 py-2 bg-white border border-[#D8F5D0] rounded-lg text-xs text-[#0AB600] hover:bg-[#F0FFF0] transition-all break-all"
                 >
-                  <Link size={12} /> {project.attachment_link}
+                  <LinkIcon size={12} /> {project.attachment_link}
                 </a>
               ) : (
                 <p className="text-xs text-slate-400 italic">Belum ada lampiran</p>
@@ -1541,7 +1542,7 @@ export function SharedBoardView({
                         <div className="flex items-center gap-1.5 mb-3">
                           {task.isOverdue && <AlertTriangle size={12} className="text-red-500" strokeWidth={3} />}
                           <span className={`text-[11px] font-bold ${task.isOverdue ? "text-red-500" : "text-muted-foreground"}`}>
-                            Deadline: {task.deadline}
+                            Deadline: {formatDateReadable(task.deadline)}
                           </span>
                         </div>
                       )}
@@ -1788,7 +1789,7 @@ export function SharedBoardView({
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">Deadline</span>
-                      <span className={`text-sm font-bold ${selectedTask.isOverdue ? "text-red-500" : "text-foreground"}`}>{selectedTask.deadline || "Belum diatur"}</span>
+                      <span className={`text-sm font-bold ${selectedTask.isOverdue ? "text-red-500" : "text-foreground"}`}>{formatDateReadable(selectedTask.deadline) || "Belum diatur"}</span>
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Ditugaskan Ke</span>

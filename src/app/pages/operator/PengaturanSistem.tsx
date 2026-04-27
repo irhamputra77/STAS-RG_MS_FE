@@ -491,7 +491,7 @@ export default function PengaturanSistem() {
     if (!gpsCandidate) return;
     const confirmed = gpsAccuracyIsGood || await confirm({
       title: "Pakai titik GPS berakurasi rendah?",
-      description: "Akurasi GPS masih rendah. Titik ini bisa meleset, jadi sebaiknya dipakai hanya jika operator sudah memeriksa ulang koordinatnya.",
+      description: "Akurasi GPS masih rendah. Titik ini bisa meleset, jadi sebaiknya dipakai hanya jika admin sudah memeriksa ulang koordinatnya.",
       confirmLabel: "Pakai Tetap",
       cancelLabel: "Batal",
       variant: "warning"
@@ -500,7 +500,7 @@ export default function PengaturanSistem() {
     applyGpsCandidateToForm(gpsCandidate);
     setWarning(gpsAccuracyIsGood
       ? "Titik GPS dimuat ke form. Periksa ulang koordinat sebelum menyimpan."
-      : "Titik GPS berakurasi rendah dimuat ke form karena dikonfirmasi operator. Periksa ulang koordinat sebelum menyimpan."
+      : "Titik GPS berakurasi rendah dimuat ke form karena dikonfirmasi admin. Periksa ulang koordinat sebelum menyimpan."
     );
   };
 

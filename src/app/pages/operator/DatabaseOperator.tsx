@@ -55,7 +55,7 @@ function formatDate(value: string) {
 }
 
 function normalizeOperator(item: any, idx: number): OperatorRecord {
-  const name = firstValue(item.name, item.fullName, item.full_name, item.nama, item.displayName, "Operator");
+  const name = firstValue(item.name, item.fullName, item.full_name, item.nama, item.displayName, "Admin");
   const status = firstValue(item.status, item.active === false ? "Nonaktif" : "Aktif");
 
   return {
@@ -107,7 +107,7 @@ export default function DatabaseOperator() {
         setError("");
         await reloadOperators();
       } catch (err: any) {
-        setError(err?.message || "Gagal memuat data operator.");
+        setError(err?.message || "Gagal memuat data admin.");
       }
     };
     load();
@@ -157,12 +157,12 @@ export default function DatabaseOperator() {
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.email.trim()) {
-      setError("Nama dan email operator wajib diisi.");
+      setError("Nama dan email admin wajib diisi.");
       return;
     }
 
     if (modal === "add" && !form.password.trim()) {
-      setError("Password wajib diisi saat membuat operator baru.");
+      setError("Password wajib diisi saat membuat admin baru.");
       return;
     }
 
@@ -193,7 +193,7 @@ export default function DatabaseOperator() {
       await reloadOperators();
       resetForm();
     } catch (err: any) {
-      setError(err?.message || "Gagal menyimpan data operator.");
+      setError(err?.message || "Gagal menyimpan data admin.");
     } finally {
       setSaving(false);
     }
@@ -202,8 +202,8 @@ export default function DatabaseOperator() {
   const handleDelete = async (operator: OperatorRecord, event?: React.MouseEvent) => {
     event?.stopPropagation();
     const confirmed = await confirm({
-      title: "Hapus data operator?",
-      description: `Akun operator "${operator.name}" akan dihapus dari database.`,
+      title: "Hapus data admin?",
+      description: `Akun admin "${operator.name}" akan dihapus dari database.`,
       confirmLabel: "Hapus",
       cancelLabel: "Batal",
       variant: "danger"
@@ -218,14 +218,14 @@ export default function DatabaseOperator() {
       if (editTarget?.id === operator.id) resetForm();
       await reloadOperators();
     } catch (err: any) {
-      setError(err?.message || "Gagal menghapus data operator.");
+      setError(err?.message || "Gagal menghapus data admin.");
     } finally {
       setDeletingId(null);
     }
   };
 
   return (
-    <OperatorLayout title="Database Operator">
+    <OperatorLayout title="Database Admin">
       <div className="flex flex-col gap-5 pb-4">
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
@@ -260,7 +260,7 @@ export default function DatabaseOperator() {
             className="flex h-9 items-center gap-2 rounded-[10px] bg-[#0AB600] px-4 text-sm font-black text-white shadow-sm transition-colors hover:bg-[#099800]"
           >
             <Plus size={15} strokeWidth={3} />
-            Tambah Operator
+            Tambah Admin
           </button>
         </div>
 
@@ -270,7 +270,7 @@ export default function DatabaseOperator() {
               <table className="w-full min-w-[820px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-border bg-slate-50">
-                    {["Operator", "Email", "Username", "Telepon", "Bergabung", "Status", "Aksi"].map((header) => (
+                    {["Admin", "Email", "Username", "Telepon", "Bergabung", "Status", "Aksi"].map((header) => (
                       <th key={header} className="px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">
                         {header}
                       </th>
@@ -291,7 +291,7 @@ export default function DatabaseOperator() {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-black text-foreground">{operator.name}</p>
-                            <p className="text-[11px] font-semibold text-muted-foreground">Operator Sistem</p>
+                            <p className="text-[11px] font-semibold text-muted-foreground">Admin Sistem</p>
                           </div>
                         </div>
                       </td>
@@ -315,7 +315,7 @@ export default function DatabaseOperator() {
                           <button
                             onClick={(event) => openEditModal(operator, event)}
                             className="flex h-7 w-7 items-center justify-center rounded-[8px] text-muted-foreground transition-colors hover:bg-green-50 hover:text-green-600"
-                            title="Edit operator"
+                            title="Edit admin"
                           >
                             <Pencil size={13} />
                           </button>
@@ -323,7 +323,7 @@ export default function DatabaseOperator() {
                             onClick={(event) => handleDelete(operator, event)}
                             disabled={deletingId === operator.id}
                             className="flex h-7 w-7 items-center justify-center rounded-[8px] text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Hapus operator"
+                            title="Hapus admin"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -334,7 +334,7 @@ export default function DatabaseOperator() {
                   {filtered.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-5 py-10 text-center text-sm font-semibold text-muted-foreground">
-                        Tidak ada data operator yang sesuai filter.
+                        Tidak ada data admin yang sesuai filter.
                       </td>
                     </tr>
                   )}
@@ -343,7 +343,7 @@ export default function DatabaseOperator() {
             </div>
             <div className="border-t border-border bg-slate-50/50 px-5 py-3">
               <p className="text-xs font-medium text-muted-foreground">
-                Menampilkan {filtered.length} dari {operators.length} operator
+                Menampilkan {filtered.length} dari {operators.length} admin
               </p>
             </div>
           </div>
@@ -351,7 +351,7 @@ export default function DatabaseOperator() {
           {selected && (
             <div className="w-[300px] shrink-0 overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-green-50 to-white px-5 py-4">
-                <h3 className="text-sm font-black text-foreground">Profil Operator</h3>
+                <h3 className="text-sm font-black text-foreground">Profil Admin</h3>
                 <button
                   onClick={() => setSelected(null)}
                   className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100"
@@ -366,7 +366,7 @@ export default function DatabaseOperator() {
                   </div>
                   <div>
                     <p className="font-black text-foreground">{selected.name}</p>
-                    <p className="text-xs font-semibold text-muted-foreground">Operator Sistem</p>
+                    <p className="text-xs font-semibold text-muted-foreground">Admin Sistem</p>
                     <span
                       className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] font-black ${
                         selected.status === "Aktif"
@@ -397,10 +397,10 @@ export default function DatabaseOperator() {
                 <div className="mb-5 rounded-[12px] border border-green-100 bg-green-50 px-3 py-3">
                   <div className="flex items-center gap-2 text-xs font-black text-green-700">
                     <ShieldCheck size={15} />
-                    Akses Operator
+                    Akses Admin
                   </div>
                   <p className="mt-1 text-[11px] font-medium leading-5 text-green-700/80">
-                    Akun ini memiliki akses ke panel operator sesuai hak akses backend.
+                    Akun ini memiliki akses ke panel admin sesuai hak akses backend.
                   </p>
                 </div>
 
@@ -429,7 +429,7 @@ export default function DatabaseOperator() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={resetForm}>
           <div className="w-full max-w-[520px] rounded-[20px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-border px-6 py-5">
-              <h3 className="font-black text-foreground">{modal === "add" ? "Tambah Operator" : "Edit Operator"}</h3>
+              <h3 className="font-black text-foreground">{modal === "add" ? "Tambah Admin" : "Edit Admin"}</h3>
               <button
                 onClick={resetForm}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100"
@@ -444,7 +444,7 @@ export default function DatabaseOperator() {
                 <input
                   value={form.name}
                   onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                  placeholder="Nama operator"
+                  placeholder="Nama admin"
                   className="h-10 w-full rounded-[10px] border border-border px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-300"
                 />
               </div>
@@ -453,7 +453,7 @@ export default function DatabaseOperator() {
                 <input
                   value={form.email}
                   onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-                  placeholder="operator@stas-rg.com"
+                  placeholder="admin@stas-rg.com"
                   className="h-10 w-full rounded-[10px] border border-border px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-300"
                 />
               </div>

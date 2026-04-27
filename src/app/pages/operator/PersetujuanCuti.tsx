@@ -101,8 +101,8 @@ export default function PersetujuanCuti() {
       });
 
       const reviewedAt = formatDateYmd(new Date().toISOString());
-      setLeaves((prev) => prev.map((leave) => leave.id === confirm.item.id ? { ...leave, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt, reviewNote: note } : leave));
-      setDetail((prev) => prev?.id === confirm.item.id ? { ...prev, status: newStatus, reviewedBy: user?.name || "Admin Operator", reviewedAt, reviewNote: note } : prev);
+      setLeaves((prev) => prev.map((leave) => leave.id === confirm.item.id ? { ...leave, status: newStatus, reviewedBy: user?.name || "Admin", reviewedAt, reviewNote: note } : leave));
+      setDetail((prev) => prev?.id === confirm.item.id ? { ...prev, status: newStatus, reviewedBy: user?.name || "Admin", reviewedAt, reviewNote: note } : prev);
       const jenisLabel = REQUEST_TYPE_LABEL[confirm.item.jenis as RequestType] || "Pengajuan";
       showToast(`Pengajuan ${jenisLabel.toLowerCase()} ${confirm.item.mahasiswaNama} berhasil ${confirm.action === "Setujui" ? "disetujui" : "ditolak"}.`, confirm.action === "Setujui" ? "success" : "error");
       setConfirm(null);

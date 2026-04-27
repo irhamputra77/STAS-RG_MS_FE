@@ -27,6 +27,10 @@ function statusBadge(status: WithdrawalRow["finalStatus"]) {
   return "bg-amber-100 text-amber-700 border border-amber-200";
 }
 
+function displayStatus(status: string) {
+  return status.replace("Operator", "Admin");
+}
+
 export default function PengunduranDiriOperator() {
   const user = getStoredUser();
   const [rows, setRows] = useState<WithdrawalRow[]>([]);
@@ -87,7 +91,7 @@ export default function PengunduranDiriOperator() {
     try {
       const note = status === "Diteruskan"
         ? "Data lengkap, diteruskan ke dosen pembimbing."
-        : "Pengajuan ditolak oleh operator.";
+        : "Pengajuan ditolak oleh admin.";
 
       await apiPatch(`/withdrawal-requests/${id}/operator-review`, {
         status,
@@ -123,12 +127,12 @@ export default function PengunduranDiriOperator() {
 
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Operator</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Admin</p>
             <h1 className="text-2xl font-black text-foreground">Pengunduran Diri</h1>
             <p className="text-sm text-muted-foreground mt-1">Review tahap pertama sebelum permintaan diteruskan ke dosen pembimbing.</p>
           </div>
           <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">
-            {rows.filter((item) => item.statusOperator === "Menunggu").length} pengajuan menunggu review operator
+            {rows.filter((item) => item.statusOperator === "Menunggu").length} pengajuan menunggu review admin
           </div>
         </div>
 
@@ -170,7 +174,7 @@ export default function PengunduranDiriOperator() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-base font-black text-foreground">{item.studentName}</p>
                       <span className="text-xs font-medium text-muted-foreground">{item.studentNim}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{item.finalStatus}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{displayStatus(item.finalStatus)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Dosen pembimbing: {item.advisorName}</p>
                     <p className="text-xs text-muted-foreground">Diajukan {item.submittedAt}</p>
@@ -188,7 +192,7 @@ export default function PengunduranDiriOperator() {
                     )}
                     {item.statusOperator !== "Menunggu" && (
                       <span className="rounded-[10px] bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">
-                        Operator: {item.statusOperator}
+                        Admin: {displayStatus(item.statusOperator)}
                       </span>
                     )}
                   </div>
@@ -201,8 +205,8 @@ export default function PengunduranDiriOperator() {
 
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-muted-foreground">
                   <div className="rounded-[12px] border border-border bg-white px-3 py-3">
-                    <p className="font-black text-foreground mb-1">Review Operator</p>
-                    <p>Status: {item.statusOperator}</p>
+                    <p className="font-black text-foreground mb-1">Review Admin</p>
+                    <p>Status: {displayStatus(item.statusOperator)}</p>
                     {item.operatorNote && <p className="mt-1">{item.operatorNote}</p>}
                   </div>
                   <div className="rounded-[12px] border border-border bg-white px-3 py-3">

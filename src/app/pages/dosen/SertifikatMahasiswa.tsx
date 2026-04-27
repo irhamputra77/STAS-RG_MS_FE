@@ -96,7 +96,7 @@ export default function SertifikatMahasiswa() {
           <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-black text-blue-800">Alur Sertifikat</p>
-            <p className="text-xs text-blue-600 mt-0.5">Dosen mengajukan sertifikat untuk mahasiswa bimbingan. Operator akan memproses hingga status terbit.</p>
+            <p className="text-xs text-blue-600 mt-0.5">Dosen mengajukan sertifikat untuk mahasiswa bimbingan. Admin akan memproses hingga status terbit.</p>
           </div>
         </div>
 
@@ -134,7 +134,7 @@ export default function SertifikatMahasiswa() {
                       </button>
                     )}
                     {row.status === "Diproses" && (
-                      <span className="text-[10px] font-bold text-amber-600">Diproses operator</span>
+                      <span className="text-[10px] font-bold text-amber-600">Diproses admin</span>
                     )}
                     {row.status === "Terbit" && row.fileUrl && (
                       <a href={resolveApiAssetUrl(row.fileUrl) || "#"} target="_blank" rel="noreferrer" className="flex items-center gap-1 h-7 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-[8px] border border-indigo-200 transition-colors">

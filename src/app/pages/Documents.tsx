@@ -265,7 +265,7 @@ export default function Documents() {
   return (
     <Layout title="Dokumen & Sertifikat">
       <div className="flex flex-col gap-6 max-w-[1060px] mx-auto">
-        {error && (
+        {!isModalOpen && !certModalOpen && error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
             {error}
           </div>
@@ -433,7 +433,7 @@ export default function Documents() {
                 <div>
                   <p className="text-sm font-black text-slate-500">Belum ada data sertifikat</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Data akan muncul setelah dosen/operator memproses permintaan sertifikat.
+                    Data akan muncul setelah dosen/admin memproses permintaan sertifikat.
                   </p>
                 </div>
               </div>
@@ -511,6 +511,12 @@ export default function Documents() {
 
             {/* Modal Body */}
             <div className="p-5 flex flex-col gap-5">
+
+              {error && (
+                <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
+                  {error}
+                </div>
+              )}
 
               {/* Info note */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -606,7 +612,7 @@ export default function Documents() {
                 </div>
                 <div>
                   <h2 className="text-lg font-black text-foreground">Ajukan Sertifikat</h2>
-                  <p className="text-[11px] font-medium text-muted-foreground">Diajukan ke dosen/operator untuk diproses</p>
+                  <p className="text-[11px] font-medium text-muted-foreground">Diajukan ke dosen/admin untuk diproses</p>
                 </div>
               </div>
               <button onClick={() => setCertModalOpen(false)} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors">
@@ -614,6 +620,12 @@ export default function Documents() {
               </button>
             </div>
             <div className="p-5 flex flex-col gap-5">
+              {error && (
+                <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
+                  {error}
+                </div>
+              )}
+
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-700">Riset <span className="text-red-500">*</span></label>
                 <select value={certProjectId} onChange={(e) => setCertProjectId(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none transition-all">
@@ -629,7 +641,7 @@ export default function Documents() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-700">Catatan (Opsional)</label>
-                <textarea rows={3} value={certRequestNote} onChange={(event) => setCertRequestNote(event.target.value)} placeholder="Tambahkan catatan untuk dosen/operator..." className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none resize-none transition-all" />
+                <textarea rows={3} value={certRequestNote} onChange={(event) => setCertRequestNote(event.target.value)} placeholder="Tambahkan catatan untuk dosen/admin..." className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] outline-none resize-none transition-all" />
               </div>
             </div>
             <div className="p-5 border-t border-border bg-slate-50/50 flex items-center justify-end gap-3 shrink-0">

@@ -55,7 +55,7 @@ const INIT_NOTIFS: AppNotification[] = [
     id: "dn3",
     type: "pengumuman",
     title: "Konfirmasi Pengunduran Diri",
-    body: "Operator telah meneruskan pengajuan pengunduran diri Dimas Aryanto untuk keputusan akhir Anda.",
+    body: "Admin telah meneruskan pengajuan pengunduran diri Dimas Aryanto untuk keputusan akhir Anda.",
     time: "3 jam lalu",
     timeMs: Date.now() - 3 * 60 * 60 * 1000,
     read: false,

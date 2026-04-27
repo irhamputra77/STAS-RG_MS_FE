@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../lib/api";
 import { Search, Plus, X, Target, Pencil, LayoutGrid, List, Shield, Trash2, Users, FlaskConical, BookOpen } from "lucide-react";
@@ -412,7 +412,7 @@ export default function DatabaseRisetDosen() {
           </div>
         </div>
 
-        {/* â•â• RISET TAB â•â• */}
+        {/* ══ RISET TAB ══ */}
         {tab === "riset" && (
           <div className="flex gap-5 items-start">
             <div className="flex-1 min-w-0">
@@ -440,7 +440,7 @@ export default function DatabaseRisetDosen() {
                               </span>
                             ))}
                           </div>
-                          <p className="text-xs text-muted-foreground mb-2">{r.category} Â· {r.period_text}</p>
+                          <p className="text-xs text-muted-foreground mb-2">{r.category} · {r.period_text}</p>
                           <div className="flex items-center justify-between">
                             <div className="flex -space-x-2">
                               {projectMembers.slice(0, 4).map((m: any) => <div key={m.user_id} className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black bg-indigo-600 text-white">{m.initials || m.name?.charAt(0)?.toUpperCase()}</div>)}
@@ -471,7 +471,7 @@ export default function DatabaseRisetDosen() {
                             <td className="px-5 py-3.5 font-black text-foreground max-w-[220px]"><p className="line-clamp-1">{r.title}</p></td>
                             <td className="px-5 py-3.5 text-xs">
                               <div className="flex flex-col gap-0.5">
-                                {dosen.map((d: any) => <span key={d.user_id} className={`text-[10px] font-black ${d.peran === "Ketua" ? "text-[#0AB600]" : "text-muted-foreground"}`}>{d.name} {d.peran === "Ketua" ? "â˜…" : ""}</span>)}
+                                {dosen.map((d: any) => <span key={d.user_id} className={`text-[10px] font-black ${d.peran === "Ketua" ? "text-[#0AB600]" : "text-muted-foreground"}`}>{d.name} {d.peran === "Ketua" ? "★" : ""}</span>)}
                               </div>
                             </td>
                             <td className="px-5 py-3.5 text-muted-foreground text-xs">{mems.length} org</td>
@@ -487,7 +487,7 @@ export default function DatabaseRisetDosen() {
               )}
             </div>
 
-            {/* Detail Panel â€“ Riset */}
+            {/* Detail Panel – Riset */}
             {selected && (
               <div className="w-[330px] shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden max-h-[75vh] overflow-y-auto">
                 <div className="h-16 bg-gradient-to-br from-[#0AB600] to-[#065e00] relative">
@@ -567,10 +567,10 @@ export default function DatabaseRisetDosen() {
                     <div>
                       <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-[10px] text-xs text-green-700">
                         <p className="font-black mb-0.5">Board Access Control</p>
-                        <p>Operator & Dosen Ketua selalu punya akses edit. Pilih mahasiswa yang juga mendapat akses edit board.</p>
+                        <p>Admin & Dosen Ketua selalu punya akses edit. Pilih mahasiswa yang juga mendapat akses edit board.</p>
                       </div>
                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2">Akses Permanen</p>
-                      {[{ label: "Semua Operator", sub: "Full access", initials: "OP", color: "bg-amber-500 text-white" }, { label: selected.supervisor_name, sub: "Ketua Riset", initials: selected.supervisor_name?.split(" ").map((part: string) => part[0]).join("").slice(0,2).toUpperCase() || "DS", color: "bg-[#0AB600] text-white" }].map(item => (
+                      {[{ label: "Semua Admin", sub: "Full access", initials: "OP", color: "bg-amber-500 text-white" }, { label: selected.supervisor_name, sub: "Ketua Riset", initials: selected.supervisor_name?.split(" ").map((part: string) => part[0]).join("").slice(0,2).toUpperCase() || "DS", color: "bg-[#0AB600] text-white" }].map(item => (
                         <div key={item.label} className="flex items-center gap-2 py-2">
                           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${item.color}`}>{item.initials}</div>
                           <div className="flex-1"><p className="text-xs font-black text-foreground">{item.label}</p><p className="text-[10px] text-muted-foreground">{item.sub}</p></div>
@@ -608,7 +608,7 @@ export default function DatabaseRisetDosen() {
           </div>
         )}
 
-        {/* â•â• DOSEN TAB â•â• */}
+        {/* ══ DOSEN TAB ══ */}
         {tab === "dosen" && (
           <div className="flex gap-5 items-start">
             <div className="flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
@@ -798,9 +798,9 @@ export default function DatabaseRisetDosen() {
               </>}
             </div>
             <div className="px-6 pb-6 flex gap-3">
-              <button onClick={() => step > 0 ? setStep(s => s - 1) : setModalOpen(false)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50">{step > 0 ? "â† Kembali" : "Batal"}</button>
+              <button onClick={() => step > 0 ? setStep(s => s - 1) : setModalOpen(false)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50">{step > 0 ? "← Kembali" : "Batal"}</button>
               <button onClick={() => step < STEP_LABELS.length - 1 ? setStep(s => s + 1) : handleCreateResearch()} disabled={savingRiset} className="flex-1 h-10 bg-[#0AB600] hover:bg-[#099800] text-white text-sm font-black rounded-[10px] disabled:bg-[#8ad98a]">
-                {savingRiset ? "Menyimpan..." : step < STEP_LABELS.length - 1 ? "Lanjut →" : "Simpan Riset"}
+                {savingRiset ? "Menyimpan..." : step < STEP_LABELS.length - 1 ? "Lanjut ?" : "Simpan Riset"}
               </button>
             </div>
           </div>

@@ -6,8 +6,9 @@ import { SharedBoardView } from "../../components/SharedBoardView";
 export default function ProgressBoard() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { researchId } = useParams();
+  const params = useParams();
   const [searchParams] = useSearchParams();
+  const researchId = params.researchId || params["*"]?.split("/").filter(Boolean).pop();
 
   const stateProjectIds = Array.isArray(location.state?.projectIds)
     ? (location.state.projectIds as string[])

@@ -125,6 +125,7 @@ export const router = createBrowserRouter([
               { path: "audit", element: <AuditLog /> },
               { path: "progress-board", element: <ProgressBoard /> },
               { path: "progress-board/:researchId", element: <ProgressBoard /> },
+              { path: "progress-board/*", element: <ProgressBoard /> },
               { path: "draft", element: <ReviewDraftOperator /> },
               { path: "sertifikat", element: <SertifikatOperator /> },
             ],

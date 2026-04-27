@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Layout } from "../components/Layout";
 import {
   User, Info, Lock, Bell, LogOut, Eye, EyeOff, Check,
@@ -7,9 +7,9 @@ import {
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // TYPES
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 type Tab = "profil" | "akun" | "password" | "notifikasi" | "pengunduran";
 
@@ -21,9 +21,9 @@ function getInitials(name?: string | null) {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // SHARED UI ATOMS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -81,9 +81,9 @@ function SaveButton({ label = "Simpan Perubahan", onClick, danger }: { label?: s
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: PROFIL & FOTO
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 function TabProfil() {
   const user = getStoredUser();
@@ -189,9 +189,9 @@ function TabProfil() {
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: INFORMASI AKUN
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value, badge }: { label: string; value: string; badge?: { text: string; color: string } }) {
   return (
@@ -216,7 +216,7 @@ function TabAkun() {
       {/* Read-only badge */}
       <div className="flex items-center gap-2 mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-[12px] self-start w-fit">
         <Shield size={14} className="text-amber-600 shrink-0" />
-        <span className="text-xs font-black text-amber-700">Data bersifat read-only â€” hanya dapat diubah oleh admin</span>
+        <span className="text-xs font-black text-amber-700">Data bersifat read-only — hanya dapat diubah oleh admin</span>
       </div>
 
       <div className="bg-white border border-border rounded-[16px] px-6 divide-y-0">
@@ -225,7 +225,7 @@ function TabAkun() {
         <InfoRow
           label="Status Mahasiswa"
           value="Aktif"
-          badge={{ text: "â— Aktif", color: "bg-emerald-50 text-emerald-700 border border-emerald-200" }}
+          badge={{ text: "● Aktif", color: "bg-emerald-50 text-emerald-700 border border-emerald-200" }}
         />
         <InfoRow label="Email Institusi" value="-" />
         <InfoRow label="Perguruan Tinggi" value="-" />
@@ -241,9 +241,9 @@ function TabAkun() {
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: GANTI PASSWORD
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 function TabAkunDynamic() {
   const user = getStoredUser();
@@ -284,7 +284,7 @@ function TabAkunDynamic() {
         <InfoRow
           label="Status Mahasiswa"
           value={status}
-          badge={{ text: `â€¢ ${status}`, color: statusColor }}
+          badge={{ text: `• ${status}`, color: statusColor }}
         />
         <InfoRow label="Email Institusi" value={profile?.email || "-"} />
         <InfoRow label="Perguruan Tinggi" value="-" />
@@ -315,7 +315,7 @@ function PasswordInput({
           type={show ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"}
+          placeholder={placeholder ?? "••••••••"}
           className="w-full px-4 py-3 pr-12 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
         />
         <button
@@ -439,9 +439,9 @@ function TabPassword() {
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: NOTIFIKASI
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -560,9 +560,9 @@ function TabNotifikasi() {
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: PENGUNDURAN DIRI
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 function TabPengunduran() {
   const user = getStoredUser();
@@ -611,7 +611,7 @@ function TabPengunduran() {
     "Akun Anda akan dinonaktifkan secara permanen",
     "Semua data logbook, riset, dan dokumen tidak dapat diakses",
     "Anda akan dikeluarkan dari semua proyek riset yang sedang berjalan",
-    "Pengajuan akan ditinjau operator terlebih dahulu sebelum diteruskan",
+    "Pengajuan akan ditinjau admin terlebih dahulu sebelum diteruskan",
     "Keputusan final baru berlaku setelah disetujui dosen pembimbing",
   ];
 
@@ -671,17 +671,17 @@ function TabPengunduran() {
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-black text-foreground">Status Pengajuan</p>
-              <p className="text-xs font-medium text-muted-foreground">Riwayat approval operator dan dosen pembimbing.</p>
+              <p className="text-xs font-medium text-muted-foreground">Riwayat approval admin dan dosen pembimbing.</p>
             </div>
             <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${finalStatusBadgeClass(String(requests[0]?.final_status || "Menunggu"))}`}>
-              {requests[0]?.final_status || "Menunggu"}
+              {String(requests[0]?.final_status || "Menunggu").replace("Operator", "Admin")}
             </span>
           </div>
 
           <div className="mb-4 flex items-center gap-1.5">
             {[
               { label: "Pengajuan", done: true },
-              { label: "Operator", done: ["Diteruskan"].includes(String(requests[0]?.status_operator || "")) },
+              { label: "Admin", done: ["Diteruskan"].includes(String(requests[0]?.status_operator || "")) },
               { label: "Dosen Pembimbing", done: ["Disetujui"].includes(String(requests[0]?.status_dosen || "")) },
             ].map((step, index, arr) => (
               <div key={step.label} className="flex items-center gap-1">
@@ -703,12 +703,12 @@ function TabPengunduran() {
                     <p className="mt-1 text-xs text-muted-foreground">{item.reason}</p>
                   </div>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${finalStatusBadgeClass(String(item.final_status || "Menunggu"))}`}>
-                    {item.final_status}
+                    {String(item.final_status || "Menunggu").replace("Operator", "Admin")}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-muted-foreground">
-                  <p>Operator: <span className="font-bold text-foreground">{item.status_operator || "Menunggu"}</span>{item.operator_note ? ` · ${item.operator_note}` : ""}</p>
-                  <p>Dosen pembimbing: <span className="font-bold text-foreground">{item.status_dosen || "Menunggu"}</span>{item.advisor_note ? ` · ${item.advisor_note}` : ""}</p>
+                  <p>Admin: <span className="font-bold text-foreground">{item.status_operator || "Menunggu"}</span>{item.operator_note ? ` � ${item.operator_note}` : ""}</p>
+                  <p>Dosen pembimbing: <span className="font-bold text-foreground">{item.status_dosen || "Menunggu"}</span>{item.advisor_note ? ` � ${item.advisor_note}` : ""}</p>
                 </div>
               </div>
             ))}
@@ -723,7 +723,7 @@ function TabPengunduran() {
             <AlertTriangle size={20} />
           </div>
           <div>
-            <p className="text-sm font-black text-red-700">Zona Berbahaya â€” Tindakan Tidak Dapat Dibatalkan</p>
+            <p className="text-sm font-black text-red-700">Zona Berbahaya — Tindakan Tidak Dapat Dibatalkan</p>
             <p className="text-xs font-medium text-red-500 mt-0.5">Baca seluruh konsekuensi sebelum melanjutkan</p>
           </div>
         </div>
@@ -744,9 +744,9 @@ function TabPengunduran() {
           rows={5}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Jelaskan alasan Anda mengajukan pengunduran diri secara lengkap. Alasan ini akan dibaca oleh operator terlebih dahulu, lalu oleh dosen pembimbing..."
+          placeholder="Jelaskan alasan Anda mengajukan pengunduran diri secara lengkap. Alasan ini akan dibaca oleh admin terlebih dahulu, lalu oleh dosen pembimbing..."
         />
-        <p className="text-[11px] text-muted-foreground mt-1.5">Min. 50 karakter Â· {reason.length} karakter diisi</p>
+        <p className="text-[11px] text-muted-foreground mt-1.5">Min. 50 karakter · {reason.length} karakter diisi</p>
       </div>
 
       <div className="mb-6 rounded-[16px] border border-[#E9E0FF] bg-[#F8F5FF] p-5">
@@ -754,8 +754,8 @@ function TabPengunduran() {
         <div className="flex flex-col gap-2.5">
           {[
             "1. Mahasiswa mengirim pengajuan pengunduran diri.",
-            "2. Operator meninjau kelengkapan lalu memutuskan diteruskan atau ditolak.",
-            "3. Jika diteruskan operator, dosen pembimbing memberi keputusan akhir.",
+            "2. Admin meninjau kelengkapan lalu memutuskan diteruskan atau ditolak.",
+            "3. Jika diteruskan admin, dosen pembimbing memberi keputusan akhir.",
           ].map((step) => (
             <div key={step} className="flex items-start gap-2.5 text-sm font-medium text-[#4C3BB8]">
               <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#D8CEFF] bg-white">
@@ -768,7 +768,7 @@ function TabPengunduran() {
       </div>
       <div className="p-4 bg-slate-50 border border-border rounded-[12px] mb-6">
         <p className="text-xs font-medium text-muted-foreground">
-          Setelah pengajuan dikirim, Anda masih dapat menggunakan akun hingga proses verifikasi operator dan dosen pembimbing selesai (maks. 3 hari kerja).
+          Setelah pengajuan dikirim, Anda masih dapat menggunakan akun hingga proses verifikasi admin dan dosen pembimbing selesai (maks. 3 hari kerja).
           Untuk pertanyaan, hubungi <span className="font-black text-foreground">akademik@univ.ac.id</span>.
         </p>
       </div>
@@ -802,7 +802,7 @@ function TabPengunduran() {
             {/* Body */}
             <div className="px-6 py-5 flex flex-col gap-4">
               <p className="text-sm font-medium text-foreground leading-relaxed">
-                Pengajuan pengunduran diri Anda akan dikirimkan ke <span className="font-black">operator</span> terlebih dahulu untuk diverifikasi. Jika diteruskan, permintaan ini akan dikirim ke <span className="font-black">{advisorName}</span> sebagai dosen pembimbing untuk keputusan akhir.
+                Pengajuan pengunduran diri Anda akan dikirimkan ke <span className="font-black">admin</span> terlebih dahulu untuk diverifikasi. Jika diteruskan, permintaan ini akan dikirim ke <span className="font-black">{advisorName}</span> sebagai dosen pembimbing untuk keputusan akhir.
               </p>
 
               {/* Confirmation checkbox */}
@@ -834,7 +834,7 @@ function TabPengunduran() {
                 onClick={submitWithdrawalRequest}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-[12px] text-sm font-black text-white bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-red-500/20"
               >
-                <LogOut size={15} /> {submitting ? "Mengirim..." : "Ya, Kirim ke Operator"}
+                <LogOut size={15} /> {submitting ? "Mengirim..." : "Ya, Kirim ke Admin"}
               </button>
             </div>
           </div>
@@ -844,9 +844,9 @@ function TabPengunduran() {
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ReactNode; danger?: boolean }[] = [
   { id: "profil",       label: "Profil & Foto",         icon: <User size={18} /> },
@@ -887,7 +887,7 @@ export default function Settings() {
 
         <div className="flex gap-6 items-start">
 
-          {/* â”€â”€ Left: Tab Navigation â”€â”€ */}
+          {/* ── Left: Tab Navigation ── */}
           <aside className="w-[220px] shrink-0 bg-white border border-border rounded-[18px] p-2 shadow-sm sticky top-0">
             <nav className="flex flex-col gap-0.5">
               {TAB_CONFIG.map((tab) => {
@@ -928,7 +928,7 @@ export default function Settings() {
             </div>
           </aside>
 
-          {/* â”€â”€ Right: Content Panel â”€â”€ */}
+          {/* ── Right: Content Panel ── */}
           <main className="flex-1 min-w-0 bg-white border border-border rounded-[18px] p-8 shadow-sm">
             {activeTab === "profil"      && <TabProfil />}
             {activeTab === "akun"        && <TabAkunDynamic />}
@@ -942,4 +942,6 @@ export default function Settings() {
     </Layout>
   );
 }
+
+
 

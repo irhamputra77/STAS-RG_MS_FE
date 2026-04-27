@@ -178,9 +178,9 @@ function parseHistoryDateLabel(dateLabel: string, selectedMonth: string) {
 function getCheckoutSourceLabel(source?: string | null) {
   switch (source) {
     case "OPERATOR_MANUAL":
-      return "Input Operator";
+      return "Input Admin";
     case "OPERATOR_EDIT":
-      return "Diedit Operator";
+      return "Diedit Admin";
     case "SYSTEM_AUTO":
       return "Auto Checkout Sistem";
     case "USER_GPS":

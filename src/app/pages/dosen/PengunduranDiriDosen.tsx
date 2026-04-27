@@ -23,6 +23,10 @@ function statusBadge(status: WithdrawalRow["finalStatus"]) {
   return "bg-amber-100 text-amber-700 border border-amber-200";
 }
 
+function displayStatus(status: string) {
+  return status.replace("Operator", "Admin");
+}
+
 export default function PengunduranDiriDosen() {
   const user = getStoredUser();
   const [rows, setRows] = useState<WithdrawalRow[]>([]);
@@ -110,7 +114,7 @@ export default function PengunduranDiriDosen() {
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Dosen</p>
             <h1 className="text-2xl font-black text-foreground">Persetujuan Pengunduran Diri</h1>
-            <p className="text-sm text-muted-foreground mt-1">Keputusan akhir setelah operator meneruskan pengajuan mahasiswa.</p>
+            <p className="text-sm text-muted-foreground mt-1">Keputusan akhir setelah admin meneruskan pengajuan mahasiswa.</p>
           </div>
           <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
             {rows.filter((item) => item.finalStatus === "Menunggu Dosen").length} pengajuan menunggu keputusan dosen
@@ -155,7 +159,7 @@ export default function PengunduranDiriDosen() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-base font-black text-foreground">{item.studentName}</p>
                       <span className="text-xs font-medium text-muted-foreground">{item.studentNim}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{item.finalStatus}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{displayStatus(item.finalStatus)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Diajukan {item.submittedAt}</p>
                   </div>
@@ -172,7 +176,7 @@ export default function PengunduranDiriDosen() {
                     )}
                     {item.finalStatus !== "Menunggu Dosen" && (
                       <span className="rounded-[10px] bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">
-                        Final: {item.finalStatus}
+                        Final: {displayStatus(item.finalStatus)}
                       </span>
                     )}
                   </div>
@@ -185,7 +189,7 @@ export default function PengunduranDiriDosen() {
 
                 {item.operatorNote && (
                   <div className="mt-4 rounded-[12px] border border-blue-100 bg-blue-50 px-4 py-3 text-[11px] text-blue-700">
-                    <p className="font-black mb-1">Catatan Operator</p>
+                    <p className="font-black mb-1">Catatan Admin</p>
                     <p>{item.operatorNote}</p>
                   </div>
                 )}
@@ -195,7 +199,7 @@ export default function PengunduranDiriDosen() {
                     <Check size={10} strokeWidth={3} /> Pengajuan
                   </div>
                   <div className="flex items-center gap-1 rounded-[8px] bg-emerald-100 px-2 py-1 text-emerald-700 font-black">
-                    <Check size={10} strokeWidth={3} /> Operator
+                    <Check size={10} strokeWidth={3} /> Admin
                   </div>
                   <div className={`flex items-center gap-1 rounded-[8px] px-2 py-1 font-black ${item.finalStatus === "Menunggu Dosen" ? "bg-blue-100 text-blue-700" : item.finalStatus === "Disetujui" ? "bg-emerald-100 text-emerald-700" : item.finalStatus.includes("Ditolak") ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-600"}`}>
                     {item.finalStatus === "Menunggu Dosen" ? <Clock size={10} /> : item.finalStatus === "Disetujui" ? <Check size={10} strokeWidth={3} /> : item.finalStatus.includes("Ditolak") ? <X size={10} strokeWidth={3} /> : <AlertTriangle size={10} />}

@@ -522,7 +522,7 @@ export default function LayananSurat() {
           <div className="px-5 py-4 border-b border-border flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <h2 className="text-sm font-black text-foreground flex items-center gap-2"><FileText size={16} className="text-[#0AB600]" /> Database Surat</h2>
-              <p className="text-xs text-muted-foreground mt-1">Arsip surat siap unduh dan surat yang ditambahkan operator.</p>
+              <p className="text-xs text-muted-foreground mt-1">Arsip surat siap unduh dan surat yang ditambahkan admin.</p>
             </div>
             <button onClick={openCreateArchiveModal} className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#0AB600] px-4 text-xs font-black text-white hover:bg-[#099800] transition-colors">
               <Plus size={14} strokeWidth={3} /> Tambah Surat
@@ -556,7 +556,7 @@ export default function LayananSurat() {
                         <p className="text-sm font-black text-foreground">{item.title}</p>
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{item.category}</span>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${item.source === "operator" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                          {item.source === "operator" ? "Operator" : "Pengajuan"}
+                          {item.source === "operator" ? "Admin" : "Pengajuan"}
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground line-clamp-1">{item.description || "Tidak ada deskripsi."}</p>

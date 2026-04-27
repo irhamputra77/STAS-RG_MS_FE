@@ -134,7 +134,7 @@ export default function PengajuanDokumenDosen() {
   return (
     <DosenLayout title="Pengajuan Surat Dosen">
       <div className="max-w-[980px] mx-auto flex flex-col gap-5">
-        {error && (
+        {!isModalOpen && error && (
           <div className="rounded-[16px] border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-600">
             {error}
           </div>
@@ -159,7 +159,7 @@ export default function PengajuanDokumenDosen() {
             <div>
               <p className="text-sm font-black">Pengajuan surat dosen sudah memakai endpoint generic surat</p>
               <p className="text-xs mt-1 leading-relaxed">
-                Data pengajuan akan masuk ke operator melalui endpoint `letter-requests` dengan `requesterType=lecturer`.
+                Data pengajuan akan masuk ke admin melalui endpoint `letter-requests` dengan `requesterType=lecturer`.
               </p>
             </div>
           </div>
@@ -226,7 +226,7 @@ export default function PengajuanDokumenDosen() {
                 </div>
                 <div>
                   <h2 className="text-lg font-black text-foreground">Ajukan Surat Dosen</h2>
-                  <p className="text-[11px] font-medium text-muted-foreground">Pengajuan akan diteruskan ke operator</p>
+                  <p className="text-[11px] font-medium text-muted-foreground">Pengajuan akan diteruskan ke admin</p>
                 </div>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors">
@@ -235,6 +235,12 @@ export default function PengajuanDokumenDosen() {
             </div>
 
             <div className="p-5 flex flex-col gap-4">
+              {error && (
+                <div className="rounded-[16px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+                  {error}
+                </div>
+              )}
+
               <select
                 value={selectedJenis}
                 onChange={(event) => setSelectedJenis(event.target.value)}
@@ -265,7 +271,7 @@ export default function PengajuanDokumenDosen() {
                 rows={3}
                 value={catatan}
                 onChange={(event) => setCatatan(event.target.value)}
-                placeholder="Catatan tambahan untuk operator (opsional)..."
+                placeholder="Catatan tambahan untuk admin (opsional)..."
                 className="w-full px-4 py-3 rounded-xl border border-border text-sm focus:outline-none resize-none"
               />
             </div>

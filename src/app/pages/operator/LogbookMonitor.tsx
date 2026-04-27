@@ -158,7 +158,7 @@ export default function LogbookMonitor() {
         verificationStatus: verifyModal.status,
         verificationNote,
         verifiedBy: user?.id || "OP001",
-        verifiedByName: user?.name || "Operator"
+        verifiedByName: user?.name || "Admin"
       });
 
       const next = entries.map((entry) => entry.id === verifyModal.entry.id
@@ -166,7 +166,7 @@ export default function LogbookMonitor() {
             ...entry,
             verificationStatus: verifyModal.status,
             verificationNote,
-            verifiedByName: user?.name || "Operator",
+            verifiedByName: user?.name || "Admin",
             verifiedAt: new Date().toISOString()
           }
         : entry);

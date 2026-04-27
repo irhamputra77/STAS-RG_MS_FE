@@ -636,7 +636,7 @@ export default function Attendance() {
                 </div>
               </div>
               <p className="mb-5 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                Jika tetap check-out, operator akan menerima notifikasi untuk ditinjau.
+                Jika tetap check-out, admin akan menerima notifikasi untuk ditinjau.
               </p>
               <div className="flex justify-end gap-2">
                 <button

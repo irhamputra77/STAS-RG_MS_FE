@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { DosenLayout } from "../../components/DosenLayout";
 import { FlaskConical, Users, BookOpen, CalendarCheck, Eye, Check, X, ChevronRight, Target, AlertTriangle, Clock } from "lucide-react";
 import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
-import { formatDateYmd } from "../../lib/date";
+import { formatDateYmd, formatDateReadable } from "../../lib/date";
 
 export default function DashboardDosen() {
   const user = getStoredUser();
@@ -192,7 +192,7 @@ export default function DashboardDosen() {
                         <p className="text-xs text-muted-foreground">{item.studentNim}</p>
                         <p className="text-xs text-foreground mt-0.5 line-clamp-2">{item.reason}</p>
                         {item.operatorNote && (
-                          <p className="mt-1 text-[10px] font-medium text-orange-700">Catatan operator: {item.operatorNote}</p>
+                          <p className="mt-1 text-[10px] font-medium text-orange-700">Catatan admin: {item.operatorNote}</p>
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
@@ -272,7 +272,7 @@ export default function DashboardDosen() {
                       <p className="text-[10px] text-muted-foreground">{d.riset}</p>
                     </div>
                     <span className={`text-[10px] font-black shrink-0 flex items-center gap-0.5 ${d.overdue ? "text-red-500" : "text-muted-foreground"}`}>
-                      {d.overdue && <AlertTriangle size={10} strokeWidth={3} />} {d.deadline}
+                      {d.overdue && <AlertTriangle size={10} strokeWidth={3} />} {formatDateReadable(d.deadline)}
                     </span>
                   </div>
                 ))}

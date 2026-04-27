@@ -1,10 +1,10 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import {
   Users, FlaskConical, CalendarCheck, FileText, BookOpen, Kanban,
   AlertTriangle, Check, X, ChevronRight, Clock,
-  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell,
+  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell, Lock,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../lib/api";
 import { formatDateYmd } from "../../lib/date";
@@ -154,6 +154,10 @@ function getLeaveTypeLabel(jenis?: string) {
   if (type === "izin") return "Izin";
   if (type === "sakit") return "Sakit";
   return "Cuti";
+}
+
+function displayStatus(status: string) {
+  return status.replace("Operator", "Admin");
 }
 
 function getLockReasonLabel(reason?: string | null) {
@@ -309,7 +313,7 @@ export default function OperatorDashboard() {
           },
           {
             key: "warnings",
-            label: "warning operator",
+            label: "warning admin",
             request: apiGet<OperatorWarningsResponse>("/dashboard/operator-warnings"),
           },
           {
@@ -329,7 +333,7 @@ export default function OperatorDashboard() {
           },
           {
             key: "notifications",
-            label: "notifikasi operator",
+            label: "notifikasi admin",
             request: apiGet<Array<any>>("/notifications?limit=50"),
           },
         ] as const;
@@ -491,7 +495,7 @@ export default function OperatorDashboard() {
           userName: item.user_name || "System",
           userInitials: item.user_initials || "SY",
           userColor: "bg-amber-500 text-white",
-          userRole: item.user_role === "operator" ? "Operator" : item.user_role === "dosen" ? "Dosen" : "Mahasiswa",
+          userRole: item.user_role === "operator" ? "Admin" : item.user_role === "dosen" ? "Dosen" : "Mahasiswa",
           action: item.action,
           target: item.target,
           ip: item.ip,
@@ -533,7 +537,7 @@ export default function OperatorDashboard() {
         );
         setResignationRequests(mappedWithdrawals);
       } catch (err: any) {
-        setError(err?.message || "Gagal memuat dashboard operator.");
+        setError(err?.message || "Gagal memuat dashboard admin.");
       }
     };
 
@@ -558,7 +562,7 @@ export default function OperatorDashboard() {
       },
       attendance_absent: {
         title: "Peringatan: Ketidakhadiran",
-        body: `${warning.studentName}, Anda tercatat ${warning.attendanceStatus === "Belum Absen" ? "belum absen" : "tidak hadir"} pada ${warning.referenceDate || "hari ini"}. Hubungi operator jika ada keperluan.`
+        body: `${warning.studentName}, Anda tercatat ${warning.attendanceStatus === "Belum Absen" ? "belum absen" : "tidak hadir"} pada ${warning.referenceDate || "hari ini"}. Hubungi admin jika ada keperluan.`
       },
       low_hours: {
         title: "Peringatan: Jam Kehadiran Kurang",
@@ -717,7 +721,7 @@ export default function OperatorDashboard() {
     try {
       const note = status === "Diteruskan"
         ? "Data lengkap, diteruskan ke dosen pembimbing."
-        : "Pengajuan ditolak oleh operator.";
+        : "Pengajuan ditolak oleh admin.";
 
       await apiPatch<{ message: string }>(`/withdrawal-requests/${id}/operator-review`, {
         status,
@@ -745,7 +749,7 @@ export default function OperatorDashboard() {
   };
 
   return (
-    <OperatorLayout title="Dashboard Operator">
+    <OperatorLayout title="Dashboard Admin">
       <WarningSent visible={warningSent} />
       {warningInfo && <WarningInfo message={warningInfo.message} tone={warningInfo.tone} />}
       <div className="flex flex-col gap-6 pb-4">
@@ -758,7 +762,7 @@ export default function OperatorDashboard() {
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-black text-foreground">Selamat datang, {user?.name || "Operator"}!</h1>
+            <h1 className="text-2xl font-black text-foreground">Selamat datang, {user?.name || "Admin"}!</h1>
             <p className="text-sm font-medium text-muted-foreground mt-1">{todayLabel}
               {cutiMenunggu > 0 && <span className="text-amber-600 font-black ml-1">{cutiMenunggu} pengajuan menunggu</span>}
               {resignCount > 0 && <span className="text-red-500 font-black ml-1">{resignCount} pengunduran diri aktif</span>}
@@ -883,6 +887,52 @@ export default function OperatorDashboard() {
               </div>
             ))}
           </div>
+
+          {/* Akses Ditangguhkan */}
+          <div className="bg-white border border-rose-300 rounded-[14px] shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-rose-200 bg-rose-50/60 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2">
+                <Lock size={13} className="text-rose-700 shrink-0" /> Akses Ditangguhkan
+                <span className="bg-rose-700 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{accessLocks.length}</span>
+              </h3>
+            </div>
+            {accessLocks.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Tidak ada akses ditangguhkan</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Semua mahasiswa memiliki akses sistem yang aktif.</p>
+              </div>
+            ) : (
+              <div className="max-h-[360px] overflow-y-auto">
+                {accessLocks.map(lock => (
+                  <div key={lock.id} className="px-4 py-3 border-b border-border/50 last:border-0 hover:bg-rose-50/30 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-rose-700 text-white">
+                        {lock.studentInitials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-foreground leading-snug break-words">{lock.studentName}</p>
+                        <p className="text-[10px] text-muted-foreground">{lock.nim}</p>
+                        <p className="text-[10px] font-bold text-rose-700 mt-0.5">{getLockReasonLabel(lock.reason)}</p>
+                        {lock.lockedAt && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {new Date(lock.lockedAt).toLocaleString("id-ID")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 pl-11">
+                      <button
+                        onClick={() => handleUnlockAccess(lock)}
+                        className="h-7 rounded-[7px] bg-rose-700 hover:bg-rose-800 px-2.5 text-[9px] font-black text-white transition-colors flex items-center gap-1"
+                      >
+                        <UserCheck size={10} /> Beri Akses Kembali
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Main Grid */}
@@ -908,7 +958,7 @@ export default function OperatorDashboard() {
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <div className="flex items-center gap-1.5">
-                        {[{ label: "Pengajuan", done: true }, { label: "Operator", done: r.statusOperator === "Diteruskan" }, { label: "Dosen Pembimbing", done: r.statusDosen === "Disetujui" }].map((step, i, arr) => (
+                        {[{ label: "Pengajuan", done: true }, { label: "Admin", done: r.statusOperator === "Diteruskan" }, { label: "Dosen Pembimbing", done: r.statusDosen === "Disetujui" }].map((step, i, arr) => (
                           <div key={i} className="flex items-center gap-1">
                             <div className={`flex items-center gap-1 px-2 py-1 rounded-[6px] text-[9px] font-black ${step.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                               {step.done ? <Check size={8} strokeWidth={3} /> : <Clock size={8} />} {step.label}
@@ -925,7 +975,7 @@ export default function OperatorDashboard() {
                             ? "bg-blue-100 text-blue-700"
                             : "bg-amber-100 text-amber-700"
                         }`}>
-                        {r.finalStatus}
+                        {displayStatus(r.finalStatus)}
                       </span>
                       {r.statusOperator === "Menunggu" && (
                         <div className="flex gap-2">

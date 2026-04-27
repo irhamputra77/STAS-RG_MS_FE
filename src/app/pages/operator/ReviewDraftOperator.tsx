@@ -159,7 +159,7 @@ export default function ReviewDraftOperator() {
         status,
         note: reviewNote,
         reviewedBy: user?.id || "OP001",
-        reviewedByName: `${user?.name || "Operator"} (Operator)`,
+        reviewedByName: `${user?.name || "Admin"} (Admin)`,
       });
 
       setDrafts((prev) => prev.map((item) => (
@@ -221,7 +221,7 @@ export default function ReviewDraftOperator() {
         <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-5">
           <div className="bg-white border border-border rounded-[14px] shadow-sm p-4 flex flex-col gap-4">
             <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Operator dapat melakukan review laporan mahasiswa. Nama reviewer akan dikirim ke backend dengan penanda <span className="font-black">(Operator)</span>.
+              Admin dapat melakukan review laporan mahasiswa. Nama reviewer akan dikirim ke backend dengan penanda <span className="font-black">(Admin)</span>.
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
@@ -262,7 +262,7 @@ export default function ReviewDraftOperator() {
               <h2 className="text-sm font-black text-foreground">Jenis Laporan</h2>
             </div>
             <p className="text-xs text-muted-foreground">
-              Operator dapat menambah atau menghapus jenis laporan dari backend agar otomatis muncul di frontend mahasiswa dan reviewer.
+              Admin dapat menambah atau menghapus jenis laporan dari backend agar otomatis muncul di frontend mahasiswa dan reviewer.
             </p>
             <div className="flex gap-2">
               <input
@@ -360,7 +360,7 @@ export default function ReviewDraftOperator() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setSelected(null)}>
           <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[560px]" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-              <h3 className="font-black text-foreground">Review Laporan oleh Operator</h3>
+              <h3 className="font-black text-foreground">Review Laporan oleh Admin</h3>
               <button onClick={() => setSelected(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={16} /></button>
             </div>
             <div className="p-6 flex flex-col gap-4">
@@ -377,7 +377,7 @@ export default function ReviewDraftOperator() {
                 )}
               </div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                Saat operator mereview, backend akan menerima nama reviewer dengan penanda <span className="font-black">(Operator)</span>.
+                Saat admin mereview, backend akan menerima nama reviewer dengan penanda <span className="font-black">(Admin)</span>.
               </div>
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">Catatan Review</label>

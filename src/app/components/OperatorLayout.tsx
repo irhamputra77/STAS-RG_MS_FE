@@ -73,7 +73,7 @@ const NAV_ITEMS = [
   { name: "Database Mahasiswa", path: "/operator/mahasiswa", icon: Users },
   { name: "Database Riset", path: "/operator/riset", icon: FlaskConical },
   { name: "Database Dosen", path: "/operator/dosen", icon: Users },
-  { name: "Database Operator", path: "/operator/operator", icon: Settings2 },
+  { name: "Database Admin", path: "/operator/operator", icon: Settings2 },
   { name: "Logbook Mahasiswa", path: "/operator/logbook", icon: BookOpen },
   { name: "Kehadiran Mahasiswa", path: "/operator/kehadiran", icon: MapPin },
   { name: "Persetujuan Cuti", path: "/operator/cuti", icon: CalendarCheck },
@@ -126,7 +126,7 @@ function SidebarContent({
             <Settings2 size={13} />
           </div>
           <div>
-            <p className="text-[11px] font-black text-amber-700 uppercase tracking-wide">Operator</p>
+            <p className="text-[11px] font-black text-amber-700 uppercase tracking-wide">Admin</p>
             <p className="text-[10px] font-medium text-amber-500">{user?.name || "Admin"}</p>
           </div>
         </div>
@@ -166,7 +166,7 @@ function SidebarContent({
   );
 }
 
-export function OperatorLayout({ children, title = "Dashboard Operator" }: LayoutProps) {
+export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();

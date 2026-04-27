@@ -396,7 +396,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
         status: "LOCKED",
         reason: detail.reason || "ATTENDANCE_ABSENT",
         date: detail.date || null,
-        message: detail.message || "Akses dikunci karena terdeteksi tidak hadir. Hubungi operator.",
+        message: detail.message || "Akses dikunci karena terdeteksi tidak hadir. Hubungi admin.",
       });
     };
 
@@ -553,7 +553,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
           <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[440px] overflow-hidden">
             <div className="bg-amber-500 px-6 py-4 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0"><AlertTriangle size={20} className="text-white" /></div>
-              <div><p className="font-black text-white">Peringatan dari Operator</p><p className="text-xs text-white/80">STAS-RG Management System</p></div>
+              <div><p className="font-black text-white">Peringatan dari Admin</p><p className="text-xs text-white/80">STAS-RG Management System</p></div>
             </div>
             <div className="p-6">
               <h3 className="font-black text-foreground mb-2">{warningPopup.title}</h3>
@@ -579,7 +579,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
               </div>
               <div>
                 <p className="text-lg font-black text-white">Akses Website Dikunci</p>
-                <p className="text-xs font-bold text-white/80">Status kehadiran membutuhkan verifikasi operator</p>
+                <p className="text-xs font-bold text-white/80">Status kehadiran membutuhkan verifikasi admin</p>
               </div>
             </div>
             <div className="p-6">
@@ -588,7 +588,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
               </h3>
               <p className="text-sm font-medium leading-relaxed text-muted-foreground">
                 {accessLock?.message ||
-                  `Akun Anda dikunci karena terdeteksi tidak hadir pada ${accessLock?.date || "hari ini"}. Hubungi operator untuk membuka kembali akses website.`}
+                  `Akun Anda dikunci karena terdeteksi tidak hadir pada ${accessLock?.date || "hari ini"}. Hubungi admin untuk membuka kembali akses website.`}
               </p>
               <div className="mt-4 grid grid-cols-1 gap-2 rounded-[14px] border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700">
                 <div className="flex items-center justify-between gap-3">
@@ -601,7 +601,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
                 </div>
               </div>
               <div className="mt-5 rounded-[14px] border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
-                Selama akses terkunci, Anda tidak dapat menggunakan fitur website sampai operator membuka akses.
+                Selama akses terkunci, Anda tidak dapat menggunakan fitur website sampai admin membuka akses.
               </div>
               <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button

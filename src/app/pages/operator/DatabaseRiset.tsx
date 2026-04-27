@@ -59,7 +59,7 @@ export default function DatabaseRiset() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [members, setMembers] = useState<Record<string, any[]>>({});
-  const [students, setStudents] = useState<Array<{ id: string; name: string; initials?: string }>>([]);
+  const [students, setStudents] = useState<Array<{ id: string; name: string; initials?: string; nim?: string; prodi?: string }>>([]);
   const [studentMemberSearch, setStudentMemberSearch] = useState("");
   const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([]);
   const [selectedPeran, setSelectedPeran] = useState(PERAN_OPTIONS[0]);
@@ -101,7 +101,13 @@ export default function DatabaseRiset() {
           apiGet<Array<any>>("/students")
         ]);
         setResearch(rData || []);
-        setStudents((sData || []).map((item: any) => ({ id: item.user_id, name: item.name, initials: item.initials })));
+        setStudents((sData || []).map((item: any) => ({
+          id: String(item.user_id || item.userId || item.id || ""),
+          name: item.name || "Mahasiswa",
+          initials: item.initials,
+          nim: item.nim || item.student_nim || "",
+          prodi: item.prodi || item.program_studi || item.programStudi || ""
+        })).filter((item) => item.id));
         setLecturers(
           (lData || []).map((item: any) => ({
             ...item,
@@ -148,13 +154,23 @@ export default function DatabaseRiset() {
   const filteredStudentMembers = students.filter((student) => {
     const q = studentMemberSearch.trim().toLowerCase();
     if (!q) return true;
-    return student.name.toLowerCase().includes(q) || student.id.toLowerCase().includes(q);
+    return (
+      student.name.toLowerCase().includes(q) ||
+      String(student.nim || "").toLowerCase().includes(q) ||
+      String(student.prodi || "").toLowerCase().includes(q)
+    );
   });
 
   const mahasiswaInRiset = selected ? (members[selected.id] || []).filter((m: any) => m.member_type === "Mahasiswa") : [];
   const dosenInRiset = selected ? (members[selected.id] || []).filter((m: any) => m.member_type === "Dosen") : [];
   const currentAccess = selected ? (boardAccess[selected.id] || []) : [];
   const nonAccessMembers = mahasiswaInRiset.filter((m: any) => !currentAccess.includes(m.user_id));
+
+  const openProgressBoard = (projectId: string) => {
+    navigate(`/operator/progress-board?projectId=${encodeURIComponent(projectId)}`, {
+      state: { projectIds: [projectId] }
+    });
+  };
 
   const revokeAccess = async (risetId: string, mid: string) => {
     await apiDelete(`/research/${risetId}/board-access/${mid}`);
@@ -472,7 +488,7 @@ export default function DatabaseRiset() {
                         </div>
                         {/* Progress Board Button */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/operator/progress-board/${encodeURIComponent(r.id)}`, { state: { projectIds: [r.id] } }); }}
+                          onClick={(e) => { e.stopPropagation(); openProgressBoard(r.id); }}
                           className="w-full h-8 flex items-center justify-center gap-2 text-[11px] font-black text-white bg-[#0AB600] hover:bg-[#099800] rounded-[8px] transition-colors"
                         >
                           <Kanban size={13} /> Lihat Progress Board
@@ -503,7 +519,7 @@ export default function DatabaseRiset() {
                           <td className="px-5 py-3.5 text-muted-foreground text-xs">{mems.length} org</td>
                           <td className="px-5 py-3.5"><div className="flex items-center gap-2"><div className="w-20 h-1.5 bg-slate-100 rounded-full"><div className="bg-[#0AB600] h-1.5 rounded-full" style={{ width: `${r.progress}%` }} /></div><span className="text-[10px] font-black text-[#0AB600]">{r.progress}%</span></div></td>
                           <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${statusColor(r.status)}`}>{r.status}</span></td>
-                          <td className="px-5 py-3.5"><button onClick={(e) => { e.stopPropagation(); navigate(`/operator/progress-board/${encodeURIComponent(r.id)}`, { state: { projectIds: [r.id] } }); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-green-50 hover:text-[#0AB600] transition-colors"><Kanban size={13} /></button></td>
+                          <td className="px-5 py-3.5"><button onClick={(e) => { e.stopPropagation(); openProgressBoard(r.id); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-green-50 hover:text-[#0AB600] transition-colors"><Kanban size={13} /></button></td>
                         </tr>
                       );
                     })}
@@ -548,7 +564,7 @@ export default function DatabaseRiset() {
                       <div key={l} className="flex gap-2 text-xs"><span className="font-black text-muted-foreground w-24 shrink-0">{l}</span><span className="font-bold text-foreground">{v}</span></div>
                     ))}
                     <button
-                      onClick={() => navigate(`/operator/progress-board/${encodeURIComponent(selected.id)}`, { state: { projectIds: [selected.id] } })}
+                      onClick={() => openProgressBoard(selected.id)}
                       className="w-full h-8 flex items-center justify-center gap-2 text-[11px] font-black text-white bg-[#0AB600] hover:bg-[#099800] rounded-[8px] transition-colors mt-2"
                     >
                       <Kanban size={13} /> Akses Progress Board
@@ -600,10 +616,10 @@ export default function DatabaseRiset() {
                   <div>
                     <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-[10px] text-xs text-green-700">
                       <p className="font-black mb-0.5">Board Access Control</p>
-                      <p>Operator & Dosen Ketua selalu punya akses edit. Pilih mahasiswa yang juga mendapat akses edit board.</p>
+                      <p>Admin & Dosen Ketua selalu punya akses edit. Pilih mahasiswa yang juga mendapat akses edit board.</p>
                     </div>
                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2">Akses Permanen</p>
-                    {[{ label: "Semua Operator", sub: "Full access", initials: "OP", color: "bg-amber-500 text-white" }, { label: selected.supervisor_name, sub: "Ketua Riset", initials: selected.supervisor_name?.split(" ").map((part: string) => part[0]).join("").slice(0, 2).toUpperCase() || "DS", color: "bg-[#0AB600] text-white" }].map(item => (
+                    {[{ label: "Semua Admin", sub: "Full access", initials: "OP", color: "bg-amber-500 text-white" }, { label: selected.supervisor_name, sub: "Ketua Riset", initials: selected.supervisor_name?.split(" ").map((part: string) => part[0]).join("").slice(0, 2).toUpperCase() || "DS", color: "bg-[#0AB600] text-white" }].map(item => (
                       <div key={item.label} className="flex items-center gap-2 py-2">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${item.color}`}>{item.initials}</div>
                         <div className="flex-1"><p className="text-xs font-black text-foreground">{item.label}</p><p className="text-[10px] text-muted-foreground">{item.sub}</p></div>
@@ -780,7 +796,7 @@ export default function DatabaseRiset() {
                     <input
                       value={studentMemberSearch}
                       onChange={(e) => setStudentMemberSearch(e.target.value)}
-                      placeholder="Cari nama atau ID mahasiswa..."
+                      placeholder="Cari nama, NIM, atau prodi mahasiswa..."
                       className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                     />
                   </div>
@@ -801,7 +817,11 @@ export default function DatabaseRiset() {
                             className="accent-[#0AB600]"
                           />
                           <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                          <span className="shrink-0 text-[10px] font-bold text-muted-foreground">{s.id}</span>
+                          {(s.nim || s.prodi) && (
+                            <span className="shrink-0 max-w-[180px] truncate text-[10px] font-bold text-muted-foreground">
+                              {[s.nim, s.prodi].filter(Boolean).join(" · ")}
+                            </span>
+                          )}
                         </label>
                       ))}
                       {filteredStudentMembers.length === 0 && (

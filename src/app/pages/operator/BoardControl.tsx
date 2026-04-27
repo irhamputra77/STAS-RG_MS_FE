@@ -151,7 +151,7 @@ export default function BoardControl() {
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-black text-foreground flex items-center gap-2"><Shield size={15} className="text-amber-500" /> Kontrol Akses Board</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Operator dan Dosen Ketua selalu memiliki akses edit. Pilih mahasiswa yang juga mendapat akses.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Admin dan Dosen Ketua selalu memiliki akses edit. Pilih mahasiswa yang juga mendapat akses.</p>
               </div>
               <button onClick={() => setAddModal(true)} disabled={nonAccessMembers.length === 0}
                 className="flex items-center gap-2 h-9 px-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-xs font-black rounded-[10px] transition-colors shadow-sm">
@@ -164,7 +164,7 @@ export default function BoardControl() {
               <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-3">Akses Permanen (Tidak Dapat Diubah)</p>
               <div className="flex flex-col gap-2">
                 {[
-                  { label: "Semua Operator", color: "bg-amber-500 text-white", initials: "OP", sub: "Akses penuh ke semua board" },
+                  { label: "Semua Admin", color: "bg-amber-500 text-white", initials: "OP", sub: "Akses penuh ke semua board" },
                   { label: riset?.supervisor_name || "Dosen", color: "bg-indigo-600 text-white", initials: riset?.supervisor_initials || "DS", sub: "Dosen Ketua Riset" },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-[12px]">
