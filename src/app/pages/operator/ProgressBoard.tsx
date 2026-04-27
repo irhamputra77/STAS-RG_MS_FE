@@ -1,15 +1,21 @@
 import React from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { SharedBoardView } from "../../components/SharedBoardView";
 
 export default function ProgressBoard() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { researchId } = useParams();
+  const [searchParams] = useSearchParams();
 
-  // Get projectIds from navigation state (passed from DatabaseRiset)
-  // Fallback to empty array if accessed directly without state
-  const projectIds = (location.state?.projectIds as string[]) || [];
+  const stateProjectIds = Array.isArray(location.state?.projectIds)
+    ? (location.state.projectIds as string[])
+    : [];
+  const queryProjectId = searchParams.get("projectId");
+  const projectIds = stateProjectIds.length > 0
+    ? stateProjectIds
+    : [researchId || queryProjectId].filter(Boolean) as string[];
 
   // If accessed directly without projectIds, redirect to riset page
   if (projectIds.length === 0) {

@@ -73,6 +73,7 @@ const NAV_ITEMS = [
   { name: "Database Mahasiswa", path: "/operator/mahasiswa", icon: Users },
   { name: "Database Riset", path: "/operator/riset", icon: FlaskConical },
   { name: "Database Dosen", path: "/operator/dosen", icon: Users },
+  { name: "Database Operator", path: "/operator/operator", icon: Settings2 },
   { name: "Logbook Mahasiswa", path: "/operator/logbook", icon: BookOpen },
   { name: "Kehadiran Mahasiswa", path: "/operator/kehadiran", icon: MapPin },
   { name: "Persetujuan Cuti", path: "/operator/cuti", icon: CalendarCheck },

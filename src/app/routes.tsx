@@ -17,6 +17,7 @@ import OperatorDashboard from "./pages/operator/OperatorDashboard";
 import DatabaseMahasiswa from "./pages/operator/DatabaseMahasiswa";
 import DatabaseRiset from "./pages/operator/DatabaseRiset";
 import DatabaseDosen from "./pages/operator/DatabaseDosen";
+import DatabaseOperator from "./pages/operator/DatabaseOperator";
 import LogbookMonitor from "./pages/operator/LogbookMonitor";
 import PersetujuanCuti from "./pages/operator/PersetujuanCuti";
 import LayananSurat from "./pages/operator/LayananSurat";
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
               { path: "mahasiswa", element: <DatabaseMahasiswa /> },
               { path: "riset", element: <DatabaseRiset /> },
               { path: "dosen", element: <DatabaseDosen /> },
+              { path: "operator", element: <DatabaseOperator /> },
               { path: "logbook", element: <LogbookMonitor /> },
               { path: "kehadiran", element: <KehadiranMahasiswa /> },
               { path: "cuti", element: <PersetujuanCuti /> },
@@ -122,6 +124,7 @@ export const router = createBrowserRouter([
               { path: "pengaturan", element: <PengaturanSistem /> },
               { path: "audit", element: <AuditLog /> },
               { path: "progress-board", element: <ProgressBoard /> },
+              { path: "progress-board/:researchId", element: <ProgressBoard /> },
               { path: "draft", element: <ReviewDraftOperator /> },
               { path: "sertifikat", element: <SertifikatOperator /> },
             ],

@@ -35,6 +35,10 @@ function getAccessLockReasonLabel(reason?: string | null) {
   return reason || "-";
 }
 
+function isRisetStudentType(tipe?: string | null) {
+  return String(tipe || "").trim().toLowerCase() === "riset";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATION DATA & TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -311,6 +315,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     role: user?.role,
     fallback: fallbackNotifs,
   });
+  const isRisetStudent = user?.role === "mahasiswa" && isRisetStudentType(user?.tipe);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [warningPopup, setWarningPopup] = useState<{ title: string; body: string } | null>(() => {
     try {
@@ -404,7 +409,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     { name: "Kehadiran (GPS)",     path: "/attendance", icon: MapPin },
     { name: "Logbook",             path: "/logbook",    icon: BookOpen },
     { name: "Riset Saya",          path: "/research",   icon: FlaskConical },
-    { name: "Pengajuan Cuti",      path: "/leave",      icon: FileText },
+    { name: isRisetStudent ? "Pengajuan Izin" : "Pengajuan Cuti", path: "/leave", icon: FileText },
     { name: "Dokumen & Sertifikat",path: "/documents",  icon: Award },
     { name: "Draft TA / Jurnal",   path: "/draft",      icon: ScrollText },
   ];

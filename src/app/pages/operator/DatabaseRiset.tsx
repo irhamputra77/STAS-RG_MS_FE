@@ -60,6 +60,7 @@ export default function DatabaseRiset() {
   const [error, setError] = useState("");
   const [members, setMembers] = useState<Record<string, any[]>>({});
   const [students, setStudents] = useState<Array<{ id: string; name: string; initials?: string }>>([]);
+  const [studentMemberSearch, setStudentMemberSearch] = useState("");
   const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([]);
   const [selectedPeran, setSelectedPeran] = useState(PERAN_OPTIONS[0]);
   const [savingMembers, setSavingMembers] = useState(false);
@@ -142,6 +143,12 @@ export default function DatabaseRiset() {
   const filteredRiset = research.filter(r => {
     const q = search.toLowerCase();
     return (!q || r.title.toLowerCase().includes(q) || r.supervisor_name?.toLowerCase().includes(q)) && (filterStatus === "Semua" || r.status === filterStatus);
+  });
+
+  const filteredStudentMembers = students.filter((student) => {
+    const q = studentMemberSearch.trim().toLowerCase();
+    if (!q) return true;
+    return student.name.toLowerCase().includes(q) || student.id.toLowerCase().includes(q);
   });
 
   const mahasiswaInRiset = selected ? (members[selected.id] || []).filter((m: any) => m.member_type === "Mahasiswa") : [];
@@ -418,7 +425,7 @@ export default function DatabaseRiset() {
           </div>
 
           <button
-            onClick={() => { setModalOpen(true); setStep(0); }}
+            onClick={() => { setModalOpen(true); setStep(0); setStudentMemberSearch(""); }}
             className="flex items-center gap-2 h-9 px-4 bg-[#0AB600] hover:bg-[#099800] text-white text-sm font-black rounded-[10px] shadow-sm transition-colors"
           >
             <Plus size={15} strokeWidth={3} /> Tambah Riset
@@ -465,7 +472,7 @@ export default function DatabaseRiset() {
                         </div>
                         {/* Progress Board Button */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigate("/operator/progress-board", { state: { projectIds: [r.id] } }); }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/operator/progress-board/${encodeURIComponent(r.id)}`, { state: { projectIds: [r.id] } }); }}
                           className="w-full h-8 flex items-center justify-center gap-2 text-[11px] font-black text-white bg-[#0AB600] hover:bg-[#099800] rounded-[8px] transition-colors"
                         >
                           <Kanban size={13} /> Lihat Progress Board
@@ -496,7 +503,7 @@ export default function DatabaseRiset() {
                           <td className="px-5 py-3.5 text-muted-foreground text-xs">{mems.length} org</td>
                           <td className="px-5 py-3.5"><div className="flex items-center gap-2"><div className="w-20 h-1.5 bg-slate-100 rounded-full"><div className="bg-[#0AB600] h-1.5 rounded-full" style={{ width: `${r.progress}%` }} /></div><span className="text-[10px] font-black text-[#0AB600]">{r.progress}%</span></div></td>
                           <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${statusColor(r.status)}`}>{r.status}</span></td>
-                          <td className="px-5 py-3.5"><button onClick={(e) => { e.stopPropagation(); navigate("/operator/progress-board", { state: { projectIds: [r.id] } }); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-green-50 hover:text-[#0AB600] transition-colors"><Kanban size={13} /></button></td>
+                          <td className="px-5 py-3.5"><button onClick={(e) => { e.stopPropagation(); navigate(`/operator/progress-board/${encodeURIComponent(r.id)}`, { state: { projectIds: [r.id] } }); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-green-50 hover:text-[#0AB600] transition-colors"><Kanban size={13} /></button></td>
                         </tr>
                       );
                     })}
@@ -541,7 +548,7 @@ export default function DatabaseRiset() {
                       <div key={l} className="flex gap-2 text-xs"><span className="font-black text-muted-foreground w-24 shrink-0">{l}</span><span className="font-bold text-foreground">{v}</span></div>
                     ))}
                     <button
-                      onClick={() => navigate("/operator/progress-board", { state: { projectIds: [selected.id] } })}
+                      onClick={() => navigate(`/operator/progress-board/${encodeURIComponent(selected.id)}`, { state: { projectIds: [selected.id] } })}
                       className="w-full h-8 flex items-center justify-center gap-2 text-[11px] font-black text-white bg-[#0AB600] hover:bg-[#099800] rounded-[8px] transition-colors mt-2"
                     >
                       <Kanban size={13} /> Akses Progress Board
@@ -763,7 +770,48 @@ export default function DatabaseRiset() {
               </>}
               {step === 1 && <>
                 <div className="col-span-2"><label className="text-xs font-black text-foreground block mb-1.5">Ketua Dosen</label><select value={formData.supervisorId} onChange={(e) => setFormData(prev => ({ ...prev, supervisorId: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer"><option value="">-- Pilih Dosen --</option>{lecturers.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-                <div className="col-span-2"><label className="text-xs font-black text-foreground block mb-1.5">Anggota Mahasiswa</label><div className="flex flex-col gap-1.5">{students.map(s => <label key={s.id} className="flex items-center gap-2 cursor-pointer text-sm font-medium text-foreground"><input type="checkbox" checked={formData.studentIds.includes(s.id)} onChange={(e) => { if (e.target.checked) { setFormData(prev => ({ ...prev, studentIds: [...prev.studentIds, s.id] })); } else { setFormData(prev => ({ ...prev, studentIds: prev.studentIds.filter(id => id !== s.id) })); } }} className="accent-[#0AB600]" />{s.name}</label>)}</div></div>
+                <div className="col-span-2">
+                  <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <label className="text-xs font-black text-foreground">Anggota Mahasiswa</label>
+                    <span className="text-[11px] font-bold text-muted-foreground">{formData.studentIds.length} dipilih</span>
+                  </div>
+                  <div className="mb-2 flex h-10 items-center gap-2 rounded-[10px] border border-border bg-white px-3 focus-within:ring-2 focus-within:ring-green-300">
+                    <Search size={15} className="shrink-0 text-muted-foreground" />
+                    <input
+                      value={studentMemberSearch}
+                      onChange={(e) => setStudentMemberSearch(e.target.value)}
+                      placeholder="Cari nama atau ID mahasiswa..."
+                      className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                    />
+                  </div>
+                  <div className="max-h-[220px] overflow-y-auto rounded-[12px] border border-border bg-slate-50/40 p-2">
+                    <div className="flex flex-col gap-1.5">
+                      {filteredStudentMembers.map(s => (
+                        <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded-[10px] bg-white px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-green-50">
+                          <input
+                            type="checkbox"
+                            checked={formData.studentIds.includes(s.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormData(prev => ({ ...prev, studentIds: [...prev.studentIds, s.id] }));
+                              } else {
+                                setFormData(prev => ({ ...prev, studentIds: prev.studentIds.filter(id => id !== s.id) }));
+                              }
+                            }}
+                            className="accent-[#0AB600]"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                          <span className="shrink-0 text-[10px] font-bold text-muted-foreground">{s.id}</span>
+                        </label>
+                      ))}
+                      {filteredStudentMembers.length === 0 && (
+                        <div className="px-3 py-6 text-center text-xs font-semibold text-muted-foreground">
+                          Mahasiswa tidak ditemukan.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </>}
               {step === 2 && <>
                 <div><label className="text-xs font-black text-foreground block mb-1.5">Tanggal Mulai</label><input type="date" value={formData.startDate} onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>

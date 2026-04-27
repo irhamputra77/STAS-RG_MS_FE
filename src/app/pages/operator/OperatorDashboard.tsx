@@ -634,7 +634,6 @@ export default function OperatorDashboard() {
   const hasPassedAttendanceCutoff = currentHour >= 10;
   const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
-  const notLogbookMhs = warnings.logbookMissing;
   const presentIdSet = new Set((attendanceMonitor?.presentIds || []).map(String));
   const hadirHariIniMhs = students.filter((item) => presentIdSet.has(String(item.id)));
   const getAccessLockForStudent = (studentId: string) =>
@@ -806,22 +805,6 @@ export default function OperatorDashboard() {
                 ))}
               </div>
             )}
-          </div>
-
-          {/* Belum Isi Logbook */}
-          <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between gap-3">
-              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><BookOpen size={13} className="text-amber-500 shrink-0" /> Belum Isi Logbook (Kemarin)<span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{notLogbookMhs.length}</span></h3>
-            </div>
-            <div className="max-h-[360px] overflow-y-auto">
-              {notLogbookMhs.map(m => (
-                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
-                  <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground truncate">{m.studentName}</p><p className="text-[10px] text-muted-foreground">{m.nim}</p></div>
-                  <button onClick={() => handleSendWarning(m)} className="flex items-center gap-1 h-6 px-2 bg-amber-100 hover:bg-amber-500 text-amber-700 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Tidak Hadir */}

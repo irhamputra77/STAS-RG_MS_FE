@@ -313,7 +313,7 @@ export default function Logbook() {
                 </div>
 
                 {/* Right: Actions */}
-                <div className="shrink-0 pt-3 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="shrink-0 pt-3 flex items-center gap-2">
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();

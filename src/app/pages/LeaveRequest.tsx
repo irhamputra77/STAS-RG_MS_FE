@@ -59,9 +59,14 @@ const initialFormState = {
   buktiPendukung: null as File | null,
 };
 
+function isRisetStudentType(tipe?: string | null) {
+  return String(tipe || "").trim().toLowerCase() === "riset";
+}
+
 export default function LeaveRequest() {
   const user = getStoredUser();
   const [studentId, setStudentId] = useState("");
+  const [studentType, setStudentType] = useState(String(user?.tipe || ""));
   const [leaveData, setLeaveData] = useState<LeaveRecord[]>([]);
   const [cutiRule, setCutiRule] = useState<{
     maxSemesterDays: number;
@@ -72,6 +77,10 @@ export default function LeaveRequest() {
   const [requestModal, setRequestModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState(initialFormState);
+  const isRisetStudent = isRisetStudentType(studentType);
+  const requestTypeOptions = isRisetStudent
+    ? REQUEST_TYPE_OPTIONS.filter((option) => option.value !== "cuti")
+    : REQUEST_TYPE_OPTIONS;
 
   useEffect(() => {
     const resolveStudentId = async () => {
@@ -80,6 +89,7 @@ export default function LeaveRequest() {
       try {
         const profile = await apiGet<any>(`/profile/${user.id}`);
         const resolvedId = String(profile?.id || profile?.student_id || "").trim();
+        if (profile?.tipe) setStudentType(String(profile.tipe));
         setStudentId(resolvedId || String(user.id || ""));
       } catch {
         setStudentId(String(user?.id || ""));
@@ -88,6 +98,11 @@ export default function LeaveRequest() {
 
     resolveStudentId();
   }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!isRisetStudent || formData.jenis !== "cuti") return;
+    setFormData((prev) => ({ ...prev, jenis: "izin" }));
+  }, [formData.jenis, isRisetStudent]);
 
   useEffect(() => {
     const load = async () => {
@@ -157,6 +172,7 @@ export default function LeaveRequest() {
     () => calculateDuration(formData.periodeMulai, formData.periodeSelesai),
     [formData.periodeMulai, formData.periodeSelesai]
   );
+  const visibleLeaveData = isRisetStudent ? leaveData.filter((item) => item.jenis !== "cuti") : leaveData;
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -173,6 +189,11 @@ export default function LeaveRequest() {
 
     if (!formData.buktiPendukung) {
       setError("Bukti pendukung wajib diunggah.");
+      return;
+    }
+
+    if (isRisetStudent && formData.jenis === "cuti") {
+      setError("Mahasiswa Riset tidak dapat mengajukan cuti. Silakan pilih Izin atau Sakit.");
       return;
     }
 
@@ -259,7 +280,7 @@ export default function LeaveRequest() {
   };
 
   return (
-    <Layout title="Pengajuan Cuti, Izin, dan Sakit">
+    <Layout title={isRisetStudent ? "Pengajuan Izin dan Sakit" : "Pengajuan Cuti, Izin, dan Sakit"}>
       <div className="flex flex-col gap-4 sm:gap-5 p-4 sm:p-6 max-w-4xl">
         {error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
@@ -267,7 +288,7 @@ export default function LeaveRequest() {
           </div>
         )}
 
-        {cutiRule && (
+        {cutiRule && !isRisetStudent && (
           <div className="px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 leading-relaxed">
             Aturan cuti aktif: {cutiRule.maxSemesterDays} hari/semester, {cutiRule.maxMonthDays} hari/bulan,
             minimum kehadiran {cutiRule.minAttendancePct}%. Aturan ini hanya diterapkan untuk pengajuan jenis <b>cuti</b>.
@@ -277,7 +298,11 @@ export default function LeaveRequest() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg sm:text-xl font-bold">Riwayat Pengajuan</h2>
-            <p className="text-sm text-muted-foreground mt-1">Form pengajuan kini mendukung cuti, izin, dan sakit.</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {isRisetStudent
+                ? "Mahasiswa Riset dapat mengajukan izin atau sakit tanpa kuota cuti."
+                : "Form pengajuan kini mendukung cuti, izin, dan sakit."}
+            </p>
           </div>
 
           <button
@@ -293,14 +318,14 @@ export default function LeaveRequest() {
 
         <div className="bg-white border border-border rounded-lg p-4 sm:p-6 shadow-sm">
           <p className="text-xs font-black text-muted-foreground mb-3 uppercase tracking-wide">
-            Riwayat ({leaveData.length} entri)
+            Riwayat ({visibleLeaveData.length} entri)
           </p>
 
-          {leaveData.length === 0 ? (
+          {visibleLeaveData.length === 0 ? (
             <p className="text-muted-foreground italic">Tidak ada riwayat pengajuan.</p>
           ) : (
             <div className="space-y-3">
-              {leaveData.map((leave) => (
+              {visibleLeaveData.map((leave) => (
                 <div
                   key={leave.id}
                   className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b pb-4 last:border-0"
@@ -346,7 +371,7 @@ export default function LeaveRequest() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-border flex items-center justify-between">
-                <h3 className="font-black text-foreground">Ajukan Cuti / Izin / Sakit</h3>
+                <h3 className="font-black text-foreground">{isRisetStudent ? "Ajukan Izin / Sakit" : "Ajukan Cuti / Izin / Sakit"}</h3>
                 <button
                   onClick={() => {
                     setRequestModal(false);
@@ -366,7 +391,7 @@ export default function LeaveRequest() {
                     onChange={(e) => setFormData((prev) => ({ ...prev, jenis: e.target.value as RequestType }))}
                     className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all bg-white"
                   >
-                    {REQUEST_TYPE_OPTIONS.map((option) => (
+                    {requestTypeOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>

@@ -48,6 +48,10 @@ function getLeaveTypeStyle(item: any) {
   return "bg-indigo-100 text-indigo-700";
 }
 
+function isRisetStudentType(tipe?: string | null) {
+  return String(tipe || "").trim().toLowerCase() === "riset";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -270,15 +274,19 @@ export default function Dashboard() {
   // Active sprint tasks (dari ScrumBoard — todo & doing)
   const sprintTasks = boardSprintTasks;
 
-  const cutiRecent = dashboardData?.leaveRecent || [];
+  const rawLeaveRecent = dashboardData?.leaveRecent || [];
   const letterRecent = dashboardData?.letterRecent || [];
   const attendanceToday = dashboardData?.attendanceToday || {};
+  const isRisetStudent = isRisetStudentType(user?.tipe || dashboardData?.header?.tipe || dashboardData?.student?.tipe);
+  const cutiRecent = isRisetStudent
+    ? rawLeaveRecent.filter((item: any) => getLeaveTypeLabel(item) !== "Cuti")
+    : rawLeaveRecent;
 
   // Quick links
   const quickLinks = [
     { label: "Logbook", icon: <BookOpen size={18} />, href: "/logbook", color: "bg-indigo-50 text-indigo-600 border-indigo-100" },
     { label: "Riset & Board", icon: <FlaskConical size={18} />, href: "/research", color: "bg-[#F0FFF0] text-[#0AB600] border-green-200" },
-    { label: "Cuti / Izin", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
+    { label: isRisetStudent ? "Izin / Sakit" : "Cuti / Izin", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
     { label: "Dokumen & Sertifikat", icon: <Award size={18} />, href: "/documents", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
     { label: "Draft TA / Jurnal", icon: <ScrollText size={18} />, href: "/draft", color: "bg-blue-50 text-blue-600 border-blue-100" },
     { label: "Kehadiran GPS", icon: <MapPin size={18} />, href: "/attendance", color: "bg-rose-50 text-rose-600 border-rose-100" },
@@ -322,7 +330,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Stat Cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 ${isRisetStudent ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
           <StatCard
             icon={<UserCheck size={20} className="md:w-[22px] md:h-[22px] text-[#6C47FF]" />}
             label="Kehadiran"
@@ -350,15 +358,17 @@ export default function Dashboard() {
             barColor="bg-emerald-500"
             href="/research"
           />
-          <StatCard
-            icon={<CalendarOff size={20} className="md:w-[22px] md:h-[22px] text-amber-500" />}
-            label="Sisa Cuti"
-            value={<><span>{sisaCuti}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{totalCuti}</span></>}
-            sub="Hanya terpakai oleh cuti"
-            barPct={cutiPct}
-            barColor="bg-amber-500"
-            href="/leave"
-          />
+          {!isRisetStudent && (
+            <StatCard
+              icon={<CalendarOff size={20} className="md:w-[22px] md:h-[22px] text-amber-500" />}
+              label="Sisa Cuti"
+              value={<><span>{sisaCuti}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{totalCuti}</span></>}
+              sub="Hanya terpakai oleh cuti"
+              barPct={cutiPct}
+              barColor="bg-amber-500"
+              href="/leave"
+            />
+          )}
         </div>
 
         {/* ── Attendance Banner ── */}
@@ -593,12 +603,11 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Pengajuan Cuti / Izin */}
             <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
-              <SectionHeader icon={<Calendar size={16} className="text-amber-600" />} title="Pengajuan Cuti / Izin" href="/leave" linkLabel="Ajukan" />
+              <SectionHeader icon={<Calendar size={16} className="text-amber-600" />} title={isRisetStudent ? "Pengajuan Izin / Sakit" : "Pengajuan Cuti / Izin"} href="/leave" linkLabel="Ajukan" />
               <div className="p-4 md:p-5 flex flex-col gap-2 md:gap-3">
                 {/* Sisa cuti visual */}
-                <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-100 rounded-[10px]">
+                {!isRisetStudent && <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-100 rounded-[10px]">
                   <div className="flex gap-1 flex-wrap">
                     {Array.from({ length: totalCuti }).map((_, i) => (
                       <div key={i} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center text-xs font-black ${i < sisaCuti ? "bg-amber-400 text-white" : "bg-amber-100 text-amber-300"
@@ -611,7 +620,7 @@ export default function Dashboard() {
                     <p className="text-xs font-black text-amber-800">{sisaCuti} hari tersisa</p>
                     <p className="text-[10px] font-medium text-amber-600">dari {totalCuti} jatah cuti</p>
                   </div>
-                </div>
+                </div>}
                 {/* Recent list */}
                 {cutiRecent.map((c: any) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">

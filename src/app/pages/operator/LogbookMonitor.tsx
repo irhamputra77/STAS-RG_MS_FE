@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
-import { Search, X, Download, BookOpen, Calendar, Paperclip, Eye, UserCheck } from "lucide-react";
-import { apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { Search, X, Download, BookOpen, Calendar, Paperclip, Eye, UserCheck, Trash2 } from "lucide-react";
+import { apiDelete, apiGet, apiPatch, getStoredUser } from "../../lib/api";
 import { mapLogbookAttachment } from "../../lib/logbookAttachments";
 
 const AVATAR_COLORS = [
@@ -33,6 +34,7 @@ function formatFullDate(value: string) {
 }
 
 export default function LogbookMonitor() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const user = getStoredUser();
   const [students, setStudents] = useState<any[]>([]);
   const [entries, setEntries] = useState<any[]>([]);
@@ -45,6 +47,7 @@ export default function LogbookMonitor() {
   const [verifyModal, setVerifyModal] = useState<{ entry: any; status: "Terverifikasi" | "Perlu Revisi" } | null>(null);
   const [verificationNote, setVerificationNote] = useState("");
   const [savingVerify, setSavingVerify] = useState(false);
+  const [deletingLogbookId, setDeletingLogbookId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -181,6 +184,36 @@ export default function LogbookMonitor() {
     }
   };
 
+  const handleDeleteLogbook = async (entry: any) => {
+    const confirmed = await confirm({
+      title: "Hapus logbook?",
+      description: `Logbook "${entry.title}" milik ${selectedStudent?.name || "mahasiswa"} akan dihapus.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
+    if (!confirmed) return;
+
+    try {
+      setDeletingLogbookId(entry.id);
+      setError("");
+      await apiDelete(`/logbooks/${entry.id}`);
+      setEntries((prev) => prev.filter((item) => item.id !== entry.id));
+      setStudents((prev) => prev.map((student) => (
+        student.id === entry.mahasiswaId
+          ? { ...student, logbookCount: Math.max(0, Number(student.logbookCount || 0) - 1) }
+          : student
+      )));
+      if (selectedEntry?.id === entry.id) {
+        setSelectedEntry(null);
+      }
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus logbook.");
+    } finally {
+      setDeletingLogbookId(null);
+    }
+  };
+
   return (
     <OperatorLayout title="Logbook Mahasiswa">
       <div className="flex gap-5 items-start pb-4 h-full">
@@ -299,7 +332,20 @@ export default function LogbookMonitor() {
                           )}
                         </div>
                       </div>
-                      <Eye size={15} className="text-muted-foreground group-hover:text-amber-500 transition-colors mt-1 shrink-0" />
+                      <div className="mt-1 flex shrink-0 items-center gap-1">
+                        <Eye size={15} className="text-muted-foreground group-hover:text-amber-500 transition-colors" />
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteLogbook(entry);
+                          }}
+                          disabled={deletingLogbookId === entry.id}
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                          title="Hapus logbook"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -376,6 +422,13 @@ export default function LogbookMonitor() {
               )}
             </div>
             <div className="px-6 pb-5 flex gap-3">
+              <button
+                onClick={() => handleDeleteLogbook(selectedEntry)}
+                disabled={deletingLogbookId === selectedEntry.id}
+                className="h-10 px-4 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-sm font-black rounded-[10px] transition-colors disabled:opacity-50"
+              >
+                Hapus
+              </button>
               <button onClick={() => { setVerifyModal({ entry: selectedEntry, status: "Perlu Revisi" }); setVerificationNote(selectedEntry.verificationNote || ""); }} className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors">
                 Perlu Revisi
               </button>
@@ -407,6 +460,7 @@ export default function LogbookMonitor() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </OperatorLayout>
   );
 }

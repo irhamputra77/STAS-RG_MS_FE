@@ -20,6 +20,10 @@ type LetterArchiveItem = {
   source: "request" | "operator";
 };
 type ArchiveMode = "create" | "edit";
+type LetterCategory = {
+  id: string;
+  name: string;
+};
 
 const STATUS_COLOR: Record<string, string> = {
   Menunggu: "bg-amber-100 text-amber-700 border border-amber-200",
@@ -59,7 +63,7 @@ export default function LayananSurat() {
   const [archiveForm, setArchiveForm] = useState(emptyArchiveForm);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [letterCategories, setLetterCategories] = useState<LetterCategory[]>([]);
   const [deletingArchiveId, setDeletingArchiveId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
@@ -92,6 +96,23 @@ export default function LayananSurat() {
 
     loadLetters();
   }, []);
+
+  const loadCategories = React.useCallback(async () => {
+    try {
+      const rows = await apiGet<Array<any>>("/letter-categories");
+      setLetterCategories((rows || []).map((item) => ({
+        id: String(item.id),
+        name: String(item.name || "").trim()
+      })).filter((item) => item.id && item.name));
+    } catch (err: any) {
+      setError(err?.message || "Gagal memuat kategori surat.");
+      setLetterCategories([]);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   React.useEffect(() => {
     const loadArchive = async () => {
@@ -127,8 +148,9 @@ export default function LayananSurat() {
       source: "request"
     }));
   const archiveItems = [...manualArchive, ...completedArchive];
-  const archiveCategories = Array.from(new Set([...DEFAULT_LETTER_CATEGORIES, ...customCategories, ...archiveItems.map((item) => item.category).filter(Boolean)]));
+  const archiveCategories = Array.from(new Set([...DEFAULT_LETTER_CATEGORIES, ...letterCategories.map((item) => item.name), ...archiveItems.map((item) => item.category).filter(Boolean)]));
   const editableArchiveCategories = archiveCategories.filter((item) => item !== "Semua");
+  const usedArchiveCategories = new Set(archiveItems.map((item) => item.category).filter(Boolean));
   const filteredArchive = archiveItems.filter((item) => {
     const keyword = archiveSearch.trim().toLowerCase();
     const matchKeyword = !keyword || [item.title, item.category, item.number, item.description]
@@ -354,18 +376,52 @@ export default function LayananSurat() {
     }
   };
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     const category = newCategoryName.trim();
     if (!category) {
       setError("Nama kategori wajib diisi.");
       return;
     }
 
-    setCustomCategories((prev) => Array.from(new Set([...prev, category])));
-    setArchiveForm((prev) => ({ ...prev, category }));
-    setNewCategoryName("");
-    setCategoryModalOpen(false);
-    setError("");
+    try {
+      const saved = await apiPost<any>("/letter-categories", { name: category });
+      const savedName = String(saved?.name || category).trim();
+      await loadCategories();
+      setArchiveForm((prev) => ({ ...prev, category: savedName }));
+      setNewCategoryName("");
+      setError("");
+      showToast("Kategori surat berhasil ditambahkan.");
+    } catch (err: any) {
+      setError(err?.message || "Gagal menambahkan kategori surat.");
+    }
+  };
+
+  const handleDeleteCategory = async (category: LetterCategory) => {
+    const categoryName = category.name;
+
+    const confirmed = await confirm({
+      title: "Hapus kategori surat?",
+      description: `Kategori "${categoryName}" akan dihapus dari daftar kategori surat.`,
+      confirmLabel: "Hapus",
+      cancelLabel: "Batal",
+      variant: "danger"
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiDelete(`/letter-categories/${category.id}`);
+      await loadCategories();
+      if (archiveForm.category === categoryName) {
+        setArchiveForm((prev) => ({ ...prev, category: "Akademik" }));
+      }
+      if (archiveCategory === categoryName) {
+        setArchiveCategory("Semua");
+      }
+      setError("");
+      showToast("Kategori surat berhasil dihapus.");
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus kategori surat.");
+    }
   };
 
   return (
@@ -656,12 +712,37 @@ export default function LayananSurat() {
         <div className="fixed inset-0 z-[360] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setCategoryModalOpen(false)}>
           <div className="w-full max-w-[360px] rounded-[16px] bg-white shadow-2xl border border-border" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <h3 className="text-sm font-black text-foreground">Tambah Kategori Surat</h3>
+              <h3 className="text-sm font-black text-foreground">Kategori Surat</h3>
               <button onClick={() => setCategoryModalOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={15} /></button>
             </div>
             <div className="p-5">
               <label className="text-xs font-black text-foreground block mb-1.5">Nama Kategori</label>
               <input autoFocus value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddCategory(); }} placeholder="Contoh: Kerja Sama" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
+              <div className="mt-4">
+                <p className="text-xs font-black text-foreground mb-2">Kategori custom</p>
+                {letterCategories.length === 0 ? (
+                  <p className="text-xs text-muted-foreground rounded-[10px] border border-dashed border-border px-3 py-3">Belum ada kategori custom.</p>
+                ) : (
+                  <div className="max-h-[180px] overflow-y-auto rounded-[10px] border border-border divide-y divide-border">
+                    {letterCategories.map((category) => {
+                      const inUse = usedArchiveCategories.has(category.name);
+                      return (
+                        <div key={category.id} className="flex items-center gap-2 px-3 py-2">
+                          <span className="min-w-0 flex-1 truncate text-xs font-bold text-foreground">{category.name}</span>
+                          {inUse && <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded">Dipakai</span>}
+                          <button
+                            onClick={() => handleDeleteCategory(category)}
+                            className="h-7 w-7 rounded-[8px] flex items-center justify-center text-red-500 hover:bg-red-50"
+                            title="Hapus kategori"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="px-5 pb-5 flex gap-2">
               <button onClick={() => setCategoryModalOpen(false)} className="flex-1 h-10 rounded-[10px] border border-border text-sm font-bold text-muted-foreground hover:bg-slate-50">Batal</button>
