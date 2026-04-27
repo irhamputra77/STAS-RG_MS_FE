@@ -112,7 +112,7 @@ const normalizeTodayData = (today: AttendanceToday | undefined, history: Attenda
     ...nextToday,
     checkIn: isFilledTime(todayHistory.in) ? todayHistory.in : nextToday.checkIn,
     checkOut: isFilledTime(todayHistory.out) ? todayHistory.out : nextToday.checkOut,
-    status: todayHistory.status || nextToday.status,
+    // jangan override status dengan todayHistory.status
     autoCheckout: todayHistory.autoCheckout ?? nextToday.autoCheckout,
     checkoutSource: todayHistory.checkoutSource ?? nextToday.checkoutSource,
     autoCheckoutReason: todayHistory.autoCheckoutReason ?? nextToday.autoCheckoutReason
