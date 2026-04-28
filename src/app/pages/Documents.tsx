@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Layout } from "../components/Layout";
-import { apiGet, apiPost, getStoredUser, resolveApiAssetUrl } from "../lib/api";
+import { apiGet, apiPost, buildQueryPath, encodePathSegment, getStoredUser, resolveApiAssetUrl } from "../lib/api";
 import { formatDateYmd } from "../lib/date";
 import {
   Plus,
@@ -100,7 +100,7 @@ export default function Documents() {
       if (!user?.id) return;
 
       try {
-        const profile = await apiGet<any>(`/profile/${user.id}`);
+        const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`);
         const resolvedId = String(profile?.id || profile?.student_id || "").trim();
         if (resolvedId) {
           setStudentRecordId(resolvedId);
@@ -119,9 +119,9 @@ export default function Documents() {
       try {
         const studentId = effectiveStudentId;
         const [rows, certRows, projectRows] = await Promise.all([
-          apiGet<Array<any>>(`/letter-requests${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
-          apiGet<Array<any>>(`/certificates${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
-          user?.id ? apiGet<Array<any>>(`/research/assigned?userId=${encodeURIComponent(user.id)}`) : Promise.resolve([])
+          apiGet<Array<any>>(buildQueryPath("/letter-requests", { studentId })),
+          apiGet<Array<any>>(buildQueryPath("/certificates", { studentId })),
+          user?.id ? apiGet<Array<any>>(buildQueryPath("/research/assigned", { userId: user.id })) : Promise.resolve([])
         ]);
         const mapped: SuratRecord[] = rows
           .map((item) => ({

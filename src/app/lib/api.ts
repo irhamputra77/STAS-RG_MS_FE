@@ -1,4 +1,4 @@
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://ms-api.stas-rg.com/api/v1";
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
 const API_ORIGIN = API_BASE_URL.replace(/\/api(?:\/v\d+)?\/?$/, "");
 
 export type BlobResponse = {
@@ -69,6 +69,10 @@ function getFilenameFromDisposition(disposition: string | null) {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  if (!path.startsWith("/") || /[\r\n]/.test(path)) {
+    throw new ApiError("Path API tidak valid.", 400, { message: "Path API tidak valid." });
+  }
+
   const url = `${API_BASE_URL}${path}`;
   const headers = getRequestHeaders(options);
 
@@ -124,6 +128,21 @@ export function apiPatch<T>(path: string, payload: unknown): Promise<T> {
 
 export function apiDelete<T>(path: string): Promise<T> {
   return request<T>(path, { method: "DELETE" });
+}
+
+export function encodePathSegment(value: string | number | null | undefined) {
+  return encodeURIComponent(String(value ?? ""));
+}
+
+export function buildQueryPath(path: string, params: Record<string, string | number | boolean | null | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === "") return;
+    query.set(key, String(value));
+  });
+
+  const text = query.toString();
+  return text ? `${path}?${text}` : path;
 }
 
 export async function apiGetBlob(path: string): Promise<BlobResponse> {

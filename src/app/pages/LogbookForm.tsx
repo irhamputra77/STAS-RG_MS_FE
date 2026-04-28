@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Layout } from "../components/Layout";
 import { useNavigate, useSearchParams } from "react-router";
-import { apiGet, apiPost, apiPut, getStoredUser } from "../lib/api";
+import { apiGet, apiPost, apiPut, buildQueryPath, encodePathSegment, getStoredUser } from "../lib/api";
 import {
   fileToDataUrl,
   formatAttachmentSize,
@@ -27,6 +27,8 @@ export default function LogbookForm() {
   const [searchParams] = useSearchParams();
   const user = getStoredUser();
   const editId = searchParams.get("edit");
+  const presetDate = searchParams.get("date");
+  const fromCheckout = searchParams.get("fromCheckout") === "1";
 
   const [researchOptions, setResearchOptions] = useState<Array<{ id: string; title: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +50,11 @@ export default function LogbookForm() {
   const [existingAttachment, setExistingAttachment] = useState<LogbookAttachmentView | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [removeExistingAttachment, setRemoveExistingAttachment] = useState(false);
+
+  useEffect(() => {
+    if (editId || !presetDate) return;
+    setDate(presetDate);
+  }, [editId, presetDate]);
 
   // Fetch research options
   useEffect(() => {
@@ -72,7 +79,7 @@ export default function LogbookForm() {
     const fetchStudentId = async () => {
       if (user?.role === "mahasiswa" && user?.id) {
         try {
-          const profile = await apiGet<any>(`/profile/${user.id}`);
+          const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`);
           if (profile && profile.nim && profile.id) {
             setStudentId(profile.id); // id mahasiswa (students.id)
           } else if (profile && profile.student_id) {
@@ -96,14 +103,14 @@ export default function LogbookForm() {
       }
 
       try {
-        const entries = await apiGet<Array<any>>(`/logbooks${user?.id ? `?studentId=${encodeURIComponent(user.id)}` : ""}`);
+        const entries = await apiGet<Array<any>>(buildQueryPath("/logbooks", { studentId: user?.id }));
         const entry = (entries || []).find((item) => item.id === editId);
         if (!entry) {
           setError("Entri logbook yang akan diedit tidak ditemukan.");
           return;
         }
 
-        setResearch(entry.project_id || "");
+        setResearch(entry.project_id || entry.projectId || "");
         setDate(entry.date || "");
         setTitle(entry.title || "");
         setDescription(entry.description || "");
@@ -179,7 +186,7 @@ export default function LogbookForm() {
     setSubmitting(true);
     try {
       const payload = {
-        projectId: research,
+        projectId: research || null,
         date,
         title,
         description,
@@ -206,7 +213,7 @@ export default function LogbookForm() {
         });
       }
 
-      navigate("/logbook");
+      navigate(fromCheckout ? "/attendance" : "/logbook");
     } catch (err: any) {
       setError(err?.message || "Gagal menyimpan entri logbook.");
     } finally {
@@ -249,15 +256,14 @@ export default function LogbookForm() {
             {/* 2-Column Row for Research & Date */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-foreground">Pilih Riset</label>
+                <label className="text-sm font-semibold text-foreground">Riset <span className="font-medium text-muted-foreground">(opsional)</span></label>
                 <div className="relative">
                   <select 
                     value={research}
                     onChange={(e) => setResearch(e.target.value)}
                     className="w-full h-11 px-4 bg-background border border-border rounded-xl text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer"
-                    required
                   >
-                    <option value="" disabled>Pilih riset aktif...</option>
+                    <option value="">Logbook Umum</option>
                     {researchOptions.map((option) => (
                       <option key={option.id} value={option.id}>{option.title}</option>
                     ))}
@@ -277,6 +283,11 @@ export default function LogbookForm() {
                   className="w-full h-11 px-4 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-foreground"
                   required
                 />
+                {fromCheckout && (
+                  <p className="text-[11px] font-semibold text-primary">
+                    Tanggal otomatis diset ke hari ini untuk kebutuhan check-out.
+                  </p>
+                )}
               </div>
             </div>
 

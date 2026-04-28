@@ -54,7 +54,7 @@ export default function ReviewLogbook() {
 
         const risetByStudent: Record<string, string[]> = {};
         logRows.forEach((item: any) => {
-          const risetName = item.project_name || "Tanpa Riset";
+          const risetName = item.project_name || item.projectName || "Logbook Umum";
           if (!risetByStudent[item.student_id]) risetByStudent[item.student_id] = [];
           if (!risetByStudent[item.student_id].includes(risetName)) risetByStudent[item.student_id].push(risetName);
         });
@@ -90,7 +90,7 @@ export default function ReviewLogbook() {
           mahasiswaNama: item.student_name,
           mahasiswaInitials: item.student_initials || toInitials(item.student_name || "Mahasiswa"),
           mahasiswaColor: studentById[item.student_id]?.color || "bg-[#8B6FFF] text-white",
-          riset: item.project_name || "Tanpa Riset",
+          riset: item.project_name || item.projectName || "Logbook Umum",
           date: formatShortDate(item.date),
           fullDate: formatFullDate(item.date),
           title: item.title,

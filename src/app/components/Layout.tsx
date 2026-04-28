@@ -409,7 +409,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     { name: "Kehadiran (GPS)",     path: "/attendance", icon: MapPin },
     { name: "Logbook",             path: "/logbook",    icon: BookOpen },
     { name: "Riset Saya",          path: "/research",   icon: FlaskConical },
-    { name: isRisetStudent ? "Pengajuan Izin" : "Pengajuan Cuti", path: "/leave", icon: FileText },
+    { name: "Pengajuan", path: "/leave", icon: FileText },
     { name: "Dokumen & Sertifikat",path: "/documents",  icon: Award },
     { name: "Draft TA / Jurnal",   path: "/draft",      icon: ScrollText },
   ];

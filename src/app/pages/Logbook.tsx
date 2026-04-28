@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Layout } from "../components/Layout";
-import { apiDelete, apiGet, getStoredUser } from "../lib/api";
+import { apiDelete, apiGet, buildQueryPath, getStoredUser } from "../lib/api";
 import { mapLogbookAttachment } from "../lib/logbookAttachments";
 import { 
   Plus, CheckCircle2, Clock, Paperclip, ChevronLeft, ChevronRight, 
   FileText, Download, Target, AlertCircle, CheckCircle, Users,
   Globe, Calendar, Microscope, ChevronDown, X, Pencil, Trash2
 } from "lucide-react";
+
+const GENERAL_LOGBOOK_ID = "__general_logbook__";
 
 export default function Logbook() {
   const navigate = useNavigate();
@@ -40,14 +42,26 @@ export default function Logbook() {
         const studentId = user?.id;
         const [projects, entries] = await Promise.all([
           apiGet<Array<any>>("/research"),
-          apiGet<Array<any>>(`/logbooks${studentId ? `?studentId=${studentId}` : ""}`)
+          apiGet<Array<any>>(buildQueryPath("/logbooks", { studentId }))
         ]);
 
         const entriesByProject = entries.reduce((acc, entry) => {
-          const key = entry.project_id || "";
+          const key = entry.project_id || entry.projectId || GENERAL_LOGBOOK_ID;
           acc[key] = (acc[key] || 0) + 1;
           return acc;
         }, {} as Record<string, number>);
+
+        const generalLogbookCard = {
+          id: GENERAL_LOGBOOK_ID,
+          name: "Logbook Umum",
+          role: "Tanpa Riset",
+          status: "Umum",
+          entries: entriesByProject[GENERAL_LOGBOOK_ID] || 0,
+          supervisor: "-",
+          period: "Harian",
+          progress: 0,
+          color: "info"
+        };
 
         const researchMapped = projects.map((project, index) => ({
           id: project.id,
@@ -65,16 +79,19 @@ export default function Logbook() {
           const date = new Date(entry.date);
           const comments = Array.isArray(entry.comments) ? entry.comments : [];
           const attachment = mapLogbookAttachment(entry);
+          const projectId = entry.project_id || entry.projectId || null;
+          const projectName = entry.project_name || entry.projectName || "Logbook Umum";
+          const hasResearch = Boolean(projectId);
           return {
             id: entry.id,
-            researchId: entry.project_id,
+            researchId: projectId || GENERAL_LOGBOOK_ID,
             date: Number.isNaN(date.getTime()) ? "-" : String(date.getDate()),
             month: Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString("id-ID", { month: "short" }).toUpperCase(),
             fullDate: formatDisplayDate(entry.date),
             title: entry.title,
             preview: entry.description,
-            tag: entry.project_name || "Tanpa Riset",
-            tagColor: "primary",
+            tag: hasResearch ? projectName : "Logbook Umum",
+            tagColor: hasResearch ? "primary" : "info",
             hasAttachment: Boolean(attachment),
             attachmentCount: attachment ? 1 : 0,
             description: entry.description,
@@ -86,7 +103,7 @@ export default function Logbook() {
           };
         });
 
-        setResearches(researchMapped);
+        setResearches([generalLogbookCard, ...researchMapped]);
         setLogbookEntries(mappedEntries);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat data logbook.");
@@ -136,7 +153,7 @@ export default function Logbook() {
         {/* Research Filter Cards Area */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground">Filter Riset</h2>
+            <h2 className="text-sm font-bold text-foreground">Filter Logbook</h2>
             <div className="h-7 flex items-center">
               {activeResearchId !== null && (
                 <button 
@@ -201,18 +218,23 @@ export default function Logbook() {
                     </span>
                   </div>
 
-                  {/* Progress Bar */}
-                  <div className="flex flex-col gap-1.5 mt-auto pt-1">
-                    <div className="w-full bg-muted rounded-full h-1.5">
-                      <div 
-                        className={`h-1.5 rounded-full ${c.twBgSolid}`} 
-                        style={{ width: `${res.progress}%` }}
-                      ></div>
+                  {res.id === GENERAL_LOGBOOK_ID ? (
+                    <div className="mt-auto rounded-[10px] border border-blue-100 bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-700">
+                      Entri umum tidak terikat pada riset tertentu.
                     </div>
-                    <span className="text-[10px] text-muted-foreground font-medium">
-                      Progress riset: {res.progress}%
-                    </span>
-                  </div>
+                  ) : (
+                    <div className="flex flex-col gap-1.5 mt-auto pt-1">
+                      <div className="w-full bg-muted rounded-full h-1.5">
+                        <div 
+                          className={`h-1.5 rounded-full ${c.twBgSolid}`} 
+                          style={{ width: `${res.progress}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground font-medium">
+                        Progress riset: {res.progress}%
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -247,7 +269,7 @@ export default function Logbook() {
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Riset Aktif</span>
-              <span className="text-xl font-black text-foreground leading-none">{researches.length}</span>
+              <span className="text-xl font-black text-foreground leading-none">{researches.filter((item) => item.id !== GENERAL_LOGBOOK_ID).length}</span>
             </div>
           </div>
         </div>
@@ -296,7 +318,7 @@ export default function Logbook() {
                     <span className={`px-2 py-1 text-[10px] font-bold rounded-md ${
                       entry.tagColor === 'primary' 
                         ? 'bg-primary/10 text-primary' 
-                        : 'bg-success/10 text-success'
+                        : 'bg-info/10 text-info'
                     }`}>
                       {entry.tag}
                     </span>
@@ -340,7 +362,7 @@ export default function Logbook() {
             
             {!loading && filteredEntries.length === 0 && (
               <div className="text-center py-12">
-                <p className="text-muted-foreground text-sm">Belum ada entri logbook untuk riset ini.</p>
+                <p className="text-muted-foreground text-sm">Belum ada entri logbook untuk filter ini.</p>
               </div>
             )}
           </div>
@@ -358,7 +380,7 @@ export default function Logbook() {
               <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/10">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    selectedEntry.tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'
+                    selectedEntry.tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-info/10 text-info'
                   }`}>
                     <FileText size={16} />
                   </div>
@@ -407,7 +429,7 @@ export default function Logbook() {
                     <span className={`px-2.5 py-1 text-[10px] font-bold rounded-md border ${
                       selectedEntry.tagColor === 'primary' 
                         ? 'bg-primary/5 text-primary border-primary/20' 
-                        : 'bg-success/5 text-success border-success/20'
+                        : 'bg-info/5 text-info border-info/20'
                     }`}>
                       {selectedEntry.tag}
                     </span>

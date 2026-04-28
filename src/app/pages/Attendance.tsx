@@ -450,6 +450,11 @@ export default function Attendance() {
     });
   };
 
+  const redirectToTodayLogbook = () => {
+    const todayKey = getJakartaDateKey();
+    navigate(`/logbook/new?date=${encodeURIComponent(todayKey)}&fromCheckout=1`);
+  };
+
   const handleAttendanceAction = async (forceEarlyCheckout = false) => {
     if (!user?.id || submitting || checkingLogbook) return;
     if (isDesktopAttendanceBlocked) {
@@ -463,8 +468,7 @@ export default function Attendance() {
         const logbookReady = await hasLogbookToday();
         if (!logbookReady) {
           setEarlyCheckoutWarning(null);
-          setLogbookRequiredMessage("Isi logbook hari ini terlebih dahulu sebelum check-out.");
-          setLogbookRequiredOpen(true);
+          redirectToTodayLogbook();
           return;
         }
       } catch (err: any) {
@@ -543,8 +547,7 @@ export default function Attendance() {
       const errorBody = err instanceof ApiError ? err.body : null;
       if (errorBody?.logbookRequired) {
         setEarlyCheckoutWarning(null);
-        setLogbookRequiredMessage(errorBody.message || "Isi logbook hari ini terlebih dahulu sebelum check-out.");
-        setLogbookRequiredOpen(true);
+        redirectToTodayLogbook();
         setError("");
         return;
       }
@@ -701,7 +704,7 @@ export default function Attendance() {
                   type="button"
                   onClick={() => {
                     setLogbookRequiredOpen(false);
-                    navigate("/logbook/new");
+                    redirectToTodayLogbook();
                   }}
                   className="h-10 rounded-[10px] bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-700"
                 >

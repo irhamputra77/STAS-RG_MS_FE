@@ -38,6 +38,7 @@ function getLeaveTypeLabel(item: any) {
   const type = String(item?.jenis_pengajuan || item?.jenis || item?.jenisPengajuan || "cuti").toLowerCase();
   if (type === "izin") return "Izin";
   if (type === "sakit") return "Sakit";
+  if (type === "wfh") return "WFH";
   return "Cuti";
 }
 
@@ -45,7 +46,17 @@ function getLeaveTypeStyle(item: any) {
   const label = getLeaveTypeLabel(item);
   if (label === "Izin") return "bg-amber-100 text-amber-700";
   if (label === "Sakit") return "bg-rose-100 text-rose-700";
+  if (label === "WFH") return "bg-sky-100 text-sky-700";
   return "bg-indigo-100 text-indigo-700";
+}
+
+function readNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
 }
 
 function isRisetStudentType(tipe?: string | null) {
@@ -257,6 +268,29 @@ export default function Dashboard() {
   const sisaCuti = dashboardData?.stats?.sisaCuti ?? 0;
   const totalCuti = dashboardData?.stats?.totalCuti ?? 0;
   const cutiPct = totalCuti > 0 ? Math.round((sisaCuti / totalCuti) * 100) : 0;
+  const totalWfh = readNumber(
+    dashboardData?.stats?.wfhQuota,
+    dashboardData?.stats?.totalWfh,
+    dashboardData?.stats?.wfh_quota,
+    dashboardData?.student?.wfhQuota,
+    dashboardData?.student?.wfh_quota,
+    dashboardData?.profile?.wfhQuota,
+    dashboardData?.profile?.wfh_quota
+  );
+  const usedWfh = readNumber(
+    dashboardData?.stats?.wfhUsed,
+    dashboardData?.stats?.usedWfh,
+    dashboardData?.stats?.wfh_used,
+    dashboardData?.student?.wfhUsed,
+    dashboardData?.student?.wfh_used
+  );
+  const remainingWfh = readNumber(
+    dashboardData?.stats?.wfhRemaining,
+    dashboardData?.stats?.sisaWfh,
+    dashboardData?.stats?.wfh_remaining,
+    totalWfh > 0 ? Math.max(totalWfh - usedWfh, 0) : 0
+  );
+  const wfhPct = totalWfh > 0 ? Math.round((remainingWfh / totalWfh) * 100) : 0;
 
   const draftRecent = dashboardData?.draftRecent || [];
   const draftDiReview = draftRecent.filter((item: any) => item.status === "Dalam Review").length;
@@ -286,7 +320,7 @@ export default function Dashboard() {
   const quickLinks = [
     { label: "Logbook", icon: <BookOpen size={18} />, href: "/logbook", color: "bg-indigo-50 text-indigo-600 border-indigo-100" },
     { label: "Riset & Board", icon: <FlaskConical size={18} />, href: "/research", color: "bg-[#F0FFF0] text-[#0AB600] border-green-200" },
-    { label: isRisetStudent ? "Izin / Sakit" : "Cuti / Izin", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
+    { label: isRisetStudent ? "Izin / Sakit / WFH" : "Cuti / Izin / WFH", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
     { label: "Dokumen & Sertifikat", icon: <Award size={18} />, href: "/documents", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
     { label: "Draft TA / Jurnal", icon: <ScrollText size={18} />, href: "/draft", color: "bg-blue-50 text-blue-600 border-blue-100" },
     { label: "Kehadiran GPS", icon: <MapPin size={18} />, href: "/attendance", color: "bg-rose-50 text-rose-600 border-rose-100" },
@@ -330,7 +364,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Stat Cards ── */}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 ${isRisetStudent ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4 2xl:grid-cols-5">
           <StatCard
             icon={<UserCheck size={20} className="md:w-[22px] md:h-[22px] text-[#6C47FF]" />}
             label="Kehadiran"
@@ -369,6 +403,17 @@ export default function Dashboard() {
               href="/leave"
             />
           )}
+          <StatCard
+            icon={<Calendar size={20} className="md:w-[22px] md:h-[22px] text-sky-500" />}
+            label="Jatah WFH"
+            value={totalWfh > 0
+              ? <><span>{remainingWfh}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{totalWfh}</span></>
+              : <span className="text-base md:text-lg">Tidak ada</span>}
+            sub={totalWfh > 0 ? "Hari WFH tersisa" : "Anda tidak punya jatah WFH"}
+            barPct={wfhPct}
+            barColor="bg-sky-500"
+            href="/leave"
+          />
         </div>
 
         {/* ── Attendance Banner ── */}
@@ -604,7 +649,7 @@ export default function Dashboard() {
             </div>
 
             <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
-              <SectionHeader icon={<Calendar size={16} className="text-amber-600" />} title={isRisetStudent ? "Pengajuan Izin / Sakit" : "Pengajuan Cuti / Izin"} href="/leave" linkLabel="Ajukan" />
+              <SectionHeader icon={<Calendar size={16} className="text-amber-600" />} title={isRisetStudent ? "Pengajuan Izin / Sakit / WFH" : "Pengajuan Cuti / Izin / WFH"} href="/leave" linkLabel="Ajukan" />
               <div className="p-4 md:p-5 flex flex-col gap-2 md:gap-3">
                 {/* Sisa cuti visual */}
                 {!isRisetStudent && <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-100 rounded-[10px]">
@@ -621,6 +666,16 @@ export default function Dashboard() {
                     <p className="text-[10px] font-medium text-amber-600">dari {totalCuti} jatah cuti</p>
                   </div>
                 </div>}
+                <div className="flex items-center gap-3 p-3 bg-sky-50 border border-sky-100 rounded-[10px]">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-sky-800">
+                      {totalWfh > 0 ? `${remainingWfh} hari WFH tersisa` : "Anda tidak punya jatah WFH"}
+                    </p>
+                    <p className="text-[10px] font-medium text-sky-600">
+                      {totalWfh > 0 ? `dari ${totalWfh} jatah WFH` : "Hubungi admin jika membutuhkan akses WFH"}
+                    </p>
+                  </div>
+                </div>
                 {/* Recent list */}
                 {cutiRecent.map((c: any) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">

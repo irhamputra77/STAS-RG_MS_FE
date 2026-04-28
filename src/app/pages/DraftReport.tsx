@@ -13,7 +13,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { apiGet, apiPost, apiPut, getStoredUser, resolveApiAssetUrl } from "../lib/api";
+import { apiGet, apiPost, apiPut, buildQueryPath, encodePathSegment, getStoredUser, resolveApiAssetUrl } from "../lib/api";
 import { fetchDraftReportTypes, getCachedDraftReportTypes } from "../lib/draftReportTypes";
 import { formatDateYmd } from "../lib/date";
 
@@ -186,9 +186,10 @@ export default function DraftReport() {
   }, []);
 
   const loadDrafts = async (resolvedStudentId: string, filter: string) => {
-    const params = new URLSearchParams({ studentId: resolvedStudentId });
-    if (filter !== BASE_FILTER) params.set("type", filter);
-    const rows = await apiGet<Array<DraftResponse>>(`/draft-reports?${params.toString()}`);
+    const rows = await apiGet<Array<DraftResponse>>(buildQueryPath("/draft-reports", {
+      studentId: resolvedStudentId,
+      type: filter !== BASE_FILTER ? filter : undefined
+    }));
     setDrafts(Array.isArray(rows) ? rows.map(normalizeDraft) : []);
   };
 
@@ -202,7 +203,7 @@ export default function DraftReport() {
         setLoadingInit(true);
         setError("");
         const [profile, researchRows] = await Promise.all([
-          apiGet<any>(`/profile/${user.id}`),
+          apiGet<any>(`/profile/${encodePathSegment(user.id)}`),
           apiGet<Array<any>>("/research").catch(() => []),
         ]);
         const resolvedStudentId = String(profile?.id || profile?.student_id || "").trim();

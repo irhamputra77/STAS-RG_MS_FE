@@ -1,11 +1,11 @@
 import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
 import { Plus, X, Check, Upload, FileText } from "lucide-react";
-import { apiGet, apiPost, getStoredUser } from "../lib/api";
+import { apiGet, apiPost, buildQueryPath, encodePathSegment, getStoredUser } from "../lib/api";
 import { formatDateYmd } from "../lib/date";
 
 type LeaveStatus = "Disetujui" | "Ditolak" | "Menunggu";
-type RequestType = "cuti" | "izin" | "sakit";
+type RequestType = "cuti" | "izin" | "sakit" | "wfh";
 
 interface LeaveRecord {
   id: string;
@@ -25,30 +25,51 @@ const REQUEST_TYPE_OPTIONS: Array<{ value: RequestType; label: string }> = [
   { value: "cuti", label: "Cuti" },
   { value: "izin", label: "Izin" },
   { value: "sakit", label: "Sakit" },
+  { value: "wfh", label: "WFH" },
 ];
 
 const REQUEST_TYPE_LABEL: Record<RequestType, string> = {
   cuti: "Cuti",
   izin: "Izin",
   sakit: "Sakit",
+  wfh: "WFH",
 };
 
 const REQUEST_TYPE_BADGE: Record<RequestType, string> = {
   cuti: "bg-indigo-100 text-indigo-700 border border-indigo-200",
   izin: "bg-amber-100 text-amber-700 border border-amber-200",
   sakit: "bg-rose-100 text-rose-700 border border-rose-200",
+  wfh: "bg-sky-100 text-sky-700 border border-sky-200",
 };
+const ALLOWED_ATTACHMENT_EXTENSIONS = ["pdf", "doc", "docx", "png", "jpg", "jpeg"];
+const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg",
+]);
 
 function parseRequestType(item: any): RequestType {
-  const rawJenis = String(item?.jenis_pengajuan || item?.jenis || "").toLowerCase();
-  if (rawJenis === "izin" || rawJenis === "sakit" || rawJenis === "cuti") {
+  const rawJenis = String(item?.jenisPengajuan || item?.jenis_pengajuan || item?.jenis || "").toLowerCase();
+  if (rawJenis === "izin" || rawJenis === "sakit" || rawJenis === "cuti" || rawJenis === "wfh") {
     return rawJenis as RequestType;
   }
 
   const note = String(item?.catatan || "").toLowerCase();
   if (note.includes("jenis pengajuan: izin")) return "izin";
   if (note.includes("jenis pengajuan: sakit")) return "sakit";
+  if (note.includes("jenis pengajuan: wfh")) return "wfh";
   return "cuti";
+}
+
+function readNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
 }
 
 const initialFormState = {
@@ -68,6 +89,16 @@ function fileToDataUrl(file: File) {
   });
 }
 
+function validateAttachmentFile(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  const allowedExtension = ALLOWED_ATTACHMENT_EXTENSIONS.includes(extension);
+  const allowedMime = !file.type || ALLOWED_ATTACHMENT_MIME_TYPES.has(file.type);
+  if (!allowedExtension || !allowedMime) {
+    return "Format lampiran tidak didukung. Gunakan PDF, DOC, DOCX, PNG, JPG, atau JPEG.";
+  }
+  return "";
+}
+
 function isRisetStudentType(tipe?: string | null) {
   return String(tipe || "").trim().toLowerCase() === "riset";
 }
@@ -76,6 +107,9 @@ export default function LeaveRequest() {
   const user = getStoredUser();
   const [studentId, setStudentId] = useState("");
   const [studentType, setStudentType] = useState(String(user?.tipe || ""));
+  const [wfhQuota, setWfhQuota] = useState(0);
+  const [wfhUsed, setWfhUsed] = useState(0);
+  const [wfhRemaining, setWfhRemaining] = useState(0);
   const [leaveData, setLeaveData] = useState<LeaveRecord[]>([]);
   const [cutiRule, setCutiRule] = useState<{
     maxSemesterDays: number;
@@ -96,9 +130,21 @@ export default function LeaveRequest() {
       if (user?.role !== "mahasiswa" || !user?.id) return;
 
       try {
-        const profile = await apiGet<any>(`/profile/${user.id}`);
+        const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`);
         const resolvedId = String(profile?.id || profile?.student_id || "").trim();
         if (profile?.tipe) setStudentType(String(profile.tipe));
+        const totalQuota = readNumber(profile?.wfhQuota, profile?.wfh_quota);
+        const usedQuota = readNumber(profile?.wfhUsed, profile?.wfh_used);
+        const remainingQuota = readNumber(
+          profile?.wfhRemaining,
+          profile?.wfh_remaining,
+          profile?.sisaWfh,
+          profile?.sisa_wfh,
+          totalQuota > 0 ? Math.max(totalQuota - usedQuota, 0) : 0
+        );
+        setWfhQuota(totalQuota);
+        setWfhUsed(usedQuota);
+        setWfhRemaining(remainingQuota);
         setStudentId(resolvedId || String(user.id || ""));
       } catch {
         setStudentId(String(user?.id || ""));
@@ -114,10 +160,15 @@ export default function LeaveRequest() {
   }, [formData.jenis, isRisetStudent]);
 
   useEffect(() => {
+    if (formData.jenis !== "wfh" || !formData.periodeMulai) return;
+    setFormData((prev) => ({ ...prev, periodeSelesai: prev.periodeMulai }));
+  }, [formData.jenis, formData.periodeMulai]);
+
+  useEffect(() => {
     const load = async () => {
       try {
         const [rows, settings] = await Promise.all([
-          apiGet<Array<any>>(`/leave-requests${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
+          apiGet<Array<any>>(buildQueryPath("/leave-requests", { studentId })),
           apiGet<any>("/system-settings"),
         ]);
 
@@ -139,7 +190,9 @@ export default function LeaveRequest() {
             item.bukti_pendukung_name ||
             item.buktiPendukung ||
             item.file_name ||
+            item.fileName ||
             item.attachment_name ||
+            item.attachmentName ||
             "",
           status: item.status,
           reviewedBy: item.reviewed_by_name,
@@ -181,23 +234,31 @@ export default function LeaveRequest() {
     () => calculateDuration(formData.periodeMulai, formData.periodeSelesai),
     [formData.periodeMulai, formData.periodeSelesai]
   );
+  const effectiveDuration = formData.jenis === "wfh" && formData.periodeMulai ? 1 : duration;
   const visibleLeaveData = isRisetStudent ? leaveData.filter((item) => item.jenis !== "cuti") : leaveData;
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
+    if (file) {
+      const validation = validateAttachmentFile(file);
+      if (validation) {
+        setError(validation);
+        e.target.value = "";
+        return;
+      }
+    }
+    setError("");
     setFormData((prev) => ({ ...prev, buktiPendukung: file }));
   };
 
   const handleSubmitLeaveRequest = async () => {
     setError("");
 
-    if (!formData.jenis || !formData.periodeMulai || !formData.periodeSelesai || !formData.alasan.trim()) {
-      setError("Jenis pengajuan, tanggal mulai, tanggal selesai, dan alasan harus diisi.");
-      return;
-    }
-
-    if (!formData.buktiPendukung) {
-      setError("Bukti pendukung wajib diunggah.");
+    const effectiveEndDate = formData.jenis === "wfh" ? formData.periodeMulai : formData.periodeSelesai;
+    if (!formData.jenis || !formData.periodeMulai || !effectiveEndDate || !formData.alasan.trim()) {
+      setError(formData.jenis === "wfh"
+        ? "Jenis pengajuan, tanggal WFH, dan alasan harus diisi."
+        : "Jenis pengajuan, tanggal mulai, tanggal selesai, dan alasan harus diisi.");
       return;
     }
 
@@ -206,18 +267,28 @@ export default function LeaveRequest() {
       return;
     }
 
-    if (duration <= 0) {
+    if (formData.jenis === "wfh" && wfhRemaining <= 0) {
+      setError("Anda tidak punya jatah WFH.");
+      return;
+    }
+
+    if (effectiveDuration <= 0) {
       setError("Tanggal selesai tidak boleh lebih awal dari tanggal mulai.");
       return;
     }
 
+    if (formData.jenis === "wfh" && effectiveDuration !== 1) {
+      setError("Pengajuan WFH hanya berlaku untuk satu hari.");
+      return;
+    }
+
     if (formData.jenis === "cuti") {
-      if (cutiRule?.maxMonthDays && duration > cutiRule.maxMonthDays) {
+      if (cutiRule?.maxMonthDays && effectiveDuration > cutiRule.maxMonthDays) {
         setError(`Maksimal cuti per bulan adalah ${cutiRule.maxMonthDays} hari.`);
         return;
       }
 
-      if (cutiRule?.maxSemesterDays && duration > cutiRule.maxSemesterDays) {
+      if (cutiRule?.maxSemesterDays && effectiveDuration > cutiRule.maxSemesterDays) {
         setError(`Maksimal cuti per semester adalah ${cutiRule.maxSemesterDays} hari.`);
         return;
       }
@@ -227,39 +298,47 @@ export default function LeaveRequest() {
 
     try {
       setSubmitting(true);
-      const fileDataUrl = await fileToDataUrl(formData.buktiPendukung);
-
-      await apiPost<{ message: string }>("/leave-requests", {
+      const selectedFile = formData.buktiPendukung;
+      const payload: Record<string, unknown> = {
         id: requestId,
         studentId: studentId || user?.id || "S001",
         jenis: formData.jenis,
         jenisPengajuan: formData.jenis,
         countsAgainstLeaveQuota: formData.jenis === "cuti",
+        countsAgainstWfhQuota: formData.jenis === "wfh",
         periodeStart: formData.periodeMulai,
-        periodeEnd: formData.periodeSelesai,
-        durasi: duration,
+        periodeEnd: effectiveEndDate,
+        durasi: effectiveDuration,
         alasan: formData.alasan.trim(),
         tanggalPengajuan: new Date().toISOString().split("T")[0],
-        fileDataUrl,
-        fileName: formData.buktiPendukung.name,
-        attachmentDataUrl: fileDataUrl,
-        attachmentName: formData.buktiPendukung.name,
-        catatan: `Jenis pengajuan: ${formData.jenis}. Lampiran frontend: ${formData.buktiPendukung.name}`
-      });
+        catatan: selectedFile
+          ? `Jenis pengajuan: ${formData.jenis}. Lampiran frontend: ${selectedFile.name}`
+          : `Jenis pengajuan: ${formData.jenis}`
+      };
+
+      if (selectedFile) {
+        payload.fileDataUrl = await fileToDataUrl(selectedFile);
+        payload.fileName = selectedFile.name;
+      }
+
+      await apiPost<{ message: string }>("/leave-requests", payload);
 
       const newLeave: LeaveRecord = {
         id: requestId,
         jenis: formData.jenis,
         tanggalPengajuan: formatDateYmd(new Date().toISOString()),
         periodeMulai: formData.periodeMulai,
-        periodeSelesai: formData.periodeSelesai,
-        durasi: duration,
+        periodeSelesai: formData.jenis === "wfh" ? formData.periodeMulai : formData.periodeSelesai,
+        durasi: effectiveDuration,
         alasan: formData.alasan,
-        buktiPendukung: formData.buktiPendukung.name,
+        buktiPendukung: selectedFile?.name || "",
         status: "Menunggu",
       };
 
       setLeaveData((prev) => [newLeave, ...prev]);
+      if (formData.jenis === "wfh") {
+        setWfhRemaining((prev) => Math.max(prev - 1, 0));
+      }
       setRequestModal(false);
       resetForm();
     } catch (err: any) {
@@ -294,7 +373,7 @@ export default function LeaveRequest() {
   };
 
   return (
-    <Layout title={isRisetStudent ? "Pengajuan Izin dan Sakit" : "Pengajuan Cuti, Izin, dan Sakit"}>
+    <Layout title={isRisetStudent ? "Pengajuan Izin, Sakit, dan WFH" : "Pengajuan Cuti, Izin, Sakit, dan WFH"}>
       <div className="flex flex-col gap-4 sm:gap-5 p-4 sm:p-6 max-w-4xl">
         {!requestModal && error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
@@ -315,7 +394,7 @@ export default function LeaveRequest() {
             <p className="text-sm text-muted-foreground mt-1">
               {isRisetStudent
                 ? "Mahasiswa Riset dapat mengajukan izin atau sakit tanpa kuota cuti."
-                : "Form pengajuan kini mendukung cuti, izin, dan sakit."}
+                : "Form pengajuan kini mendukung cuti, izin, sakit, dan WFH."}
             </p>
           </div>
 
@@ -385,7 +464,7 @@ export default function LeaveRequest() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-border flex items-center justify-between">
-                <h3 className="font-black text-foreground">{isRisetStudent ? "Ajukan Izin / Sakit" : "Ajukan Cuti / Izin / Sakit"}</h3>
+                <h3 className="font-black text-foreground">{isRisetStudent ? "Ajukan Izin / Sakit / WFH" : "Ajukan Cuti / Izin / Sakit / WFH"}</h3>
                 <button
                   onClick={() => {
                     setRequestModal(false);
@@ -417,6 +496,13 @@ export default function LeaveRequest() {
                       </option>
                     ))}
                   </select>
+                  {formData.jenis === "wfh" && (
+                    <p className="mt-1.5 text-[11px] font-semibold text-sky-700">
+                      {wfhQuota > 0
+                        ? `Kuota ${wfhQuota} hari, terpakai ${wfhUsed} hari, sisa ${wfhRemaining} hari.`
+                        : "Anda tidak punya jatah WFH."}
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -425,7 +511,11 @@ export default function LeaveRequest() {
                     <input
                       type="date"
                       value={formData.periodeMulai}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, periodeMulai: e.target.value }))}
+                      onChange={(e) => setFormData((prev) => ({
+                        ...prev,
+                        periodeMulai: e.target.value,
+                        periodeSelesai: prev.jenis === "wfh" ? e.target.value : prev.periodeSelesai
+                      }))}
                       className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
                     />
                   </div>
@@ -436,15 +526,21 @@ export default function LeaveRequest() {
                       type="date"
                       value={formData.periodeSelesai}
                       onChange={(e) => setFormData((prev) => ({ ...prev, periodeSelesai: e.target.value }))}
+                      disabled={formData.jenis === "wfh"}
                       className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
                     />
+                    {formData.jenis === "wfh" && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-muted-foreground">
+                        WFH hanya berlaku pada tanggal mulai.
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                {formData.periodeMulai && formData.periodeSelesai && (
+                {formData.periodeMulai && (formData.jenis === "wfh" || formData.periodeSelesai) && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-[10px]">
                     <p className="text-xs font-bold text-blue-700">
-                      Durasi Pengajuan: <span className="font-black">{duration} hari</span>
+                      Durasi Pengajuan: <span className="font-black">{effectiveDuration} hari</span>
                     </p>
                   </div>
                 )}
@@ -461,13 +557,13 @@ export default function LeaveRequest() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Upload Bukti Pendukung</label>
+                  <label className="text-xs font-black text-foreground block mb-1.5">Lampiran Pendukung <span className="font-bold text-muted-foreground">(opsional)</span></label>
 
                   <label className="w-full min-h-[108px] border border-dashed border-slate-300 rounded-[14px] bg-slate-50 hover:bg-slate-100 transition-colors flex flex-col items-center justify-center gap-2 px-4 py-5 text-center cursor-pointer">
                     <Upload size={18} className="text-slate-500" />
                     <div>
                       <p className="text-sm font-bold text-slate-700">Klik untuk memilih file</p>
-                      <p className="text-xs text-slate-500 mt-1">PDF, JPG, JPEG, PNG, DOC, atau DOCX</p>
+                      <p className="text-xs text-slate-500 mt-1">PDF, DOC, DOCX, PNG, JPG, atau JPEG</p>
                     </div>
                     <input
                       type="file"
@@ -499,7 +595,7 @@ export default function LeaveRequest() {
                 </button>
                 <button
                   onClick={handleSubmitLeaveRequest}
-                  disabled={submitting}
+                  disabled={submitting || (formData.jenis === "wfh" && wfhRemaining <= 0)}
                   className="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2"
                 >
                   <Check size={14} strokeWidth={3} />

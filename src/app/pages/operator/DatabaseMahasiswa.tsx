@@ -51,6 +51,28 @@ function getFacultyLabel(item: any): string {
   return item?.fakultas || item?.faculty || item?.facultyName || item?.fakultas_nama || item?.faculty_name || "-";
 }
 
+function readNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function getWfhStats(item: any) {
+  const wfhQuota = readNumber(item?.wfhQuota, item?.wfh_quota, item?.wfh_quota_days, item?.wfhQuotaDays);
+  const wfhUsed = readNumber(item?.wfhUsed, item?.wfh_used);
+  const wfhRemaining = readNumber(
+    item?.wfhRemaining,
+    item?.wfh_remaining,
+    item?.sisaWfh,
+    item?.sisa_wfh,
+    Math.max(wfhQuota - wfhUsed, 0)
+  );
+  return { wfhQuota, wfhUsed, wfhRemaining };
+}
+
 export default function DatabaseMahasiswa() {
   const { confirm, confirmDialog } = useConfirmDialog();
   const [mahasiswaList, setMahasiswaList] = useState<MahasiswaRecord[]>([]);
@@ -82,6 +104,7 @@ export default function DatabaseMahasiswa() {
     fakultas: "",
     pembimbing: "",
     bergabung: "",
+    wfhQuota: "",
     status: "Aktif" as MahasiswaRecord["status"],
     tipe: "Riset" as MahasiswaRecord["tipe"],
     riset: [] as string[]
@@ -106,7 +129,9 @@ export default function DatabaseMahasiswa() {
       
       setRisetOptions(risetNames);
       
-      const mapped: MahasiswaRecord[] = rows.map((item, index) => ({
+      const mapped: MahasiswaRecord[] = rows.map((item, index) => {
+        const wfh = getWfhStats(item);
+        return ({
         id: item.id,
         nim: item.nim,
         name: item.name,
@@ -122,12 +147,14 @@ export default function DatabaseMahasiswa() {
         riset: Array.isArray(item.research_projects) ? item.research_projects : [],
         bergabung: formatDateOnly(item.bergabung),
         pembimbing: item.pembimbing || "-",
+        ...wfh,
         kehadiran: Number(item.kehadiran) || 0,
         totalHari: Number(item.total_hari) || 0,
         logbookCount: Number(item.logbook_count) || 0,
         jamMingguIni: Number(item.jam_minggu_ini) || 0,
         jamMingguTarget: Number(item.jam_minggu_target) || 0
-      }));
+      });
+      });
       setMahasiswaList(mapped);
       setLogEntries(logRows || []);
     } catch (err: any) {
@@ -150,6 +177,7 @@ export default function DatabaseMahasiswa() {
       try {
         const detail = await apiGet<any>(`/students/${selected.id}`);
         const detailFakultas = getFacultyLabel(detail);
+        const wfh = getWfhStats({ ...selected, ...detail });
         setSelectedDetail({
           ...selected,
           nim: detail?.nim || selected.nim,
@@ -165,6 +193,7 @@ export default function DatabaseMahasiswa() {
           riset: Array.isArray(detail?.research_projects) ? detail.research_projects : selected.riset,
           bergabung: formatDateOnly(detail?.bergabung || selected.bergabung),
           pembimbing: detail?.pembimbing || selected.pembimbing,
+          ...wfh,
           kehadiran: Number(detail?.kehadiran) || selected.kehadiran || 0,
           totalHari: Number(detail?.total_hari) || selected.totalHari || 0,
           logbookCount: Number(detail?.logbook_count) || selected.logbookCount || 0,
@@ -214,7 +243,7 @@ export default function DatabaseMahasiswa() {
   const studentLogs = activeStudent ? logEntries.filter((l: any) => l.student_id === activeStudent.id).slice(0, 3).map((l: any) => ({
     title: l.title,
     date: l.date,
-    riset: l.project_name || "Riset",
+    riset: l.project_name || l.projectName || "Logbook Umum",
     output: l.output || "-"
   })) : [];
 
@@ -224,6 +253,7 @@ export default function DatabaseMahasiswa() {
     try {
       const detail = await apiGet<any>(`/students/${m.id}`);
       const detailFakultas = getFacultyLabel(detail);
+      const wfh = getWfhStats({ ...m, ...detail });
       target = {
         ...m,
         nim: detail?.nim || m.nim,
@@ -235,6 +265,7 @@ export default function DatabaseMahasiswa() {
         fakultas: detailFakultas !== "-" ? detailFakultas : m.fakultas || "",
         pembimbing: detail?.pembimbing || m.pembimbing,
         bergabung: formatDateOnly(detail?.bergabung || m.bergabung),
+        ...wfh,
         status: detail?.status || m.status,
         tipe: detail?.tipe || m.tipe,
         riset: Array.isArray(detail?.research_projects) ? detail.research_projects : m.riset || []
@@ -255,6 +286,7 @@ export default function DatabaseMahasiswa() {
       fakultas: target.fakultas === "-" ? "" : target.fakultas || "",
       pembimbing: target.pembimbing === "-" ? "" : target.pembimbing,
       bergabung: target.bergabung === "-" ? "" : target.bergabung,
+      wfhQuota: String(target.wfhQuota ?? ""),
       status: target.status,
       tipe: target.tipe,
       riset: target.riset || []
@@ -290,6 +322,7 @@ export default function DatabaseMahasiswa() {
         tipe: form.tipe,
         pembimbing: form.pembimbing.trim(),
         bergabung: form.bergabung || null,
+        wfhQuota: form.wfhQuota === "" ? 0 : Number(form.wfhQuota) || 0,
         riset: form.riset
       };
 
@@ -391,6 +424,7 @@ export default function DatabaseMahasiswa() {
                 fakultas: "",
                 pembimbing: "",
                 bergabung: "",
+                wfhQuota: "0",
                 status: "Aktif",
                 tipe: "Riset",
                 riset: []
@@ -406,7 +440,7 @@ export default function DatabaseMahasiswa() {
           {/* Table */}
           <div className={`flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all ${selected ? "min-w-0" : ""}`}>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1280px] text-left text-sm">
+              <table className="w-full min-w-[1480px] text-left text-sm">
                 <thead><tr className="bg-slate-50 border-b border-border">
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Mahasiswa</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">NIM</th>
@@ -415,6 +449,9 @@ export default function DatabaseMahasiswa() {
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden lg:table-cell">Program Studi</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Fakultas</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Pembimbing</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Kuota WFH</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">WFH Terpakai</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Sisa WFH</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Riset</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Bergabung</th>
@@ -443,6 +480,9 @@ export default function DatabaseMahasiswa() {
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{m.prodi}</td>
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.fakultas || "-"}</td>
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.pembimbing || "-"}</td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{Number(m.wfhQuota) > 0 ? `${m.wfhQuota} hari` : "Tidak ada"}</td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{Number(m.wfhQuota) > 0 ? `${m.wfhUsed || 0} hari` : "-"}</td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{Number(m.wfhQuota) > 0 ? `${m.wfhRemaining ?? Math.max(Number(m.wfhQuota) - Number(m.wfhUsed || 0), 0)} hari` : "-"}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex flex-wrap gap-1">
                           {m.riset.map(r => (
@@ -509,6 +549,9 @@ export default function DatabaseMahasiswa() {
                     { label: "Telepon", value: activeStudent.phone },
                     { label: "Pembimbing", value: activeStudent.pembimbing },
                     { label: "Bergabung", value: activeStudent.bergabung },
+                    { label: "Kuota WFH", value: Number(activeStudent.wfhQuota) > 0 ? `${activeStudent.wfhQuota} hari` : "Tidak ada jatah WFH" },
+                    { label: "WFH Terpakai", value: Number(activeStudent.wfhQuota) > 0 ? `${activeStudent.wfhUsed || 0} hari` : "-" },
+                    { label: "Sisa WFH", value: Number(activeStudent.wfhQuota) > 0 ? `${activeStudent.wfhRemaining ?? Math.max(Number(activeStudent.wfhQuota) - Number(activeStudent.wfhUsed || 0), 0)} hari` : "-" },
                   ].map(f => (
                     <div key={f.label} className="flex justify-between gap-2">
                       <span className="font-black text-muted-foreground">{f.label}</span>
@@ -615,6 +658,10 @@ export default function DatabaseMahasiswa() {
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">Bergabung</label>
                 <input type="date" value={form.bergabung} onChange={(e) => setForm((prev) => ({ ...prev, bergabung: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Jatah WFH (hari)</label>
+                <input type="number" min={0} value={form.wfhQuota} onChange={(e) => setForm((prev) => ({ ...prev, wfhQuota: e.target.value }))} placeholder="0" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-black text-foreground block mb-1.5">Pembimbing</label>

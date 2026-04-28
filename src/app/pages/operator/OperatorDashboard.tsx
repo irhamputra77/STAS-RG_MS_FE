@@ -153,6 +153,7 @@ function getLeaveTypeLabel(jenis?: string) {
   const type = String(jenis || "").toLowerCase();
   if (type === "izin") return "Izin";
   if (type === "sakit") return "Sakit";
+  if (type === "wfh") return "WFH";
   return "Cuti";
 }
 
@@ -293,7 +294,7 @@ export default function OperatorDashboard() {
           },
           {
             key: "leave",
-            label: "pengajuan cuti/izin",
+            label: "pengajuan cuti/izin/WFH",
             request: apiGet<Array<any>>("/leave-requests?status=Menunggu"),
           },
           {
@@ -427,7 +428,7 @@ export default function OperatorDashboard() {
           mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
-          jenis: item.jenis_pengajuan || item.jenis || "cuti",
+          jenis: item.jenis_pengajuan || item.jenis || item.jenisPengajuan || "cuti",
           riset: item.project_name || "-",
           periodeStart: formatDateYmd(item.periode_start),
           periodeEnd: formatDateYmd(item.periode_end),
@@ -774,7 +775,7 @@ export default function OperatorDashboard() {
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           <MiniStatCard icon={<Users size={22} className="text-blue-600" />} label="Mahasiswa Aktif" value={aktifCount} color="bg-blue-100" href="/operator/mahasiswa" />
           <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset" />
-          <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti/Izin Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
+          <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti/Izin/WFH Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
           <MiniStatCard icon={<FileText size={22} className="text-blue-500" />} label="Surat Menunggu" value={suratMenunggu} color="bg-blue-100" href="/operator/surat" urgent />
           <MiniStatCard icon={<BookOpen size={22} className="text-emerald-600" />} label="Logbook Hari Ini" value={logbookHariIni} color="bg-emerald-100" href="/operator/logbook" />
           <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/riset" />

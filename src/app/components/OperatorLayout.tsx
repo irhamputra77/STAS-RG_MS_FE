@@ -76,7 +76,7 @@ const NAV_ITEMS = [
   { name: "Database Admin", path: "/operator/operator", icon: Settings2 },
   { name: "Logbook Mahasiswa", path: "/operator/logbook", icon: BookOpen },
   { name: "Kehadiran Mahasiswa", path: "/operator/kehadiran", icon: MapPin },
-  { name: "Persetujuan Cuti", path: "/operator/cuti", icon: CalendarCheck },
+  { name: "Persetujuan Pengajuan", path: "/operator/cuti", icon: CalendarCheck },
   { name: "Pengunduran Diri", path: "/operator/pengunduran", icon: UserX },
   { name: "Layanan Surat", path: "/operator/surat", icon: FileText },
   { name: "Review Laporan", path: "/operator/draft", icon: BookOpen },

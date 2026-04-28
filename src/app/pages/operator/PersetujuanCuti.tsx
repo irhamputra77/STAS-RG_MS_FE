@@ -5,7 +5,7 @@ import { Check, X, Eye, CalendarCheck, AlertTriangle, Download, Clock } from "lu
 import { apiDelete, apiGet, apiPatch, getStoredUser, resolveApiAssetUrl } from "../../lib/api";
 import { formatDateYmd } from "../../lib/date";
 
-type RequestType = "cuti" | "izin" | "sakit";
+type RequestType = "cuti" | "izin" | "sakit" | "wfh";
 type LeaveRequestAll = any;
 
 type Status = "Menunggu" | "Disetujui" | "Ditolak";
@@ -19,12 +19,14 @@ const REQUEST_TYPE_LABEL: Record<RequestType, string> = {
   cuti: "Cuti",
   izin: "Izin",
   sakit: "Sakit",
+  wfh: "WFH",
 };
 
 const REQUEST_TYPE_BADGE: Record<RequestType, string> = {
   cuti: "bg-indigo-100 text-indigo-700 border border-indigo-200",
   izin: "bg-amber-100 text-amber-700 border border-amber-200",
   sakit: "bg-rose-100 text-rose-700 border border-rose-200",
+  wfh: "bg-sky-100 text-sky-700 border border-sky-200",
 };
 
 type ToastState = { msg: string; type: "success" | "error" } | null;
@@ -42,35 +44,85 @@ function pickFirstString(...values: unknown[]) {
 
 function parseAttachmentNameFromNote(note?: string | null) {
   const text = String(note || "");
-  const match = text.match(/Lampiran frontend:\s*([^.,\n]+)/i);
-  return match?.[1]?.trim() || "";
+  const match = text.match(/Lampiran frontend:\s*([^\n]+)/i);
+  return match?.[1]?.trim().replace(/[.;]\s*$/, "") || "";
+}
+
+function isResolvableAttachmentUrl(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  return /^(https?:\/\/|data:|blob:|\/|uploads\/|files\/|api\/)/i.test(text);
 }
 
 function resolveLeaveAttachment(item: any) {
   const rawUrl = pickFirstString(
     item.file_url,
     item.fileUrl,
+    item.fileDataUrl,
     item.bukti_pendukung_url,
     item.buktiPendukungUrl,
+    item.bukti_pendukung,
+    item.buktiPendukung,
     item.attachment_url,
     item.attachmentUrl,
+    item.attachmentDataUrl,
     item.lampiran_url,
-    item.lampiranUrl
+    item.lampiranUrl,
+    item.lampiran,
+    item.attachment?.url,
+    item.attachment?.file_url,
+    item.attachment?.fileUrl,
+    item.file?.url,
+    item.file?.file_url,
+    item.file?.fileUrl,
+    item.lampiranFile?.url,
+    item.lampiranFile?.file_url
   );
   const name = pickFirstString(
     item.file_name,
     item.fileName,
+    item.file_name_original,
     item.bukti_pendukung_name,
     item.buktiPendukung,
     item.attachment_name,
     item.attachmentName,
+    item.attachment?.name,
+    item.attachment?.file_name,
+    item.attachment?.fileName,
+    item.file?.name,
+    item.file?.file_name,
+    item.file?.fileName,
     item.lampiran_name,
     item.lampiranName,
     parseAttachmentNameFromNote(item.catatan)
   );
-  const url = resolveApiAssetUrl(rawUrl);
+  const url = isResolvableAttachmentUrl(rawUrl) ? resolveApiAssetUrl(rawUrl) : null;
   if (!url && !name) return null;
   return { url, name: name || "Lampiran pengajuan" };
+}
+
+function mapLeaveRequest(item: any): LeaveRequestAll {
+  return {
+    id: item.id,
+    mahasiswaId: item.student_id || item.studentId,
+    mahasiswaNama: item.student_name || item.studentName,
+    mahasiswaInitials: item.student_initials || item.studentInitials || item.student_name?.slice(0, 2)?.toUpperCase() || item.studentName?.slice(0, 2)?.toUpperCase() || "M",
+    mahasiswaColor: "bg-[#8B6FFF] text-white",
+    nim: item.nim,
+    jenis: (item.jenis_pengajuan || item.jenis || item.jenisPengajuan || "cuti") as RequestType,
+    riset: item.project_name || item.projectName || "-",
+    periodeStart: formatDateYmd(item.periode_start || item.periodeStart),
+    periodeEnd: formatDateYmd(item.periode_end || item.periodeEnd),
+    durasi: item.durasi,
+    alasan: item.alasan,
+    catatan: item.catatan || "",
+    tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan || item.tanggalPengajuan),
+    status: item.status,
+    reviewedBy: item.reviewed_by_name || item.reviewedBy,
+    reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : item.reviewedAt,
+    reviewNote: item.review_note || item.reviewNote,
+    attachment: resolveLeaveAttachment(item),
+  };
 }
 
 export default function PersetujuanCuti() {
@@ -89,27 +141,7 @@ export default function PersetujuanCuti() {
     const loadLeaves = async () => {
       try {
         const rows = await apiGet<Array<any>>("/leave-requests");
-        const mapped: LeaveRequestAll[] = rows.map((item) => ({
-          id: item.id,
-          mahasiswaId: item.student_id,
-          mahasiswaNama: item.student_name,
-          mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
-          mahasiswaColor: "bg-[#8B6FFF] text-white",
-          nim: item.nim,
-          jenis: (item.jenis_pengajuan || item.jenis || "cuti") as RequestType,
-          riset: item.project_name || "-",
-          periodeStart: formatDateYmd(item.periode_start),
-          periodeEnd: formatDateYmd(item.periode_end),
-          durasi: item.durasi,
-          alasan: item.alasan,
-          catatan: item.catatan || "",
-          tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
-          status: item.status,
-          reviewedBy: item.reviewed_by_name,
-          reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : undefined,
-          reviewNote: item.review_note,
-          attachment: resolveLeaveAttachment(item),
-        }));
+        const mapped: LeaveRequestAll[] = rows.map(mapLeaveRequest);
         setLeaves(mapped);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat data pengajuan.");
@@ -129,6 +161,23 @@ export default function PersetujuanCuti() {
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleOpenDetail = async (item: LeaveRequestAll) => {
+    setDetail(item);
+    if (!item?.id) return;
+
+    try {
+      const response = await apiGet<any>(`/leave-requests/${encodeURIComponent(item.id)}`);
+      const rawDetail = response?.data || response;
+      if (!rawDetail || typeof rawDetail !== "object") return;
+
+      const mapped = mapLeaveRequest({ ...item, ...rawDetail });
+      setDetail((prev) => prev?.id === item.id ? { ...prev, ...mapped } : prev);
+      setLeaves((prev) => prev.map((leave) => leave.id === item.id ? { ...leave, ...mapped } : leave));
+    } catch {
+      // The list response is still enough for basic detail if backend has no detail endpoint.
+    }
   };
 
   const handleConfirm = async () => {
@@ -178,7 +227,7 @@ export default function PersetujuanCuti() {
   };
 
   return (
-    <OperatorLayout title="Persetujuan Cuti / Izin">
+    <OperatorLayout title="Persetujuan Cuti / Izin / Sakit / WFH">
       <div className="flex flex-col gap-5 pb-4">
         {error && <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">{error}</div>}
 
@@ -250,7 +299,7 @@ export default function PersetujuanCuti() {
                       <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_STYLE[l.status]}`}>{l.status}</span></td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setDetail(l)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-slate-100 transition-colors" title="Detail"><Eye size={13} /></button>
+                          <button onClick={() => handleOpenDetail(l)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-slate-100 transition-colors" title="Detail"><Eye size={13} /></button>
                           {l.status === "Menunggu" && (
                             <>
                               <button onClick={() => setConfirm({ item: l, action: "Setujui" })} className="h-7 px-2 rounded-[8px] text-[10px] font-black bg-emerald-500 hover:bg-emerald-600 text-white transition-colors">Setujui</button>
