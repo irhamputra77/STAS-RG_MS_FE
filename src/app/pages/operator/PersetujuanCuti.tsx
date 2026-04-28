@@ -47,16 +47,26 @@ function parseAttachmentNameFromNote(note?: string | null) {
 }
 
 function resolveLeaveAttachment(item: any) {
-  const rawUrl = pickFirstString(
-    item.file_url,
-    item.fileUrl,
-    item.bukti_pendukung_url,
-    item.buktiPendukungUrl,
-    item.attachment_url,
-    item.attachmentUrl,
-    item.lampiran_url,
-    item.lampiranUrl
-  );
+  function extractPossibleUrl(value: any): string | null {
+    if (!value && value !== 0) return null;
+    if (typeof value === "string") return value.trim() || null;
+    if (Array.isArray(value) && value.length > 0) return extractPossibleUrl(value[0]);
+    if (typeof value === "object") {
+      return (
+        extractPossibleUrl(value.url) ||
+        extractPossibleUrl(value.file_url) ||
+        extractPossibleUrl(value.fileUrl) ||
+        extractPossibleUrl(value.attachmentUrl) ||
+        extractPossibleUrl(value.attachment_url) ||
+        extractPossibleUrl(value.lampiranUrl) ||
+        extractPossibleUrl(value.lampiran_url) ||
+        null
+      );
+    }
+    return null;
+  }
+
+  const rawUrl = extractPossibleUrl(item?.file_url ?? item?.fileUrl ?? item?.bukti_pendukung_url ?? item?.buktiPendukungUrl ?? item?.attachment_url ?? item?.attachmentUrl ?? item?.lampiran_url ?? item?.lampiranUrl ?? item?.file);
   const name = pickFirstString(
     item.file_name,
     item.fileName,
