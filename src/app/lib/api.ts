@@ -1,4 +1,4 @@
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://ms.stas-rg.com/api/v1";
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://ms-api.stas-rg.com/api/v1";
 const API_ORIGIN = API_BASE_URL.replace(/\/api(?:\/v\d+)?\/?$/, "");
 
 export type BlobResponse = {
@@ -183,6 +183,18 @@ export function downloadBlob(blob: Blob, fileName?: string | null) {
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(url);
+}
+
+export function encodePathSegment(segment: string | number): string {
+  return encodeURIComponent(String(segment));
+}
+
+export function buildQueryPath(path: string, params: Record<string, string | number | boolean | null | undefined>): string {
+  const query = Object.entries(params)
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+  return query ? `${path}?${query}` : path;
 }
 
 export function getStoredUser() {
