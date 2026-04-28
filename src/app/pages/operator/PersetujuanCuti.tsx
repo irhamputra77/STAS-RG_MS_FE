@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { Check, X, Eye, CalendarCheck, AlertTriangle, Download, Clock } from "lucide-react";
-import { apiDelete, apiGet, apiPatch, getStoredUser } from "../../lib/api";
+import { apiDelete, apiGet, apiPatch, getStoredUser, resolveApiAssetUrl } from "../../lib/api";
 import { formatDateYmd } from "../../lib/date";
 
 type RequestType = "cuti" | "izin" | "sakit";
@@ -31,6 +31,46 @@ type ToastState = { msg: string; type: "success" | "error" } | null;
 
 function TypeBadge({ jenis }: { jenis: RequestType }) {
   return <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${REQUEST_TYPE_BADGE[jenis]}`}>{REQUEST_TYPE_LABEL[jenis]}</span>;
+}
+
+function pickFirstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function parseAttachmentNameFromNote(note?: string | null) {
+  const text = String(note || "");
+  const match = text.match(/Lampiran frontend:\s*([^.,\n]+)/i);
+  return match?.[1]?.trim() || "";
+}
+
+function resolveLeaveAttachment(item: any) {
+  const rawUrl = pickFirstString(
+    item.file_url,
+    item.fileUrl,
+    item.bukti_pendukung_url,
+    item.buktiPendukungUrl,
+    item.attachment_url,
+    item.attachmentUrl,
+    item.lampiran_url,
+    item.lampiranUrl
+  );
+  const name = pickFirstString(
+    item.file_name,
+    item.fileName,
+    item.bukti_pendukung_name,
+    item.buktiPendukung,
+    item.attachment_name,
+    item.attachmentName,
+    item.lampiran_name,
+    item.lampiranName,
+    parseAttachmentNameFromNote(item.catatan)
+  );
+  const url = resolveApiAssetUrl(rawUrl);
+  if (!url && !name) return null;
+  return { url, name: name || "Lampiran pengajuan" };
 }
 
 export default function PersetujuanCuti() {
@@ -68,6 +108,7 @@ export default function PersetujuanCuti() {
           reviewedBy: item.reviewed_by_name,
           reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : undefined,
           reviewNote: item.review_note,
+          attachment: resolveLeaveAttachment(item),
         }));
         setLeaves(mapped);
       } catch (err: any) {
@@ -231,13 +272,13 @@ export default function PersetujuanCuti() {
       </div>
 
       {detail && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-end bg-black/30 backdrop-blur-sm" onClick={() => setDetail(null)}>
-          <div className="h-full w-full max-w-[420px] bg-white shadow-2xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-border flex items-center justify-between sticky top-0 bg-white z-10">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setDetail(null)}>
+          <div className="w-full max-w-[760px] max-h-[calc(100vh-2rem)] bg-white rounded-[22px] shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between bg-white">
               <h3 className="font-black text-foreground">Detail Pengajuan</h3>
               <button onClick={() => setDetail(null)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={16} /></button>
             </div>
-            <div className="p-6 flex flex-col gap-5">
+            <div className="p-6 overflow-y-auto flex flex-col gap-5">
               <div className="flex items-center gap-4">
                 <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black ${detail.mahasiswaColor}`}>{detail.mahasiswaInitials}</div>
                 <div>
@@ -266,7 +307,23 @@ export default function PersetujuanCuti() {
               )}
               <div className="bg-slate-50 border border-border rounded-[10px] p-3">
                 <p className="text-xs font-black text-muted-foreground mb-1">Lampiran</p>
-                <button className="flex items-center gap-1.5 text-xs font-bold text-amber-600 hover:underline"><Download size={13} /> surat_keterangan.pdf</button>
+                {detail.attachment ? (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="min-w-0 flex items-center gap-2 text-sm font-bold text-foreground">
+                      <Download size={14} className="text-amber-600 shrink-0" />
+                      <span className="truncate">{detail.attachment.name}</span>
+                    </div>
+                    {detail.attachment.url ? (
+                      <a href={detail.attachment.url} target="_blank" rel="noreferrer" className="h-9 px-3 rounded-[10px] bg-amber-500 hover:bg-amber-600 text-white text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors">
+                        <Download size={13} /> Buka File
+                      </a>
+                    ) : (
+                      <p className="text-xs font-semibold text-amber-600">File lama belum memiliki URL lampiran.</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold text-muted-foreground">Tidak ada lampiran.</p>
+                )}
               </div>
               {detail.reviewedBy && (
                 <div className="bg-blue-50 border border-blue-200 rounded-[10px] p-3 text-xs">

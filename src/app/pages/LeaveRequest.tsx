@@ -59,6 +59,15 @@ const initialFormState = {
   buktiPendukung: null as File | null,
 };
 
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Gagal membaca file lampiran."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function isRisetStudentType(tipe?: string | null) {
   return String(tipe || "").trim().toLowerCase() === "riset";
 }
@@ -218,6 +227,7 @@ export default function LeaveRequest() {
 
     try {
       setSubmitting(true);
+      const fileDataUrl = await fileToDataUrl(formData.buktiPendukung);
 
       await apiPost<{ message: string }>("/leave-requests", {
         id: requestId,
@@ -230,6 +240,10 @@ export default function LeaveRequest() {
         durasi: duration,
         alasan: formData.alasan.trim(),
         tanggalPengajuan: new Date().toISOString().split("T")[0],
+        fileDataUrl,
+        fileName: formData.buktiPendukung.name,
+        attachmentDataUrl: fileDataUrl,
+        attachmentName: formData.buktiPendukung.name,
         catatan: `Jenis pengajuan: ${formData.jenis}. Lampiran frontend: ${formData.buktiPendukung.name}`
       });
 
