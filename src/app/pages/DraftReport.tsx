@@ -327,40 +327,42 @@ export default function DraftReport() {
 
   return (
     <Layout title="Draft Laporan / Jurnal / TA">
-      <div className="max-w-[1100px] mx-auto flex flex-col gap-6">
+      <div className="w-full max-w-[1100px] mx-auto flex flex-col gap-5 md:gap-6">
         {error && <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">{error}</div>}
         {info && <div className="px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-700">{info}</div>}
 
-        <div className="flex items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Mahasiswa</p>
-            <h1 className="text-2xl font-black text-foreground">Draft Laporan / Jurnal / TA</h1>
+            <h1 className="text-xl md:text-2xl font-black text-foreground leading-tight">Draft Laporan / Jurnal / TA</h1>
           </div>
-          <button onClick={() => document.getElementById("upload-draft")?.scrollIntoView({ behavior: "smooth" })} className="bg-[#6C47FF] hover:bg-[#5835e5] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+          <button onClick={() => document.getElementById("upload-draft")?.scrollIntoView({ behavior: "smooth" })} className="w-full sm:w-auto justify-center bg-[#6C47FF] hover:bg-[#5835e5] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
             <Plus size={16} strokeWidth={3} /> Upload Draft Baru
           </button>
         </div>
 
-        <div className="flex gap-6 items-start">
+        <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 items-stretch lg:items-start">
           <div className="flex-1 min-w-0 flex flex-col gap-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              {filters.map((item) => (
-                <button key={item} onClick={() => setActiveFilter(item)} className={`px-4 py-2 rounded-[10px] text-sm font-bold transition-all ${activeFilter === item ? "bg-[#6C47FF] text-white" : "bg-white border border-border text-muted-foreground hover:text-foreground"}`}>
-                  {item}
-                </button>
-              ))}
-              <span className="ml-auto text-xs text-muted-foreground font-medium">{loadingInit || loadingDrafts ? "Memuat..." : `${filtered.length} dokumen`}</span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                {filters.map((item) => (
+                  <button key={item} onClick={() => setActiveFilter(item)} className={`shrink-0 px-4 py-2 rounded-[10px] text-sm font-bold transition-all ${activeFilter === item ? "bg-[#6C47FF] text-white" : "bg-white border border-border text-muted-foreground hover:text-foreground"}`}>
+                    {item}
+                  </button>
+                ))}
+              </div>
+              <span className="sm:ml-auto text-xs text-muted-foreground font-medium">{loadingInit || loadingDrafts ? "Memuat..." : `${filtered.length} dokumen`}</span>
             </div>
 
             {loadingInit || loadingDrafts ? (
-              <div className="bg-white border border-dashed border-slate-200 rounded-[16px] p-12 text-center text-sm font-bold text-slate-400">Memuat draft dari backend...</div>
+              <div className="bg-white border border-dashed border-slate-200 rounded-[16px] p-8 md:p-12 text-center text-sm font-bold text-slate-400">Memuat draft dari backend...</div>
             ) : filtered.length === 0 ? (
-              <div className="bg-white border border-dashed border-slate-200 rounded-[16px] p-12 text-center text-sm font-bold text-slate-400">Belum ada draft pada filter ini.</div>
+              <div className="bg-white border border-dashed border-slate-200 rounded-[16px] p-8 md:p-12 text-center text-sm font-bold text-slate-400">Belum ada draft pada filter ini.</div>
             ) : (
               <div className="flex flex-col gap-3">
                 {filtered.map((draft) => (
-                  <div key={draft.id} className="bg-white border border-border rounded-[16px] p-5 shadow-sm flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-3">
+                  <div key={draft.id} className="bg-white border border-border rounded-[16px] p-4 md:p-5 shadow-sm flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-black text-foreground line-clamp-2">{draft.title}</p>
                         <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground font-medium">
@@ -371,16 +373,16 @@ export default function DraftReport() {
                           <span>{draft.version}</span>
                         </div>
                         <p className="mt-2 text-xs text-slate-500">{draft.riset}</p>
-                        {draft.fileName && <p className="mt-1 text-xs text-slate-500 inline-flex items-center gap-1"><LinkIcon size={11} /> {draft.fileName}</p>}
+                        {draft.fileName && <p className="mt-1 max-w-full text-xs text-slate-500 inline-flex items-center gap-1"><LinkIcon size={11} className="shrink-0" /> <span className="truncate">{draft.fileName}</span></p>}
                       </div>
-                      <span className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[draft.status]}`}>{draft.status}</span>
+                      <span className={`w-fit shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[draft.status]}`}>{draft.status}</span>
                     </div>
                     {draft.comment && <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"><span className="font-black">Komentar Dosen:</span> {draft.comment}</div>}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button onClick={() => setSelectedDraft(draft)} className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 inline-flex items-center gap-1.5"><Eye size={13} /> Detail</button>
-                      {draft.fileUrl && <button onClick={() => window.open(draft.fileUrl as string, "_blank", "noopener,noreferrer")} className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold inline-flex items-center gap-1.5"><Eye size={13} /> Preview</button>}
-                      {draft.fileUrl && <button onClick={() => downloadFile(draft.fileUrl as string, draft.fileName)} className="px-3.5 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5"><Download size={13} /> Download</button>}
-                      {draft.status !== "Disetujui" && <button onClick={() => openRevisi(draft)} className="px-3.5 py-2 rounded-xl bg-[#6C47FF] text-white text-xs font-bold inline-flex items-center gap-1.5"><RotateCcw size={13} /> Revisi</button>}
+                    <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:flex-wrap">
+                      <button onClick={() => setSelectedDraft(draft)} className="justify-center px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 inline-flex items-center gap-1.5"><Eye size={13} /> Detail</button>
+                      {draft.fileUrl && <button onClick={() => window.open(draft.fileUrl as string, "_blank", "noopener,noreferrer")} className="justify-center px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold inline-flex items-center gap-1.5"><Eye size={13} /> Preview</button>}
+                      {draft.fileUrl && <button onClick={() => downloadFile(draft.fileUrl as string, draft.fileName)} className="justify-center px-3.5 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5"><Download size={13} /> Download</button>}
+                      {draft.status !== "Disetujui" && <button onClick={() => openRevisi(draft)} className="justify-center px-3.5 py-2 rounded-xl bg-[#6C47FF] text-white text-xs font-bold inline-flex items-center gap-1.5"><RotateCcw size={13} /> Revisi</button>}
                     </div>
                   </div>
                 ))}
@@ -388,13 +390,13 @@ export default function DraftReport() {
             )}
           </div>
 
-          <div id="upload-draft" className="w-[360px] shrink-0">
+          <div id="upload-draft" className="w-full lg:w-[360px] shrink-0">
             <div className="bg-white border border-border rounded-[18px] shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-border">
+              <div className="px-4 md:px-6 py-4 border-b border-border">
                 <p className="text-sm font-black text-foreground">Upload Draft Baru</p>
-                <p className="text-[11px] text-muted-foreground font-medium mt-1">Frontend akan mengirim `studentId`, `projectId`, `title`, `type`, `fileName`, dan `fileDataUrl`.</p>
+                <p className="text-[11px] text-muted-foreground font-medium mt-1">Lengkapi jenis dokumen, riset, judul, dan file draft.</p>
               </div>
-              <div className="p-6 flex flex-col gap-4">
+              <div className="p-4 md:p-6 flex flex-col gap-4">
                 <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[11px] text-blue-700"><Info size={13} className="inline mr-2" />Format file: PDF, DOC, DOCX. Maksimal 10 MB.</div>
                 <select value={uploadType} onChange={(e) => setUploadType(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-border text-sm focus:outline-none">
                   <option value="">Pilih jenis dokumen...</option>
@@ -413,7 +415,7 @@ export default function DraftReport() {
                     <p className="text-[11px] text-slate-400">{uploadFile ? `${formatBytes(uploadFile.size)} • ${uploadFile.name.split(".").pop()?.toUpperCase() || "FILE"}` : "PDF, DOC, DOCX"}</p>
                   </div>
                 </label>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600 break-words">
                   <p>studentId: <span className="font-bold">{studentId || "-"}</span></p>
                   <p>projectId: <span className="font-bold">{uploadProjectId || "-"}</span></p>
                 </div>
@@ -427,25 +429,25 @@ export default function DraftReport() {
       </div>
 
       {selectedDraft && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setSelectedDraft(null)}>
-          <div className="bg-white w-full max-w-[560px] rounded-[22px] shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 md:p-6" onClick={() => setSelectedDraft(null)}>
+          <div className="bg-white w-full max-w-[560px] max-h-[calc(100vh-2rem)] rounded-[22px] shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-              <div>
+              <div className="min-w-0 pr-3">
                 <p className="text-xs font-black text-muted-foreground uppercase tracking-widest">{selectedDraft.type}</p>
-                <h2 className="text-lg font-black text-foreground mt-1">{selectedDraft.title}</h2>
+                <h2 className="text-base md:text-lg font-black text-foreground mt-1 break-words">{selectedDraft.title}</h2>
               </div>
               <button onClick={() => setSelectedDraft(null)} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500"><X size={18} /></button>
             </div>
-            <div className="p-6 flex flex-col gap-4">
+            <div className="p-4 md:p-6 overflow-y-auto flex flex-col gap-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-black text-foreground">{selectedDraft.fileName || "Lampiran draft"}</p>
+                <p className="text-sm font-black text-foreground break-words">{selectedDraft.fileName || "Lampiran draft"}</p>
                 <p className="text-xs text-slate-500 mt-1">{selectedDraft.fileSize} • {selectedDraft.format} • {selectedDraft.version}</p>
-                <div className="mt-3 flex items-center gap-2 flex-wrap">
-                  {selectedDraft.fileUrl && <button onClick={() => window.open(selectedDraft.fileUrl as string, "_blank", "noopener,noreferrer")} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold inline-flex items-center gap-1.5"><Eye size={13} /> Preview</button>}
-                  {selectedDraft.fileUrl && <button onClick={() => downloadFile(selectedDraft.fileUrl as string, selectedDraft.fileName)} className="px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5"><Download size={13} /> Download</button>}
+                <div className="mt-3 grid grid-cols-2 sm:flex sm:items-center gap-2 sm:flex-wrap">
+                  {selectedDraft.fileUrl && <button onClick={() => window.open(selectedDraft.fileUrl as string, "_blank", "noopener,noreferrer")} className="justify-center px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold inline-flex items-center gap-1.5"><Eye size={13} /> Preview</button>}
+                  {selectedDraft.fileUrl && <button onClick={() => downloadFile(selectedDraft.fileUrl as string, selectedDraft.fileName)} className="justify-center px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5"><Download size={13} /> Download</button>}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Status</p><span className={`inline-flex rounded-lg border px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[selectedDraft.status]}`}>{selectedDraft.status}</span></div>
                 <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Riset</p><p className="font-bold text-foreground">{selectedDraft.riset}</p></div>
                 <div><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Tanggal Upload</p><p className="font-bold text-foreground">{selectedDraft.uploadDate}</p></div>
@@ -458,23 +460,23 @@ export default function DraftReport() {
       )}
 
       {revisiDraft && (
-        <div className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setRevisiDraft(null)}>
-          <div className="bg-white w-full max-w-[480px] rounded-[22px] shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 md:p-6" onClick={() => setRevisiDraft(null)}>
+          <div className="bg-white w-full max-w-[480px] max-h-[calc(100vh-2rem)] rounded-[22px] shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-              <div>
+              <div className="min-w-0 pr-3">
                 <p className="text-xs font-black text-muted-foreground uppercase tracking-widest">Upload Revisi</p>
-                <h2 className="text-base font-black text-foreground mt-1">{revisiDraft.title}</h2>
+                <h2 className="text-base font-black text-foreground mt-1 break-words">{revisiDraft.title}</h2>
               </div>
               <button onClick={() => setRevisiDraft(null)} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500"><X size={18} /></button>
             </div>
-            <div className="p-6 flex flex-col gap-4">
+            <div className="p-4 md:p-6 overflow-y-auto flex flex-col gap-4">
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 Versi saat ini: <span className="font-black">{revisiDraft.version}</span>. Backend akan menaikkan versi dan mereset status ke <span className="font-black">Menunggu Review</span>.
               </div>
               <input value={revisiTitle} onChange={(e) => setRevisiTitle(e.target.value)} placeholder="Judul revisi..." className="w-full h-11 px-3 rounded-xl border border-border text-sm focus:outline-none" />
               {revisiDraft.fileName && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  <p className="font-bold text-slate-800">{revisiDraft.fileName}</p>
+                  <p className="font-bold text-slate-800 break-words">{revisiDraft.fileName}</p>
                   <p className="text-xs mt-1">{revisiDraft.fileSize} • {revisiDraft.format}</p>
                   <button type="button" onClick={() => { setClearAttachment((prev) => !prev); setRevisiFile(null); }} className={`mt-3 inline-flex items-center gap-1.5 text-xs font-bold ${clearAttachment ? "text-red-600" : "text-slate-500 hover:text-red-600"}`}>
                     <X size={12} /> {clearAttachment ? "Lampiran lama akan dihapus" : "Hapus lampiran lama"}
@@ -490,7 +492,7 @@ export default function DraftReport() {
                 </div>
               </label>
             </div>
-            <div className="px-6 pb-6 flex gap-3">
+            <div className="px-4 md:px-6 pb-4 md:pb-6 flex flex-col sm:flex-row gap-3">
               <button onClick={() => setRevisiDraft(null)} className="flex-1 h-11 rounded-xl border border-border text-sm font-bold text-slate-600">Batal</button>
               <button onClick={submitRevisi} disabled={savingRevisi || !revisiTitle.trim() || (!revisiFile && !clearAttachment)} className="flex-1 h-11 rounded-xl bg-[#6C47FF] hover:bg-[#5835e5] disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-black transition-colors">
                 {savingRevisi ? "Mengirim..." : "Kirim Revisi"}
@@ -502,4 +504,3 @@ export default function DraftReport() {
     </Layout>
   );
 }
-

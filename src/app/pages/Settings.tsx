@@ -7,9 +7,9 @@ import {
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // TYPES
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 type Tab = "profil" | "akun" | "password" | "notifikasi" | "pengunduran";
 
@@ -21,9 +21,9 @@ function getInitials(name?: string | null) {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // SHARED UI ATOMS
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -69,7 +69,7 @@ function SaveButton({ label = "Simpan Perubahan", onClick, danger }: { label?: s
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-6 py-3 rounded-[12px] text-sm font-black text-white shadow-sm transition-all ${
+      className={`w-full sm:w-auto justify-center flex items-center gap-2 px-6 py-3 rounded-[12px] text-sm font-black text-white shadow-sm transition-all ${
         danger
           ? "bg-red-500 hover:bg-red-600 shadow-red-500/20"
           : "bg-[#6C47FF] hover:bg-[#5835e5] shadow-[#6C47FF]/20"
@@ -81,9 +81,9 @@ function SaveButton({ label = "Simpan Perubahan", onClick, danger }: { label?: s
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // TAB: PROFIL & FOTO
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 function TabProfil() {
   const user = getStoredUser();
@@ -128,7 +128,7 @@ function TabProfil() {
         <SectionDesc>Informasi ini akan terlihat oleh dosen pembimbing dan anggota riset Anda.</SectionDesc>
 
         {/* Avatar + upload */}
-        <div className="flex items-center gap-6 mb-8 p-5 bg-[#F8F5FF] border border-[#E9E0FF] rounded-[16px]">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-6 mb-8 p-5 bg-[#F8F5FF] border border-[#E9E0FF] rounded-[16px]">
           <div className="relative group">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#6C47FF] to-[#9E8BFF] flex items-center justify-center text-white shadow-lg shadow-[#6C47FF]/20 shrink-0">
               <span className="text-3xl font-black tracking-tight">{getInitials(name)}</span>
@@ -138,11 +138,11 @@ function TabProfil() {
               <Camera size={22} className="text-white" />
             </div>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex min-w-0 flex-col gap-2 text-center sm:text-left">
             <p className="text-sm font-black text-foreground">Foto Profil</p>
             <p className="text-xs font-medium text-muted-foreground">JPG, PNG, atau GIF. Maksimal 2 MB.</p>
-            <div className="flex items-center gap-2 mt-1">
-              <button className="flex items-center gap-2 px-4 py-2 bg-white border border-[#D4C5FF] text-[#6C47FF] text-sm font-bold rounded-[10px] hover:bg-[#F8F5FF] hover:border-[#9E8BFF] transition-all shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-1">
+              <button className="justify-center flex items-center gap-2 px-4 py-2 bg-white border border-[#D4C5FF] text-[#6C47FF] text-sm font-bold rounded-[10px] hover:bg-[#F8F5FF] hover:border-[#9E8BFF] transition-all shadow-sm">
                 <Camera size={14} /> Ganti Foto
               </button>
               <button className="px-4 py-2 bg-white border border-border text-sm font-bold text-muted-foreground rounded-[10px] hover:bg-muted/30 transition-colors">
@@ -154,7 +154,7 @@ function TabProfil() {
 
         {/* Form fields */}
         <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
               <Label required>Nama Lengkap</Label>
               <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nama lengkap Anda" />
@@ -180,7 +180,7 @@ function TabProfil() {
           </div>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-border flex items-center justify-between">
+        <div className="mt-6 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-xs font-medium text-muted-foreground">Terakhir diperbarui: {lastUpdate}</p>
           <SaveButton onClick={saveProfile} />
         </div>
@@ -189,19 +189,19 @@ function TabProfil() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // TAB: INFORMASI AKUN
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 function InfoRow({ label, value, badge }: { label: string; value: string; badge?: { text: string; color: string } }) {
   return (
-    <div className="flex items-center justify-between py-4 border-b border-border last:border-0">
-      <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-4 border-b border-border last:border-0">
+      <div className="min-w-0 flex flex-col gap-0.5">
         <span className="text-[11px] font-black text-muted-foreground uppercase tracking-widest">{label}</span>
-        <span className="text-sm font-bold text-foreground mt-0.5">{value}</span>
+        <span className="text-sm font-bold text-foreground mt-0.5 break-words">{value}</span>
       </div>
       {badge && (
-        <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${badge.color}`}>{badge.text}</span>
+        <span className={`w-fit px-2.5 py-1 rounded-lg text-xs font-black ${badge.color}`}>{badge.text}</span>
       )}
     </div>
   );
@@ -214,18 +214,18 @@ function TabAkun() {
       <SectionDesc>Data akademik yang dikelola oleh institusi. Hubungi admin untuk perubahan.</SectionDesc>
 
       {/* Read-only badge */}
-      <div className="flex items-center gap-2 mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-[12px] self-start w-fit">
+      <div className="flex items-start sm:items-center gap-2 mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-[12px] self-start w-full sm:w-fit">
         <Shield size={14} className="text-amber-600 shrink-0" />
-        <span className="text-xs font-black text-amber-700">Data bersifat read-only — hanya dapat diubah oleh admin</span>
+        <span className="text-xs font-black text-amber-700">Data bersifat read-only, hanya dapat diubah oleh admin</span>
       </div>
 
-      <div className="bg-white border border-border rounded-[16px] px-6 divide-y-0">
+      <div className="bg-white border border-border rounded-[16px] px-4 sm:px-6 divide-y-0">
         <InfoRow label="Program Studi" value="-" />
         <InfoRow label="Angkatan" value="-" />
         <InfoRow
           label="Status Mahasiswa"
           value="Aktif"
-          badge={{ text: "● Aktif", color: "bg-emerald-50 text-emerald-700 border border-emerald-200" }}
+          badge={{ text: "Aktif", color: "bg-emerald-50 text-emerald-700 border border-emerald-200" }}
         />
         <InfoRow label="Email Institusi" value="-" />
         <InfoRow label="Perguruan Tinggi" value="-" />
@@ -241,9 +241,9 @@ function TabAkun() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // TAB: GANTI PASSWORD
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 function TabAkunDynamic() {
   const user = getStoredUser();
@@ -273,18 +273,18 @@ function TabAkunDynamic() {
       <SectionTitle>Informasi Akun</SectionTitle>
       <SectionDesc>Data akademik yang dikelola oleh institusi. Hubungi admin untuk perubahan.</SectionDesc>
 
-      <div className="flex items-center gap-2 mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-[12px] self-start w-fit">
+      <div className="flex items-start sm:items-center gap-2 mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-[12px] self-start w-full sm:w-fit">
         <Shield size={14} className="text-amber-600 shrink-0" />
         <span className="text-xs font-black text-amber-700">Data bersifat read-only, hanya dapat diubah oleh admin</span>
       </div>
 
-      <div className="bg-white border border-border rounded-[16px] px-6 divide-y-0">
+      <div className="bg-white border border-border rounded-[16px] px-4 sm:px-6 divide-y-0">
         <InfoRow label="Program Studi" value={profile?.prodi || "-"} />
         <InfoRow label="Angkatan" value={profile?.angkatan || "-"} />
         <InfoRow
           label="Status Mahasiswa"
           value={status}
-          badge={{ text: `• ${status}`, color: statusColor }}
+          badge={{ text: status, color: statusColor }}
         />
         <InfoRow label="Email Institusi" value={profile?.email || "-"} />
         <InfoRow label="Perguruan Tinggi" value="-" />
@@ -315,7 +315,7 @@ function PasswordInput({
           type={show ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? "••••••••"}
+          placeholder={placeholder ?? "********"}
           className="w-full px-4 py-3 pr-12 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
         />
         <button
@@ -366,7 +366,7 @@ function PasswordStrength({ password }: { password: string }) {
         )}
       </div>
       {/* Checklist */}
-      <div className="grid grid-cols-2 gap-1.5 mt-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
         {checks.map((c) => (
           <div key={c.label} className="flex items-center gap-1.5">
             <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors ${c.ok ? "bg-emerald-500" : "bg-slate-100"}`}>
@@ -439,9 +439,9 @@ function TabPassword() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // TAB: NOTIFIKASI
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -530,16 +530,16 @@ function TabNotifikasi() {
               {items
                 .filter((it) => group.ids.includes(it.id))
                 .map((item) => (
-                  <div key={item.id} className="flex items-center justify-between px-5 py-4 hover:bg-slate-50/50 transition-colors">
-                    <div className="flex items-center gap-4">
+                  <div key={item.id} className="flex items-start sm:items-center justify-between gap-3 px-4 sm:px-5 py-4 hover:bg-slate-50/50 transition-colors">
+                    <div className="min-w-0 flex items-start sm:items-center gap-3 sm:gap-4">
                       <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 transition-colors ${
                         item.enabled ? "bg-[#F8F5FF] text-[#6C47FF]" : "bg-slate-100 text-slate-400"
                       }`}>
                         {item.icon}
                       </div>
-                      <div className="flex flex-col">
+                      <div className="min-w-0 flex flex-col">
                         <span className="text-sm font-bold text-foreground">{item.label}</span>
-                        <span className="text-[11px] font-medium text-muted-foreground mt-0.5">{item.desc}</span>
+                        <span className="text-[11px] font-medium text-muted-foreground mt-0.5 break-words">{item.desc}</span>
                       </div>
                     </div>
                     <Toggle enabled={item.enabled} onChange={() => toggle(item.id)} />
@@ -550,7 +550,7 @@ function TabNotifikasi() {
         ))}
       </div>
 
-      <div className="mt-6 flex items-center justify-between">
+      <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-xs font-medium text-muted-foreground">
           {items.filter((i) => i.enabled).length} dari {items.length} notifikasi aktif
         </p>
@@ -560,9 +560,9 @@ function TabNotifikasi() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // TAB: PENGUNDURAN DIRI
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 function TabPengunduran() {
   const user = getStoredUser();
@@ -668,7 +668,7 @@ function TabPengunduran() {
 
       {requests.length > 0 && (
         <div className="mb-6 rounded-[16px] border border-border bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <p className="text-sm font-black text-foreground">Status Pengajuan</p>
               <p className="text-xs font-medium text-muted-foreground">Riwayat approval admin dan dosen pembimbing.</p>
@@ -678,7 +678,7 @@ function TabPengunduran() {
             </span>
           </div>
 
-          <div className="mb-4 flex items-center gap-1.5">
+          <div className="mb-4 flex flex-wrap items-center gap-1.5">
             {[
               { label: "Pengajuan", done: true },
               { label: "Admin", done: ["Diteruskan"].includes(String(requests[0]?.status_operator || "")) },
@@ -697,7 +697,7 @@ function TabPengunduran() {
           <div className="space-y-3">
             {requests.map((item) => (
               <div key={item.id} className="rounded-[12px] border border-border bg-slate-50 p-4">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div>
                     <p className="text-sm font-black text-foreground">{new Date(item.submitted_at).toLocaleDateString("id-ID")}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{item.reason}</p>
@@ -707,8 +707,8 @@ function TabPengunduran() {
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-muted-foreground">
-                  <p>Admin: <span className="font-bold text-foreground">{item.status_operator || "Menunggu"}</span>{item.operator_note ? ` � ${item.operator_note}` : ""}</p>
-                  <p>Dosen pembimbing: <span className="font-bold text-foreground">{item.status_dosen || "Menunggu"}</span>{item.advisor_note ? ` � ${item.advisor_note}` : ""}</p>
+                  <p>Admin: <span className="font-bold text-foreground">{item.status_operator || "Menunggu"}</span>{item.operator_note ? ` · ${item.operator_note}` : ""}</p>
+                  <p>Dosen pembimbing: <span className="font-bold text-foreground">{item.status_dosen || "Menunggu"}</span>{item.advisor_note ? ` · ${item.advisor_note}` : ""}</p>
                 </div>
               </div>
             ))}
@@ -718,16 +718,16 @@ function TabPengunduran() {
 
       {/* Warning box */}
       <div className="mb-6 p-5 bg-red-50 border-2 border-red-200 rounded-[16px]">
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-start sm:items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
             <AlertTriangle size={20} />
           </div>
           <div>
-            <p className="text-sm font-black text-red-700">Zona Berbahaya — Tindakan Tidak Dapat Dibatalkan</p>
+            <p className="text-sm font-black text-red-700">Zona Berbahaya - Tindakan Tidak Dapat Dibatalkan</p>
             <p className="text-xs font-medium text-red-500 mt-0.5">Baca seluruh konsekuensi sebelum melanjutkan</p>
           </div>
         </div>
-        <ul className="flex flex-col gap-2">
+        <ul className="flex min-w-0 flex-col gap-2 text-center sm:text-left">
           {consequences.map((c, i) => (
             <li key={i} className="flex items-start gap-2.5 text-sm font-medium text-red-700">
               <div className="w-5 h-5 rounded-full bg-red-200 text-red-600 flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">{i + 1}</div>
@@ -746,7 +746,7 @@ function TabPengunduran() {
           onChange={(e) => setReason(e.target.value)}
           placeholder="Jelaskan alasan Anda mengajukan pengunduran diri secara lengkap. Alasan ini akan dibaca oleh admin terlebih dahulu, lalu oleh dosen pembimbing..."
         />
-        <p className="text-[11px] text-muted-foreground mt-1.5">Min. 50 karakter · {reason.length} karakter diisi</p>
+        <p className="text-[11px] text-muted-foreground mt-1.5">Min. 50 karakter - {reason.length} karakter diisi</p>
       </div>
 
       <div className="mb-6 rounded-[16px] border border-[#E9E0FF] bg-[#F8F5FF] p-5">
@@ -781,8 +781,8 @@ function TabPengunduran() {
 
       {/* Confirmation Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-[440px] rounded-[20px] shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 md:p-6">
+          <div className="bg-white w-full max-w-[440px] max-h-[calc(100vh-2rem)] rounded-[20px] shadow-2xl overflow-hidden flex flex-col">
             {/* Header */}
             <div className="bg-red-50 border-b border-red-100 px-6 py-5 flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -800,7 +800,7 @@ function TabPengunduran() {
             </div>
 
             {/* Body */}
-            <div className="px-6 py-5 flex flex-col gap-4">
+            <div className="px-4 md:px-6 py-5 overflow-y-auto flex flex-col gap-4">
               <p className="text-sm font-medium text-foreground leading-relaxed">
                 Pengajuan pengunduran diri Anda akan dikirimkan ke <span className="font-black">admin</span> terlebih dahulu untuk diverifikasi. Jika diteruskan, permintaan ini akan dikirim ke <span className="font-black">{advisorName}</span> sebagai dosen pembimbing untuk keputusan akhir.
               </p>
@@ -822,7 +822,7 @@ function TabPengunduran() {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-border bg-slate-50/50 flex items-center justify-end gap-3">
+            <div className="px-4 md:px-6 py-4 border-t border-border bg-slate-50/50 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
               <button
                 onClick={() => { setIsModalOpen(false); setConfirmed(false); }}
                 className="px-5 py-2.5 rounded-[12px] text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition-colors"
@@ -844,9 +844,9 @@ function TabPengunduran() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // MAIN PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ReactNode; danger?: boolean }[] = [
   { id: "profil",       label: "Profil & Foto",         icon: <User size={18} /> },
@@ -877,26 +877,26 @@ export default function Settings() {
 
   return (
     <Layout title="Pengaturan">
-      <div className="max-w-[1060px] mx-auto flex flex-col gap-6">
+      <div className="w-full max-w-[1060px] mx-auto flex flex-col gap-5 md:gap-6">
 
         {/* Page header */}
         <div>
           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Akun</p>
-          <h1 className="text-2xl font-black text-foreground">Pengaturan</h1>
+          <h1 className="text-xl md:text-2xl font-black text-foreground">Pengaturan</h1>
         </div>
 
-        <div className="flex gap-6 items-start">
+        <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 items-stretch lg:items-start">
 
-          {/* ── Left: Tab Navigation ── */}
-          <aside className="w-[220px] shrink-0 bg-white border border-border rounded-[18px] p-2 shadow-sm sticky top-0">
-            <nav className="flex flex-col gap-0.5">
+          {/* Left: Tab Navigation */}
+          <aside className="w-full lg:w-[220px] shrink-0 bg-white border border-border rounded-[18px] p-2 shadow-sm lg:sticky lg:top-0">
+            <nav className="flex flex-row lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
               {TAB_CONFIG.map((tab) => {
                 const isActive = activeTab === tab.id;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-[12px] text-sm font-bold transition-all text-left ${
+                    className={`shrink-0 lg:w-full flex items-center justify-between gap-3 px-4 py-3 rounded-[12px] text-sm font-bold transition-all text-left ${
                       isActive
                         ? tab.danger
                           ? "bg-red-50 text-red-600"
@@ -917,7 +917,7 @@ export default function Settings() {
             </nav>
 
             {/* User mini card at bottom */}
-            <div className="mt-3 pt-3 border-t border-border px-3 py-2 flex items-center gap-3">
+            <div className="mt-3 pt-3 border-t border-border px-3 py-2 hidden lg:flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#6C47FF] to-[#9E8BFF] flex items-center justify-center text-white shrink-0">
                 <span className="text-[11px] font-black">{getInitials(miniName)}</span>
               </div>
@@ -928,8 +928,8 @@ export default function Settings() {
             </div>
           </aside>
 
-          {/* ── Right: Content Panel ── */}
-          <main className="flex-1 min-w-0 bg-white border border-border rounded-[18px] p-8 shadow-sm">
+          {/* Right: Content Panel */}
+          <main className="flex-1 min-w-0 bg-white border border-border rounded-[18px] p-4 sm:p-6 lg:p-8 shadow-sm">
             {activeTab === "profil"      && <TabProfil />}
             {activeTab === "akun"        && <TabAkunDynamic />}
             {activeTab === "password"    && <TabPassword />}

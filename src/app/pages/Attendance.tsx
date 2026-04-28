@@ -132,6 +132,25 @@ const normalizeGpsPolicy = (policy: any, gps?: GpsInfo | null): GpsPolicy | null
   };
 };
 
+const isMobileAttendanceDevice = () => {
+  if (typeof navigator === "undefined") return false;
+
+  const nav = navigator as Navigator & {
+    userAgentData?: { mobile?: boolean };
+  };
+  if (typeof nav.userAgentData?.mobile === "boolean") {
+    return nav.userAgentData.mobile;
+  }
+
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const maxTouchPoints = navigator.maxTouchPoints || 0;
+  const mobileUserAgent = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent);
+  const iPadOS = platform === "MacIntel" && maxTouchPoints > 1 && /Safari/i.test(userAgent);
+
+  return mobileUserAgent || iPadOS;
+};
+
 export default function Attendance() {
   const navigate = useNavigate();
   const user = getStoredUser();
@@ -228,17 +247,13 @@ export default function Attendance() {
     if (typeof window === "undefined") return;
 
     const detectDesktopLikeDevice = () => {
-      const userAgent = navigator.userAgent || "";
-      const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-      const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
-      const narrowViewport = window.innerWidth <= 1024;
-      setIsDesktopAttendanceBlocked(!mobileUserAgent && !coarsePointer && !narrowViewport);
+      setIsDesktopAttendanceBlocked(!isMobileAttendanceDevice());
     };
 
     detectDesktopLikeDevice();
-    window.addEventListener("resize", detectDesktopLikeDevice);
+    window.addEventListener("orientationchange", detectDesktopLikeDevice);
     return () => {
-      window.removeEventListener("resize", detectDesktopLikeDevice);
+      window.removeEventListener("orientationchange", detectDesktopLikeDevice);
     };
   }, []);
 
