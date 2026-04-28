@@ -34,7 +34,9 @@ export default function SertifikatOperator() {
   const loadRows = async () => {
     try {
       const data = await apiGet<CertRow[]>("/certificates");
-      setRows(data || []);
+      // Hapus duplikat berdasarkan `id` jika API mengembalikan baris ganda
+      const deduped = (data || []).filter((item, index, arr) => arr.findIndex((a) => a.id === item.id) === index);
+      setRows(deduped);
     } catch (err: any) {
       setError(err?.message || "Gagal memuat data sertifikat.");
     }
@@ -86,7 +88,7 @@ export default function SertifikatOperator() {
               {rows.map((row) => {
                 const realId = row.real_id;
                 return (
-                  <tr key={`${row.project_id}-${row.student_id}`} className="hover:bg-slate-50 transition-colors">
+                  <tr key={row.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 bg-[#0AB600] text-white">{row.student_initials || "M"}</div>
