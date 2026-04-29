@@ -3,6 +3,7 @@ import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2 } from "lucide-react";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
+import { getWfhSourceMeta, getWfhSummary } from "../../lib/wfh";
 
 type MahasiswaRecord = any;
 
@@ -51,26 +52,33 @@ function getFacultyLabel(item: any): string {
   return item?.fakultas || item?.faculty || item?.facultyName || item?.fakultas_nama || item?.faculty_name || "-";
 }
 
-function readNumber(...values: unknown[]) {
-  for (const value of values) {
-    if (value === null || value === undefined || value === "") continue;
-    const parsed = Number(value);
+function getFallbackWfhQuota(...sources: any[]) {
+  for (const source of sources) {
+    const rawValue = source?.manualWfhQuota ?? source?.manual_wfh_quota;
+    if (rawValue === null || rawValue === undefined || rawValue === "") continue;
+    const parsed = Number(rawValue);
     if (Number.isFinite(parsed)) return parsed;
   }
-  return 0;
+
+  const summary = getWfhSummary(...sources);
+  return summary.wfhQuotaSource === "mentor" ? 0 : summary.wfhQuota;
 }
 
-function getWfhStats(item: any) {
-  const wfhQuota = readNumber(item?.wfhQuota, item?.wfh_quota, item?.wfh_quota_days, item?.wfhQuotaDays);
-  const wfhUsed = readNumber(item?.wfhUsed, item?.wfh_used);
-  const wfhRemaining = readNumber(
-    item?.wfhRemaining,
-    item?.wfh_remaining,
-    item?.sisaWfh,
-    item?.sisa_wfh,
-    Math.max(wfhQuota - wfhUsed, 0)
-  );
-  return { wfhQuota, wfhUsed, wfhRemaining };
+function getWfhSourceBadgeClasses(source: string) {
+  if (source === "mentor") {
+    return "bg-sky-100 text-sky-700 border border-sky-200";
+  }
+
+  if (source === "student") {
+    return "bg-amber-100 text-amber-700 border border-amber-200";
+  }
+
+  return "bg-slate-100 text-slate-600 border border-slate-200";
+}
+
+function formatWfhDays(value: unknown) {
+  const parsed = Number(value);
+  return `${Number.isFinite(parsed) ? parsed : 0} hari`;
 }
 
 export default function DatabaseMahasiswa() {
@@ -130,7 +138,7 @@ export default function DatabaseMahasiswa() {
       setRisetOptions(risetNames);
       
       const mapped: MahasiswaRecord[] = rows.map((item, index) => {
-        const wfh = getWfhStats(item);
+        const wfh = getWfhSummary(item);
         return ({
         id: item.id,
         nim: item.nim,
@@ -147,6 +155,7 @@ export default function DatabaseMahasiswa() {
         riset: Array.isArray(item.research_projects) ? item.research_projects : [],
         bergabung: formatDateOnly(item.bergabung),
         pembimbing: item.pembimbing || "-",
+        wfhFallbackQuota: getFallbackWfhQuota(item),
         ...wfh,
         kehadiran: Number(item.kehadiran) || 0,
         totalHari: Number(item.total_hari) || 0,
@@ -177,7 +186,7 @@ export default function DatabaseMahasiswa() {
       try {
         const detail = await apiGet<any>(`/students/${selected.id}`);
         const detailFakultas = getFacultyLabel(detail);
-        const wfh = getWfhStats({ ...selected, ...detail });
+        const wfh = getWfhSummary(detail, selected);
         setSelectedDetail({
           ...selected,
           nim: detail?.nim || selected.nim,
@@ -193,6 +202,7 @@ export default function DatabaseMahasiswa() {
           riset: Array.isArray(detail?.research_projects) ? detail.research_projects : selected.riset,
           bergabung: formatDateOnly(detail?.bergabung || selected.bergabung),
           pembimbing: detail?.pembimbing || selected.pembimbing,
+          wfhFallbackQuota: getFallbackWfhQuota(detail, selected),
           ...wfh,
           kehadiran: Number(detail?.kehadiran) || selected.kehadiran || 0,
           totalHari: Number(detail?.total_hari) || selected.totalHari || 0,
@@ -253,7 +263,7 @@ export default function DatabaseMahasiswa() {
     try {
       const detail = await apiGet<any>(`/students/${m.id}`);
       const detailFakultas = getFacultyLabel(detail);
-      const wfh = getWfhStats({ ...m, ...detail });
+      const wfh = getWfhSummary(detail, m);
       target = {
         ...m,
         nim: detail?.nim || m.nim,
@@ -265,6 +275,7 @@ export default function DatabaseMahasiswa() {
         fakultas: detailFakultas !== "-" ? detailFakultas : m.fakultas || "",
         pembimbing: detail?.pembimbing || m.pembimbing,
         bergabung: formatDateOnly(detail?.bergabung || m.bergabung),
+        wfhFallbackQuota: getFallbackWfhQuota(detail, m),
         ...wfh,
         status: detail?.status || m.status,
         tipe: detail?.tipe || m.tipe,
@@ -286,7 +297,7 @@ export default function DatabaseMahasiswa() {
       fakultas: target.fakultas === "-" ? "" : target.fakultas || "",
       pembimbing: target.pembimbing === "-" ? "" : target.pembimbing,
       bergabung: target.bergabung === "-" ? "" : target.bergabung,
-      wfhQuota: String(target.wfhQuota ?? ""),
+      wfhQuota: String(target.wfhFallbackQuota ?? 0),
       status: target.status,
       tipe: target.tipe,
       riset: target.riset || []
@@ -449,7 +460,7 @@ export default function DatabaseMahasiswa() {
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden lg:table-cell">Program Studi</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Fakultas</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Pembimbing</th>
-                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Kuota WFH</th>
+                  <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Jatah WFH</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">WFH Terpakai</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Sisa WFH</th>
                   <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Riset</th>
@@ -480,9 +491,16 @@ export default function DatabaseMahasiswa() {
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{m.prodi}</td>
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.fakultas || "-"}</td>
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.pembimbing || "-"}</td>
-                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{Number(m.wfhQuota) > 0 ? `${m.wfhQuota} hari` : "Tidak ada"}</td>
-                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{Number(m.wfhQuota) > 0 ? `${m.wfhUsed || 0} hari` : "-"}</td>
-                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{Number(m.wfhQuota) > 0 ? `${m.wfhRemaining ?? Math.max(Number(m.wfhQuota) - Number(m.wfhUsed || 0), 0)} hari` : "-"}</td>
+                      <td className="px-5 py-3.5 hidden xl:table-cell">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-sm font-bold text-foreground">{formatWfhDays(m.wfhQuota)}</span>
+                          <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black ${getWfhSourceBadgeClasses(m.wfhQuotaSource)}`}>
+                            {getWfhSourceMeta(m.wfhQuotaSource).label}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{formatWfhDays(m.wfhUsed)}</td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{formatWfhDays(m.wfhRemaining)}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex flex-wrap gap-1">
                           {m.riset.map(r => (
@@ -549,9 +567,12 @@ export default function DatabaseMahasiswa() {
                     { label: "Telepon", value: activeStudent.phone },
                     { label: "Pembimbing", value: activeStudent.pembimbing },
                     { label: "Bergabung", value: activeStudent.bergabung },
-                    { label: "Kuota WFH", value: Number(activeStudent.wfhQuota) > 0 ? `${activeStudent.wfhQuota} hari` : "Tidak ada jatah WFH" },
-                    { label: "WFH Terpakai", value: Number(activeStudent.wfhQuota) > 0 ? `${activeStudent.wfhUsed || 0} hari` : "-" },
-                    { label: "Sisa WFH", value: Number(activeStudent.wfhQuota) > 0 ? `${activeStudent.wfhRemaining ?? Math.max(Number(activeStudent.wfhQuota) - Number(activeStudent.wfhUsed || 0), 0)} hari` : "-" },
+                    { label: "Jatah WFH", value: formatWfhDays(activeStudent.wfhQuota) },
+                    { label: "WFH Terpakai", value: formatWfhDays(activeStudent.wfhUsed) },
+                    { label: "Sisa WFH", value: formatWfhDays(activeStudent.wfhRemaining) },
+                    { label: "Sumber Jatah WFH", value: getWfhSourceMeta(activeStudent.wfhQuotaSource).label },
+                    { label: "Kuota Mentor", value: formatWfhDays(activeStudent.mentorWfhQuota) },
+                    { label: "Fallback Mahasiswa", value: formatWfhDays(activeStudent.manualWfhQuota) },
                   ].map(f => (
                     <div key={f.label} className="flex justify-between gap-2">
                       <span className="font-black text-muted-foreground">{f.label}</span>
@@ -559,6 +580,11 @@ export default function DatabaseMahasiswa() {
                     </div>
                   ))}
                 </div>
+                {getWfhSourceMeta(activeStudent.wfhQuotaSource).helperText && (
+                  <div className="mb-5 rounded-[12px] border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-semibold text-sky-700">
+                    {getWfhSourceMeta(activeStudent.wfhQuotaSource).helperText}
+                  </div>
+                )}
                 {/* Attendance mini */}
                 <div className="mb-5 pb-5 border-b border-border">
                   <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1"><UserCheck size={11} /> Kehadiran Bulan Ini</p>
@@ -660,12 +686,14 @@ export default function DatabaseMahasiswa() {
                 <input type="date" value={form.bergabung} onChange={(e) => setForm((prev) => ({ ...prev, bergabung: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
               </div>
               <div>
-                <label className="text-xs font-black text-foreground block mb-1.5">Jatah WFH (hari)</label>
+                <label className="text-xs font-black text-foreground block mb-1.5">WFH fallback mahasiswa (dipakai jika mentor belum punya setting)</label>
                 <input type="number" min={0} value={form.wfhQuota} onChange={(e) => setForm((prev) => ({ ...prev, wfhQuota: e.target.value }))} placeholder="0" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
+                <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Backend akan memakai ini hanya jika mentor/pembimbing belum memiliki pengaturan WFH.</p>
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-black text-foreground block mb-1.5">Pembimbing</label>
                 <input value={form.pembimbing} onChange={(e) => setForm((prev) => ({ ...prev, pembimbing: e.target.value }))} placeholder="Nama dosen pembimbing" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all" />
+                <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Field ini dipakai backend untuk memetakan jatah WFH mentor/pembimbing.</p>
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-black text-foreground block mb-1.5">Status</label>

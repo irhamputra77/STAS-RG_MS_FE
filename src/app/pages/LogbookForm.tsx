@@ -185,9 +185,22 @@ export default function LogbookForm() {
 
     setSubmitting(true);
     try {
+      // Enforce date rules for mahasiswa when coming from checkout
+      const todayIso = new Date().toISOString().slice(0, 10);
+      if (fromCheckout && !editId) {
+        // Ensure date is today's date when creating from checkout
+        setDate(todayIso);
+      }
+
+      const effectiveDate = fromCheckout && !editId ? todayIso : date;
+
+      if (user?.role === "mahasiswa" && fromCheckout && effectiveDate !== todayIso) {
+        setError("Pengisian logbook via checkout hanya diizinkan untuk tanggal hari ini.");
+        return;
+      }
       const payload = {
         projectId: research || null,
-        date,
+        date: effectiveDate,
         title,
         description,
         output,
@@ -204,7 +217,9 @@ export default function LogbookForm() {
       };
 
       if (editId) {
-        await apiPut<{ message: string }>(`/logbooks/${editId}`, payload);
+        // When updating from the logbook page (not from checkout), include source param
+        const updatePath = `/logbooks/${editId}` + (!fromCheckout ? "?source=logbook-page" : "");
+        await apiPut<{ message: string }>(updatePath, payload);
       } else {
         await apiPost<{ message: string }>("/logbooks", {
           id: `LB${Date.now()}`,
@@ -282,6 +297,8 @@ export default function LogbookForm() {
                   onChange={(e) => setDate(e.target.value)}
                   className="w-full h-11 px-4 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-foreground"
                   required
+                  readOnly={fromCheckout && !editId}
+                  disabled={fromCheckout && !editId}
                 />
                 {fromCheckout && (
                   <p className="text-[11px] font-semibold text-primary">

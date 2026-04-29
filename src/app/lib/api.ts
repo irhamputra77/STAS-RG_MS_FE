@@ -1,4 +1,11 @@
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://ms-api.stas-rg.com/api/v1";
+const envApiBaseUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+
+export const API_BASE_URL =
+  typeof envApiBaseUrl === "string" && envApiBaseUrl.trim()
+    ? envApiBaseUrl.trim().replace(/\/+$/, "")
+    : (import.meta as any).env?.DEV
+      ? "/api/v1"
+      : "https://ms-api.stas-rg.com/api/v1";
 const API_ORIGIN = API_BASE_URL.replace(/\/api(?:\/v\d+)?\/?$/, "");
 
 export type BlobResponse = {
@@ -74,6 +81,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   const response = await fetch(url, {
     headers,
+    credentials: "include",
     ...options
   });
 
@@ -136,7 +144,8 @@ export async function apiGetBlob(path: string): Promise<BlobResponse> {
 
   const response = await fetch(url, {
     method: "GET",
-    headers
+    headers,
+    credentials: "include"
   });
 
   if (!response.ok) {

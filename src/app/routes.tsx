@@ -23,6 +23,7 @@ import PersetujuanCuti from "./pages/operator/PersetujuanCuti";
 import LayananSurat from "./pages/operator/LayananSurat";
 import EksporLaporan from "./pages/operator/EksporLaporan";
 import KehadiranMahasiswa from "./pages/operator/KehadiranMahasiswa";
+import PengaturanWfhMahasiswa from "./pages/operator/PengaturanWfhMahasiswa";
 import PengaturanSistem from "./pages/operator/PengaturanSistem";
 import AuditLog from "./pages/operator/AuditLog";
 import ProgressBoard from "./pages/operator/ProgressBoard";
@@ -115,6 +116,7 @@ export const router = createBrowserRouter([
               { path: "riset", element: <DatabaseRiset /> },
               { path: "dosen", element: <DatabaseDosen /> },
               { path: "operator", element: <DatabaseOperator /> },
+              { path: "wfh-mahasiswa", element: <PengaturanWfhMahasiswa /> },
               { path: "logbook", element: <LogbookMonitor /> },
               { path: "kehadiran", element: <KehadiranMahasiswa /> },
               { path: "cuti", element: <PersetujuanCuti /> },

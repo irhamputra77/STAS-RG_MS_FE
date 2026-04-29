@@ -3,6 +3,8 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
+const localApiTarget = 'http://localhost:3000'
+
 export default defineConfig({
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
@@ -19,4 +21,26 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  server: {
+    proxy: {
+      // Proxy API calls to backend during development to avoid CORS and allow cookies
+      '/api': {
+        target: localApiTarget,
+        changeOrigin: true,
+        secure: false,
+        // keep path as-is (/api/v1/...)
+      },
+      // Proxy backend-served file URLs so opening /uploads/... does not hit the SPA router
+      '/uploads': {
+        target: localApiTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+      '/files': {
+        target: localApiTarget,
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
 })

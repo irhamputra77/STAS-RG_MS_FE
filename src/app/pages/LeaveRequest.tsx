@@ -3,6 +3,7 @@ import { Layout } from "../components/Layout";
 import { Plus, X, Check, Upload, FileText } from "lucide-react";
 import { apiGet, apiPost, buildQueryPath, encodePathSegment, getStoredUser } from "../lib/api";
 import { formatDateYmd } from "../lib/date";
+import { getWfhSourceMeta, getWfhSummary } from "../lib/wfh";
 
 type LeaveStatus = "Disetujui" | "Ditolak" | "Menunggu";
 type RequestType = "cuti" | "izin" | "sakit" | "wfh";
@@ -41,7 +42,9 @@ const REQUEST_TYPE_BADGE: Record<RequestType, string> = {
   sakit: "bg-rose-100 text-rose-700 border border-rose-200",
   wfh: "bg-sky-100 text-sky-700 border border-sky-200",
 };
+
 const ALLOWED_ATTACHMENT_EXTENSIONS = ["pdf", "doc", "docx", "png", "jpg", "jpeg"];
+
 const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
   "application/pdf",
   "application/msword",
@@ -51,25 +54,21 @@ const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
 ]);
 
 function parseRequestType(item: any): RequestType {
-  const rawJenis = String(item?.jenisPengajuan || item?.jenis_pengajuan || item?.jenis || "").toLowerCase();
+  const rawJenis = String(
+    item?.jenisPengajuan || item?.jenis_pengajuan || item?.jenis || ""
+  ).toLowerCase();
+
   if (rawJenis === "izin" || rawJenis === "sakit" || rawJenis === "cuti" || rawJenis === "wfh") {
     return rawJenis as RequestType;
   }
 
   const note = String(item?.catatan || "").toLowerCase();
+
   if (note.includes("jenis pengajuan: izin")) return "izin";
   if (note.includes("jenis pengajuan: sakit")) return "sakit";
   if (note.includes("jenis pengajuan: wfh")) return "wfh";
-  return "cuti";
-}
 
-function readNumber(...values: unknown[]) {
-  for (const value of values) {
-    if (value === null || value === undefined || value === "") continue;
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 0;
+  return "cuti";
 }
 
 const initialFormState = {
@@ -83,8 +82,10 @@ const initialFormState = {
 function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
+
     reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => reject(new Error("Gagal membaca file lampiran."));
+
     reader.readAsDataURL(file);
   });
 }
@@ -93,9 +94,11 @@ function validateAttachmentFile(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase() || "";
   const allowedExtension = ALLOWED_ATTACHMENT_EXTENSIONS.includes(extension);
   const allowedMime = !file.type || ALLOWED_ATTACHMENT_MIME_TYPES.has(file.type);
+
   if (!allowedExtension || !allowedMime) {
     return "Format lampiran tidak didukung. Gunakan PDF, DOC, DOCX, PNG, JPG, atau JPEG.";
   }
+
   return "";
 }
 
@@ -105,112 +108,120 @@ function isRisetStudentType(tipe?: string | null) {
 
 export default function LeaveRequest() {
   const user = getStoredUser();
+
   const [studentId, setStudentId] = useState("");
   const [studentType, setStudentType] = useState(String(user?.tipe || ""));
-  const [wfhQuota, setWfhQuota] = useState(0);
-  const [wfhUsed, setWfhUsed] = useState(0);
-  const [wfhRemaining, setWfhRemaining] = useState(0);
+  const [wfhSummary, setWfhSummary] = useState(() => getWfhSummary());
   const [leaveData, setLeaveData] = useState<LeaveRecord[]>([]);
   const [cutiRule, setCutiRule] = useState<{
     maxSemesterDays: number;
     maxMonthDays: number;
     minAttendancePct: number;
   } | null>(null);
+
   const [error, setError] = useState("");
   const [requestModal, setRequestModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState(initialFormState);
+
   const isRisetStudent = isRisetStudentType(studentType);
+  const wfhSourceMeta = getWfhSourceMeta(wfhSummary.wfhQuotaSource);
+
   const requestTypeOptions = isRisetStudent
     ? REQUEST_TYPE_OPTIONS.filter((option) => option.value !== "cuti")
     : REQUEST_TYPE_OPTIONS;
 
-  useEffect(() => {
-    const resolveStudentId = async () => {
-      if (user?.role !== "mahasiswa" || !user?.id) return;
+  const loadStudentProfileContext = async () => {
+    if (user?.role !== "mahasiswa" || !user?.id) return;
 
-      try {
-        const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`);
-        const resolvedId = String(profile?.id || profile?.student_id || "").trim();
-        if (profile?.tipe) setStudentType(String(profile.tipe));
-        const totalQuota = readNumber(profile?.wfhQuota, profile?.wfh_quota);
-        const usedQuota = readNumber(profile?.wfhUsed, profile?.wfh_used);
-        const remainingQuota = readNumber(
-          profile?.wfhRemaining,
-          profile?.wfh_remaining,
-          profile?.sisaWfh,
-          profile?.sisa_wfh,
-          totalQuota > 0 ? Math.max(totalQuota - usedQuota, 0) : 0
-        );
-        setWfhQuota(totalQuota);
-        setWfhUsed(usedQuota);
-        setWfhRemaining(remainingQuota);
-        setStudentId(resolvedId || String(user.id || ""));
-      } catch {
-        setStudentId(String(user?.id || ""));
+    try {
+      const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`);
+
+      const resolvedId = String(
+        profile?.student_id ||
+          profile?.studentId ||
+          profile?.id ||
+          ""
+      ).trim();
+
+      if (profile?.tipe) {
+        setStudentType(String(profile.tipe));
       }
-    };
 
-    resolveStudentId();
+      setWfhSummary(getWfhSummary(profile));
+      setStudentId(resolvedId || String(user.id || ""));
+    } catch {
+      setStudentId(String(user?.id || ""));
+      setWfhSummary(getWfhSummary());
+    }
+  };
+
+  const loadLeaveHistory = async (resolvedStudentId: string) => {
+    try {
+      const [rows, settings] = await Promise.all([
+        apiGet<Array<any>>(buildQueryPath("/leave-requests", { studentId: resolvedStudentId })),
+        apiGet<any>("/system-settings"),
+      ]);
+
+      const mapped: LeaveRecord[] = (rows || []).map((item) => ({
+        id: item.id,
+        jenis: parseRequestType(item),
+        tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
+        periodeMulai: formatDateYmd(item.periode_start),
+        periodeSelesai: formatDateYmd(item.periode_end),
+        durasi: item.durasi || 1,
+        alasan: item.alasan,
+        buktiPendukung:
+          item.bukti_pendukung_name ||
+          item.buktiPendukung ||
+          item.file_name ||
+          item.fileName ||
+          item.attachment_name ||
+          item.attachmentName ||
+          "",
+        status: item.status,
+        reviewedBy: item.reviewed_by_name,
+        reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : undefined,
+      }));
+
+      setLeaveData(mapped);
+
+      setCutiRule({
+        maxSemesterDays: Number(settings?.cuti?.maxSemesterDays || 0),
+        maxMonthDays: Number(settings?.cuti?.maxMonthDays || 0),
+        minAttendancePct: Number(settings?.cuti?.minAttendancePct || 0),
+      });
+    } catch (err: any) {
+      setError(err?.message || "Gagal memuat data pengajuan.");
+    }
+  };
+
+  useEffect(() => {
+    void loadStudentProfileContext();
   }, [user?.id, user?.role]);
 
   useEffect(() => {
     if (!isRisetStudent || formData.jenis !== "cuti") return;
-    setFormData((prev) => ({ ...prev, jenis: "izin" }));
+
+    setFormData((prev) => ({
+      ...prev,
+      jenis: "izin",
+    }));
   }, [formData.jenis, isRisetStudent]);
 
   useEffect(() => {
     if (formData.jenis !== "wfh" || !formData.periodeMulai) return;
-    setFormData((prev) => ({ ...prev, periodeSelesai: prev.periodeMulai }));
+
+    setFormData((prev) => ({
+      ...prev,
+      periodeSelesai: prev.periodeMulai,
+    }));
   }, [formData.jenis, formData.periodeMulai]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [rows, settings] = await Promise.all([
-          apiGet<Array<any>>(buildQueryPath("/leave-requests", { studentId })),
-          apiGet<any>("/system-settings"),
-        ]);
+    if (!studentId) return;
 
-        const mapped: LeaveRecord[] = (rows || [])
-          .filter((item) => {
-            const currentIds = new Set([String(studentId || "").trim(), String(user?.id || "").trim()].filter(Boolean));
-            const itemIds = [String(item?.student_id || "").trim(), String(item?.studentId || "").trim()].filter(Boolean);
-            return itemIds.some((value) => currentIds.has(value));
-          })
-          .map((item) => ({
-          id: item.id,
-          jenis: parseRequestType(item),
-          tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan),
-          periodeMulai: formatDateYmd(item.periode_start),
-          periodeSelesai: formatDateYmd(item.periode_end),
-          durasi: item.durasi || 1,
-          alasan: item.alasan,
-          buktiPendukung:
-            item.bukti_pendukung_name ||
-            item.buktiPendukung ||
-            item.file_name ||
-            item.fileName ||
-            item.attachment_name ||
-            item.attachmentName ||
-            "",
-          status: item.status,
-          reviewedBy: item.reviewed_by_name,
-          reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : undefined,
-        }));
-
-        setLeaveData(mapped);
-        setCutiRule({
-          maxSemesterDays: Number(settings?.cuti?.maxSemesterDays || 0),
-          maxMonthDays: Number(settings?.cuti?.maxMonthDays || 0),
-          minAttendancePct: Number(settings?.cuti?.minAttendancePct || 0),
-        });
-      } catch (err: any) {
-        setError(err?.message || "Gagal memuat data pengajuan.");
-      }
-    };
-
-    load();
+    void loadLeaveHistory(studentId);
   }, [studentId, user?.id]);
 
   const resetForm = () => {
@@ -234,31 +245,47 @@ export default function LeaveRequest() {
     () => calculateDuration(formData.periodeMulai, formData.periodeSelesai),
     [formData.periodeMulai, formData.periodeSelesai]
   );
+
   const effectiveDuration = formData.jenis === "wfh" && formData.periodeMulai ? 1 : duration;
-  const visibleLeaveData = isRisetStudent ? leaveData.filter((item) => item.jenis !== "cuti") : leaveData;
+
+  const visibleLeaveData = isRisetStudent
+    ? leaveData.filter((item) => item.jenis !== "cuti")
+    : leaveData;
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
+
     if (file) {
       const validation = validateAttachmentFile(file);
+
       if (validation) {
         setError(validation);
         e.target.value = "";
         return;
       }
     }
+
     setError("");
-    setFormData((prev) => ({ ...prev, buktiPendukung: file }));
+
+    setFormData((prev) => ({
+      ...prev,
+      buktiPendukung: file,
+    }));
   };
 
   const handleSubmitLeaveRequest = async () => {
     setError("");
 
-    const effectiveEndDate = formData.jenis === "wfh" ? formData.periodeMulai : formData.periodeSelesai;
+    const effectiveEndDate = formData.jenis === "wfh"
+      ? formData.periodeMulai
+      : formData.periodeSelesai;
+
     if (!formData.jenis || !formData.periodeMulai || !effectiveEndDate || !formData.alasan.trim()) {
-      setError(formData.jenis === "wfh"
-        ? "Jenis pengajuan, tanggal WFH, dan alasan harus diisi."
-        : "Jenis pengajuan, tanggal mulai, tanggal selesai, dan alasan harus diisi.");
+      setError(
+        formData.jenis === "wfh"
+          ? "Jenis pengajuan, tanggal WFH, dan alasan harus diisi."
+          : "Jenis pengajuan, tanggal mulai, tanggal selesai, dan alasan harus diisi."
+      );
       return;
     }
 
@@ -267,7 +294,7 @@ export default function LeaveRequest() {
       return;
     }
 
-    if (formData.jenis === "wfh" && wfhRemaining <= 0) {
+    if (formData.jenis === "wfh" && wfhSummary.wfhRemaining <= 0) {
       setError("Anda tidak punya jatah WFH.");
       return;
     }
@@ -295,13 +322,16 @@ export default function LeaveRequest() {
     }
 
     const requestId = `LR${Date.now()}`;
+    const activeStudentId = studentId || String(user?.id || "");
 
     try {
       setSubmitting(true);
+
       const selectedFile = formData.buktiPendukung;
+
       const payload: Record<string, unknown> = {
         id: requestId,
-        studentId: studentId || user?.id || "S001",
+        studentId: activeStudentId,
         jenis: formData.jenis,
         jenisPengajuan: formData.jenis,
         countsAgainstLeaveQuota: formData.jenis === "cuti",
@@ -313,7 +343,7 @@ export default function LeaveRequest() {
         tanggalPengajuan: new Date().toISOString().split("T")[0],
         catatan: selectedFile
           ? `Jenis pengajuan: ${formData.jenis}. Lampiran frontend: ${selectedFile.name}`
-          : `Jenis pengajuan: ${formData.jenis}`
+          : `Jenis pengajuan: ${formData.jenis}`,
       };
 
       if (selectedFile) {
@@ -323,22 +353,11 @@ export default function LeaveRequest() {
 
       await apiPost<{ message: string }>("/leave-requests", payload);
 
-      const newLeave: LeaveRecord = {
-        id: requestId,
-        jenis: formData.jenis,
-        tanggalPengajuan: formatDateYmd(new Date().toISOString()),
-        periodeMulai: formData.periodeMulai,
-        periodeSelesai: formData.jenis === "wfh" ? formData.periodeMulai : formData.periodeSelesai,
-        durasi: effectiveDuration,
-        alasan: formData.alasan,
-        buktiPendukung: selectedFile?.name || "",
-        status: "Menunggu",
-      };
+      await Promise.all([
+        loadStudentProfileContext(),
+        loadLeaveHistory(activeStudentId),
+      ]);
 
-      setLeaveData((prev) => [newLeave, ...prev]);
-      if (formData.jenis === "wfh") {
-        setWfhRemaining((prev) => Math.max(prev - 1, 0));
-      }
       setRequestModal(false);
       resetForm();
     } catch (err: any) {
@@ -366,7 +385,9 @@ export default function LeaveRequest() {
 
   const TypeBadge = ({ jenis }: { jenis: RequestType }) => {
     return (
-      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${REQUEST_TYPE_BADGE[jenis]}`}>
+      <span
+        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${REQUEST_TYPE_BADGE[jenis]}`}
+      >
         {REQUEST_TYPE_LABEL[jenis]}
       </span>
     );
@@ -432,6 +453,7 @@ export default function LeaveRequest() {
                     <p className="text-sm text-muted-foreground">
                       {leave.periodeMulai} - {leave.periodeSelesai} ({leave.durasi} hari)
                     </p>
+
                     <p className="text-sm mt-1 break-words">{leave.alasan}</p>
 
                     {leave.buktiPendukung && (
@@ -464,7 +486,10 @@ export default function LeaveRequest() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-border flex items-center justify-between">
-                <h3 className="font-black text-foreground">{isRisetStudent ? "Ajukan Izin / Sakit / WFH" : "Ajukan Cuti / Izin / Sakit / WFH"}</h3>
+                <h3 className="font-black text-foreground">
+                  {isRisetStudent ? "Ajukan Izin / Sakit / WFH" : "Ajukan Cuti / Izin / Sakit / WFH"}
+                </h3>
+
                 <button
                   onClick={() => {
                     setRequestModal(false);
@@ -484,10 +509,18 @@ export default function LeaveRequest() {
                 )}
 
                 <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Jenis Pengajuan</label>
+                  <label className="text-xs font-black text-foreground block mb-1.5">
+                    Jenis Pengajuan
+                  </label>
+
                   <select
                     value={formData.jenis}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, jenis: e.target.value as RequestType }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        jenis: e.target.value as RequestType,
+                      }))
+                    }
                     className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all bg-white"
                   >
                     {requestTypeOptions.map((option) => (
@@ -496,39 +529,56 @@ export default function LeaveRequest() {
                       </option>
                     ))}
                   </select>
+
                   {formData.jenis === "wfh" && (
-                    <p className="mt-1.5 text-[11px] font-semibold text-sky-700">
-                      {wfhQuota > 0
-                        ? `Kuota ${wfhQuota} hari, terpakai ${wfhUsed} hari, sisa ${wfhRemaining} hari.`
-                        : "Anda tidak punya jatah WFH."}
-                    </p>
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      <p className="text-[11px] font-semibold text-sky-700">
+                        {wfhSummary.wfhQuota > 0
+                          ? `Jatah WFH ${wfhSummary.wfhQuota} hari, terpakai ${wfhSummary.wfhUsed} hari, sisa ${wfhSummary.wfhRemaining} hari.`
+                          : "Anda tidak punya jatah WFH."}
+                      </p>
+                    </div>
                   )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Mulai</label>
+                    <label className="text-xs font-black text-foreground block mb-1.5">
+                      Tanggal Mulai
+                    </label>
+
                     <input
                       type="date"
                       value={formData.periodeMulai}
-                      onChange={(e) => setFormData((prev) => ({
-                        ...prev,
-                        periodeMulai: e.target.value,
-                        periodeSelesai: prev.jenis === "wfh" ? e.target.value : prev.periodeSelesai
-                      }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          periodeMulai: e.target.value,
+                          periodeSelesai: prev.jenis === "wfh" ? e.target.value : prev.periodeSelesai,
+                        }))
+                      }
                       className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Selesai</label>
+                    <label className="text-xs font-black text-foreground block mb-1.5">
+                      Tanggal Selesai
+                    </label>
+
                     <input
                       type="date"
                       value={formData.periodeSelesai}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, periodeSelesai: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          periodeSelesai: e.target.value,
+                        }))
+                      }
                       disabled={formData.jenis === "wfh"}
                       className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
                     />
+
                     {formData.jenis === "wfh" && (
                       <p className="mt-1.5 text-[11px] font-semibold text-muted-foreground">
                         WFH hanya berlaku pada tanggal mulai.
@@ -546,10 +596,18 @@ export default function LeaveRequest() {
                 )}
 
                 <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Alasan Pengajuan</label>
+                  <label className="text-xs font-black text-foreground block mb-1.5">
+                    Alasan Pengajuan
+                  </label>
+
                   <textarea
                     value={formData.alasan}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, alasan: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        alasan: e.target.value,
+                      }))
+                    }
                     rows={4}
                     placeholder="Jelaskan alasan pengajuan Anda..."
                     className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all resize-none"
@@ -557,14 +615,21 @@ export default function LeaveRequest() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-black text-foreground block mb-1.5">Lampiran Pendukung <span className="font-bold text-muted-foreground">(opsional)</span></label>
+                  <label className="text-xs font-black text-foreground block mb-1.5">
+                    Lampiran Pendukung{" "}
+                    <span className="font-bold text-muted-foreground">(opsional)</span>
+                  </label>
 
                   <label className="w-full min-h-[108px] border border-dashed border-slate-300 rounded-[14px] bg-slate-50 hover:bg-slate-100 transition-colors flex flex-col items-center justify-center gap-2 px-4 py-5 text-center cursor-pointer">
                     <Upload size={18} className="text-slate-500" />
+
                     <div>
                       <p className="text-sm font-bold text-slate-700">Klik untuk memilih file</p>
-                      <p className="text-xs text-slate-500 mt-1">PDF, DOC, DOCX, PNG, JPG, atau JPEG</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        PDF, DOC, DOCX, PNG, JPG, atau JPEG
+                      </p>
                     </div>
+
                     <input
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
@@ -593,9 +658,10 @@ export default function LeaveRequest() {
                 >
                   Batal
                 </button>
+
                 <button
                   onClick={handleSubmitLeaveRequest}
-                  disabled={submitting || (formData.jenis === "wfh" && wfhRemaining <= 0)}
+                  disabled={submitting || (formData.jenis === "wfh" && wfhSummary.wfhRemaining <= 0)}
                   className="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2"
                 >
                   <Check size={14} strokeWidth={3} />

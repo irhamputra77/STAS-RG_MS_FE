@@ -6,6 +6,7 @@ import {
   BookOpen, FlaskConical, MessageSquare, FileCheck, Calendar,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
+import { getWfhSourceMeta, getWfhSummary } from "../lib/wfh";
 
 // -----------------------------------------------------------------------------
 // TYPES
@@ -267,6 +268,16 @@ function TabAkunDynamic() {
       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
       : "bg-slate-100 text-slate-600 border border-slate-200";
   const joinedDate = profile?.bergabung ? new Date(profile.bergabung).toLocaleDateString("id-ID") : "-";
+  const wfhSummary = getWfhSummary(profile);
+  const wfhSourceMeta = getWfhSourceMeta(wfhSummary.wfhQuotaSource);
+  const shouldShowWfhInfo =
+    user?.role === "mahasiswa" ||
+    [
+      profile?.wfhQuota,
+      profile?.wfh_quota,
+      profile?.wfhQuotaSource,
+      profile?.wfh_quota_source,
+    ].some((value) => value !== null && value !== undefined && value !== "");
 
   return (
     <div>
@@ -290,7 +301,21 @@ function TabAkunDynamic() {
         <InfoRow label="Perguruan Tinggi" value="-" />
         <InfoRow label="Dosen Pembimbing" value={profile?.pembimbing || "-"} />
         <InfoRow label="Bergabung Sejak" value={joinedDate} />
+        {shouldShowWfhInfo && (
+          <>
+            <InfoRow label="Jatah WFH" value={`${wfhSummary.wfhQuota} hari`} />
+            <InfoRow label="WFH Terpakai" value={`${wfhSummary.wfhUsed} hari`} />
+            <InfoRow label="Sisa WFH" value={`${wfhSummary.wfhRemaining} hari`} />
+            <InfoRow label="Sumber Jatah WFH" value={wfhSourceMeta.label} />
+          </>
+        )}
       </div>
+
+      {shouldShowWfhInfo && wfhSourceMeta.helperText && (
+        <div className="mt-4 rounded-[14px] border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-semibold text-sky-700">
+          {wfhSourceMeta.helperText}
+        </div>
+      )}
 
       <div className="mt-6 p-5 bg-slate-50 border border-border rounded-[16px]">
         <p className="text-sm font-bold text-foreground mb-1">Perlu memperbarui data di atas?</p>
