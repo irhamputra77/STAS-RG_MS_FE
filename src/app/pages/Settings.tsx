@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Layout } from "../components/Layout";
+import { ProfileAvatar } from "../components/ProfileAvatar";
 import {
   User,
   Info,
@@ -22,18 +23,9 @@ import {
 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
 import { getWfhSourceMeta, getWfhSummary } from "../lib/wfh";
+import { updateStoredUserProfile } from "../lib/userProfileSync";
 
 type Tab = "profil" | "akun" | "password" | "notifikasi" | "pengunduran";
-
-function getInitials(name?: string | null) {
-  const value = String(name || "").trim();
-  if (!value) return "U";
-
-  const parts = value.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-
-  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
-}
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-base font-black text-foreground mb-1">{children}</h2>;
@@ -76,15 +68,18 @@ function SaveButton({
   label = "Simpan Perubahan",
   onClick,
   danger,
+  disabled,
 }: {
   label?: string;
   onClick?: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full sm:w-auto justify-center flex items-center gap-2 px-6 py-3 rounded-[12px] text-sm font-black text-white shadow-sm transition-all ${
+      disabled={disabled}
+      className={`w-full sm:w-auto justify-center flex items-center gap-2 px-6 py-3 rounded-[12px] text-sm font-black text-white shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
         danger
           ? "bg-red-500 hover:bg-red-600 shadow-red-500/20"
           : "bg-[#6C47FF] hover:bg-[#5835e5] shadow-[#6C47FF]/20"
@@ -96,7 +91,11 @@ function SaveButton({
   );
 }
 
-function TabProfil() {
+function TabProfil({
+  onProfileUpdated,
+}: {
+  onProfileUpdated?: (profile: { name?: string; photoUrl?: string | null }) => void;
+}) {
   const user = getStoredUser();
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -104,7 +103,7 @@ function TabProfil() {
   const [name, setName] = useState(user?.name || "");
   const [nim, setNim] = useState("");
   const [phone, setPhone] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
+  const [photoUrl, setPhotoUrl] = useState(user?.photoUrl || user?.photo_url || "");
   const [photoPreview, setPhotoPreview] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [lastUpdate, setLastUpdate] = useState("-");
@@ -201,6 +200,8 @@ function TabProfil() {
     setMessage("");
 
     try {
+      let nextPhotoUrl = photoUrl;
+
       if (photoFile) {
         const photoDataUrl = await fileToDataUrl(photoFile);
 
@@ -213,9 +214,9 @@ function TabProfil() {
           fileName: photoFile.name,
         });
 
-        const uploadedPhotoUrl = uploadResult.photoUrl || uploadResult.photo_url || "";
+        nextPhotoUrl = uploadResult.photoUrl || uploadResult.photo_url || "";
 
-        setPhotoUrl(uploadedPhotoUrl);
+        setPhotoUrl(nextPhotoUrl);
         setPhotoFile(null);
 
         if (photoPreview) {
@@ -228,6 +229,18 @@ function TabProfil() {
       await apiPatch(`/profile/${encodeURIComponent(user.id)}`, {
         name,
         phone,
+        photoUrl: nextPhotoUrl || null,
+      });
+
+      updateStoredUserProfile({
+        name,
+        photoUrl: nextPhotoUrl || null,
+        photo_url: nextPhotoUrl || null,
+      });
+
+      onProfileUpdated?.({
+        name,
+        photoUrl: nextPhotoUrl || null,
       });
 
       localStorage.setItem(`stas_profile_bio_${user.id}`, bio);
@@ -258,6 +271,15 @@ function TabProfil() {
 
       await apiDelete(`/profile/photo/${encodeURIComponent(user.id)}`);
 
+      updateStoredUserProfile({
+        photoUrl: null,
+        photo_url: null,
+      });
+
+      onProfileUpdated?.({
+        photoUrl: null,
+      });
+
       setMessage("Foto profil berhasil dihapus.");
       setLastUpdate(new Date().toLocaleDateString("id-ID"));
     } catch (error: any) {
@@ -283,13 +305,12 @@ function TabProfil() {
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-6 mb-8 p-5 bg-[#F8F5FF] border border-[#E9E0FF] rounded-[16px]">
           <div className="relative group">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#6C47FF] to-[#9E8BFF] flex items-center justify-center text-white shadow-lg shadow-[#6C47FF]/20 shrink-0 overflow-hidden">
-              {displayPhoto ? (
-                <img src={displayPhoto} alt="Foto profil" className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-3xl font-black tracking-tight">{getInitials(name)}</span>
-              )}
-            </div>
+            <ProfileAvatar
+              name={name}
+              photoUrl={displayPhoto}
+              className="size-24 shadow-lg shadow-[#6C47FF]/20"
+              fallbackClassName="bg-gradient-to-br from-[#6C47FF] to-[#9E8BFF] text-white text-3xl font-black"
+            />
 
             <button
               type="button"
@@ -376,7 +397,11 @@ function TabProfil() {
 
         <div className="mt-6 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-xs font-medium text-muted-foreground">Terakhir diperbarui: {lastUpdate}</p>
-          <SaveButton label={saving ? "Menyimpan..." : "Simpan Perubahan"} onClick={saveProfile} />
+          <SaveButton
+            label={saving ? "Menyimpan..." : "Simpan Perubahan"}
+            onClick={saveProfile}
+            disabled={saving}
+          />
         </div>
       </div>
     </div>
@@ -505,7 +530,7 @@ function PasswordInput({
         <input
           type={show ? "text" : "password"}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder ?? "********"}
           className="w-full px-4 py-3 pr-12 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
         />
@@ -529,7 +554,7 @@ function PasswordStrength({ password }: { password: string }) {
     { label: "Karakter khusus", ok: /[^a-zA-Z0-9]/.test(password) },
   ];
 
-  const score = checks.filter((c) => c.ok).length;
+  const score = checks.filter((item) => item.ok).length;
 
   const levels = [
     { label: "Lemah", color: "bg-red-500", textColor: "text-red-600" },
@@ -545,11 +570,11 @@ function PasswordStrength({ password }: { password: string }) {
     <div className="mt-3 flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <div className="flex gap-1.5 flex-1">
-          {[0, 1, 2, 3].map((i) => (
+          {[0, 1, 2, 3].map((index) => (
             <div
-              key={i}
+              key={index}
               className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
-                score > i && password.length > 0 ? levels[Math.min(score - 1, 3)].color : "bg-slate-100"
+                score > index && password.length > 0 ? levels[Math.min(score - 1, 3)].color : "bg-slate-100"
               }`}
             />
           ))}
@@ -558,21 +583,21 @@ function PasswordStrength({ password }: { password: string }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
-        {checks.map((c) => (
-          <div key={c.label} className="flex items-center gap-1.5">
+        {checks.map((item) => (
+          <div key={item.label} className="flex items-center gap-1.5">
             <div
               className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
-                c.ok ? "bg-emerald-500" : "bg-slate-100"
+                item.ok ? "bg-emerald-500" : "bg-slate-100"
               }`}
             >
-              {c.ok && <Check size={10} strokeWidth={3} className="text-white" />}
+              {item.ok && <Check size={10} strokeWidth={3} className="text-white" />}
             </div>
             <span
               className={`text-[11px] font-medium transition-colors ${
-                c.ok ? "text-emerald-600 font-bold" : "text-muted-foreground"
+                item.ok ? "text-emerald-600 font-bold" : "text-muted-foreground"
               }`}
             >
-              {c.label}
+              {item.label}
             </span>
           </div>
         ))}
@@ -647,7 +672,7 @@ function TabPassword() {
   );
 }
 
-function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (value: boolean) => void }) {
   return (
     <button
       onClick={() => onChange(!enabled)}
@@ -751,7 +776,7 @@ function TabNotifikasi() {
   }, [user?.id]);
 
   const toggle = (id: string) => {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, enabled: !it.enabled } : it)));
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, enabled: !item.enabled } : item)));
   };
 
   const savePreferences = async () => {
@@ -787,7 +812,7 @@ function TabNotifikasi() {
 
             <div className="bg-white border border-border rounded-[16px] overflow-hidden divide-y divide-border">
               {items
-                .filter((it) => group.ids.includes(it.id))
+                .filter((item) => group.ids.includes(item.id))
                 .map((item) => (
                   <div
                     key={item.id}
@@ -817,9 +842,9 @@ function TabNotifikasi() {
 
       <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-xs font-medium text-muted-foreground">
-          {items.filter((i) => i.enabled).length} dari {items.length} notifikasi aktif
+          {items.filter((item) => item.enabled).length} dari {items.length} notifikasi aktif
         </p>
-        <SaveButton label={saving ? "Menyimpan..." : "Simpan Preferensi"} onClick={savePreferences} />
+        <SaveButton label={saving ? "Menyimpan..." : "Simpan Preferensi"} onClick={savePreferences} disabled={saving} />
       </div>
     </div>
   );
@@ -954,26 +979,6 @@ function TabPengunduran() {
             </span>
           </div>
 
-          <div className="mb-4 flex flex-wrap items-center gap-1.5">
-            {[
-              { label: "Pengajuan", done: true },
-              { label: "Admin", done: ["Diteruskan"].includes(String(requests[0]?.status_operator || "")) },
-              { label: "Dosen Pembimbing", done: ["Disetujui"].includes(String(requests[0]?.status_dosen || "")) },
-            ].map((step, index, arr) => (
-              <div key={step.label} className="flex items-center gap-1">
-                <div
-                  className={`flex items-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-black ${
-                    step.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
-                  }`}
-                >
-                  {step.done ? <Check size={10} strokeWidth={3} /> : <AlertTriangle size={10} strokeWidth={2.5} />}
-                  {step.label}
-                </div>
-                {index < arr.length - 1 && <ChevronRight size={12} className="text-muted-foreground" />}
-              </div>
-            ))}
-          </div>
-
           <div className="space-y-3">
             {requests.map((item) => (
               <div key={item.id} className="rounded-[12px] border border-border bg-slate-50 p-4">
@@ -991,16 +996,6 @@ function TabPengunduran() {
                   >
                     {String(item.final_status || "Menunggu").replace("Operator", "Admin")}
                   </span>
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-muted-foreground">
-                  <p>
-                    Admin: <span className="font-bold text-foreground">{item.status_operator || "Menunggu"}</span>
-                    {item.operator_note ? ` · ${item.operator_note}` : ""}
-                  </p>
-                  <p>
-                    Dosen pembimbing: <span className="font-bold text-foreground">{item.status_dosen || "Menunggu"}</span>
-                    {item.advisor_note ? ` · ${item.advisor_note}` : ""}
-                  </p>
                 </div>
               </div>
             ))}
@@ -1020,12 +1015,12 @@ function TabPengunduran() {
         </div>
 
         <ul className="flex min-w-0 flex-col gap-2 text-center sm:text-left">
-          {consequences.map((c, i) => (
-            <li key={i} className="flex items-start gap-2.5 text-sm font-medium text-red-700">
+          {consequences.map((item, index) => (
+            <li key={item} className="flex items-start gap-2.5 text-sm font-medium text-red-700">
               <div className="w-5 h-5 rounded-full bg-red-200 text-red-600 flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">
-                {i + 1}
+                {index + 1}
               </div>
-              {c}
+              {item}
             </li>
           ))}
         </ul>
@@ -1036,7 +1031,7 @@ function TabPengunduran() {
         <Textarea
           rows={5}
           value={reason}
-          onChange={(e) => setReason(e.target.value)}
+          onChange={(event) => setReason(event.target.value)}
           placeholder="Jelaskan alasan Anda mengajukan pengunduran diri secara lengkap. Alasan ini akan dibaca oleh admin terlebih dahulu, lalu oleh dosen pembimbing..."
         />
         <p className="text-[11px] text-muted-foreground mt-1.5">Min. 50 karakter - {reason.length} karakter diisi</p>
@@ -1063,8 +1058,7 @@ function TabPengunduran() {
       <div className="p-4 bg-slate-50 border border-border rounded-[12px] mb-6">
         <p className="text-xs font-medium text-muted-foreground">
           Setelah pengajuan dikirim, Anda masih dapat menggunakan akun hingga proses verifikasi admin dan dosen pembimbing
-          selesai (maks. 3 hari kerja). Untuk pertanyaan, hubungi{" "}
-          <span className="font-black text-foreground">akademik@univ.ac.id</span>.
+          selesai. Untuk pertanyaan, hubungi <span className="font-black text-foreground">akademik@univ.ac.id</span>.
         </p>
       </div>
 
@@ -1160,6 +1154,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<Tab>("profil");
   const [miniName, setMiniName] = useState(user?.name || "Pengguna");
   const [miniNim, setMiniNim] = useState("-");
+  const [miniPhotoUrl, setMiniPhotoUrl] = useState(user?.photoUrl || user?.photo_url || "");
 
   React.useEffect(() => {
     const loadMini = async () => {
@@ -1169,6 +1164,7 @@ export default function Settings() {
         const profile = await apiGet<any>(`/profile/${encodeURIComponent(user.id)}`);
         setMiniName(profile?.name || user?.name || "Pengguna");
         setMiniNim(profile?.nim || "-");
+        setMiniPhotoUrl(profile?.photoUrl || profile?.photo_url || user?.photoUrl || user?.photo_url || "");
       } catch {
         // Ignore mini profile load error.
       }
@@ -1216,9 +1212,12 @@ export default function Settings() {
             </nav>
 
             <div className="mt-3 pt-3 border-t border-border px-3 py-2 hidden lg:flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#6C47FF] to-[#9E8BFF] flex items-center justify-center text-white shrink-0">
-                <span className="text-[11px] font-black">{getInitials(miniName)}</span>
-              </div>
+              <ProfileAvatar
+                name={miniName}
+                photoUrl={miniPhotoUrl}
+                className="size-8"
+                fallbackClassName="bg-gradient-to-br from-[#6C47FF] to-[#9E8BFF] text-white text-[11px] font-black"
+              />
               <div className="flex flex-col min-w-0">
                 <p className="text-xs font-black text-foreground truncate">{miniName}</p>
                 <p className="text-[10px] font-medium text-muted-foreground truncate">{miniNim}</p>
@@ -1227,7 +1226,14 @@ export default function Settings() {
           </aside>
 
           <main className="flex-1 min-w-0 bg-white border border-border rounded-[18px] p-4 sm:p-6 lg:p-8 shadow-sm">
-            {activeTab === "profil" && <TabProfil />}
+            {activeTab === "profil" && (
+              <TabProfil
+                onProfileUpdated={(profile) => {
+                  if (profile.name) setMiniName(profile.name);
+                  setMiniPhotoUrl(profile.photoUrl || "");
+                }}
+              />
+            )}
             {activeTab === "akun" && <TabAkunDynamic />}
             {activeTab === "password" && <TabPassword />}
             {activeTab === "notifikasi" && <TabNotifikasi />}
