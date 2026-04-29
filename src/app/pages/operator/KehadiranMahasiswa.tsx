@@ -30,6 +30,8 @@ type StudentRow = {
   color: string;
 };
 
+type LeaveRequestType = "cuti" | "izin" | "sakit" | "wfh";
+
 type AttendanceMonitorToday = {
   date?: string;
   timezone?: string;
@@ -38,6 +40,7 @@ type AttendanceMonitorToday = {
   lockWindowOpen?: boolean;
   presentIds?: string[];
   leaveIds?: string[];
+  leaveTypesByStudentId?: Record<string, LeaveRequestType>;
   absentIds?: string[];
   reportedAbsentIds?: string[];
   noInformationIds?: string[];
@@ -69,7 +72,15 @@ type AttendanceDetail = {
   }>;
 };
 
-type AttendanceStatus = "Hadir" | "Cuti" | "Tidak Hadir" | "Belum Ada Info";
+type AttendanceStatus =
+  | "Hadir"
+  | "Cuti"
+  | "Izin"
+  | "Sakit"
+  | "WFH"
+  | "Tidak Hadir"
+  | "Belum Ada Info";
+
 type EditableAttendanceStatus = "" | AttendanceStatus;
 type AttendanceEditorMode = "add" | "edit";
 
@@ -146,7 +157,7 @@ const INDONESIAN_MONTHS: Record<string, string> = {
   november: "11",
   des: "12",
   desember: "12",
-  dec: "12"
+  dec: "12",
 };
 
 function getCurrentMonthValue() {
@@ -156,23 +167,31 @@ function getCurrentMonthValue() {
 function getDefaultDateForMonth(selectedMonth: string) {
   const today = new Date();
   const currentMonth = today.toISOString().slice(0, 7);
+
   if (selectedMonth === currentMonth) {
     return today.toISOString().slice(0, 10);
   }
+
   return `${selectedMonth}-01`;
 }
 
 function parseHistoryDateLabel(dateLabel: string, selectedMonth: string) {
   const directMatch = dateLabel.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
   if (directMatch) return dateLabel;
 
-  const cleaned = dateLabel.includes(",") ? dateLabel.split(",").slice(1).join(",").trim() : dateLabel.trim();
+  const cleaned = dateLabel.includes(",")
+    ? dateLabel.split(",").slice(1).join(",").trim()
+    : dateLabel.trim();
+
   const parts = cleaned.split(/\s+/).filter(Boolean);
+
   if (parts.length >= 3) {
     const day = parts[0].padStart(2, "0");
     const monthKey = parts[1].toLowerCase();
     const year = parts[2];
     const month = INDONESIAN_MONTHS[monthKey];
+
     if (month && /^\d{4}$/.test(year)) {
       return `${year}-${month}-${day}`;
     }
@@ -211,7 +230,21 @@ function getCheckoutSourceClasses(source?: string | null) {
   }
 }
 
-function getStatusBadgeClasses(status: AttendanceStatus | string) {
+function getLeaveAttendanceStatus(type?: string | null): AttendanceStatus {
+  switch (String(type || "").toLowerCase()) {
+    case "izin":
+      return "Izin";
+    case "sakit":
+      return "Sakit";
+    case "wfh":
+      return "WFH";
+    case "cuti":
+    default:
+      return "Cuti";
+  }
+}
+
+function getStatusBadgeClasses(status: AttendanceStatus | string | undefined) {
   switch (status) {
     case "Hadir":
     case "Selesai":
@@ -219,6 +252,12 @@ function getStatusBadgeClasses(status: AttendanceStatus | string) {
       return "bg-emerald-100 text-emerald-700 border-emerald-200";
     case "Cuti":
       return "bg-amber-100 text-amber-700 border-amber-200";
+    case "Izin":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "Sakit":
+      return "bg-rose-100 text-rose-700 border-rose-200";
+    case "WFH":
+      return "bg-sky-100 text-sky-700 border-sky-200";
     case "Tidak Hadir":
     case "Belum Check-in":
       return "bg-red-100 text-red-600 border-red-200";
@@ -235,6 +274,12 @@ function getHistoryBadgeClasses(statusColor?: string) {
       return "bg-emerald-100 text-emerald-700 border-emerald-200";
     case "amber":
       return "bg-amber-100 text-amber-700 border-amber-200";
+    case "blue":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "rose":
+      return "bg-rose-100 text-rose-700 border-rose-200";
+    case "sky":
+      return "bg-sky-100 text-sky-700 border-sky-200";
     case "red":
       return "bg-red-100 text-red-600 border-red-200";
     default:
@@ -248,6 +293,7 @@ function isSystemAutoCheckout(item?: { autoCheckout?: boolean; checkoutSource?: 
 
 export default function KehadiranMahasiswa() {
   const { confirm, confirmDialog } = useConfirmDialog();
+
   const [students, setStudents] = React.useState<StudentRow[]>([]);
   const [monitor, setMonitor] = React.useState<AttendanceMonitorToday | null>(null);
   const [selectedStudentId, setSelectedStudentId] = React.useState("");
@@ -298,6 +344,7 @@ export default function KehadiranMahasiswa() {
         if (current && mappedStudents.some((student) => student.id === current)) {
           return current;
         }
+
         return mappedStudents[0]?.id || "";
       });
     } catch (err: any) {
@@ -318,10 +365,12 @@ export default function KehadiranMahasiswa() {
     }
 
     setDetailLoading(true);
+
     try {
       const response = await apiGet<AttendanceDetail>(
         `/attendance?studentId=${encodeURIComponent(selectedStudentId)}&month=${encodeURIComponent(selectedMonth)}`
       );
+
       setDetail(response);
     } catch (err: any) {
       setDetail(null);
@@ -344,10 +393,11 @@ export default function KehadiranMahasiswa() {
   const studentsWithStatus = React.useMemo(() => {
     return students.map((student) => {
       let todayStatus: AttendanceStatus = "Belum Ada Info";
+
       if (presentSet.has(student.id)) {
         todayStatus = "Hadir";
       } else if (leaveSet.has(student.id)) {
-        todayStatus = "Cuti";
+        todayStatus = getLeaveAttendanceStatus(monitor?.leaveTypesByStudentId?.[student.id]);
       } else if (lockedAbsentSet.has(student.id) || reportedAbsentSet.has(student.id)) {
         todayStatus = "Tidak Hadir";
       } else if (!noInformationSet.has(student.id) && monitor?.lockWindowOpen) {
@@ -359,10 +409,20 @@ export default function KehadiranMahasiswa() {
         todayStatus,
       };
     });
-  }, [leaveSet, lockedAbsentSet, monitor?.lockWindowOpen, noInformationSet, presentSet, reportedAbsentSet, students]);
+  }, [
+    leaveSet,
+    lockedAbsentSet,
+    monitor?.leaveTypesByStudentId,
+    monitor?.lockWindowOpen,
+    noInformationSet,
+    presentSet,
+    reportedAbsentSet,
+    students,
+  ]);
 
   const filteredStudents = React.useMemo(() => {
     const normalizedQuery = search.trim().toLowerCase();
+
     return studentsWithStatus.filter((student) => {
       const matchesStatus = statusFilter === "Semua" || student.todayStatus === statusFilter;
       const matchesQuery =
@@ -390,57 +450,72 @@ export default function KehadiranMahasiswa() {
     const absentCount = (monitor?.absentIds?.length || 0) + (monitor?.reportedAbsentIds?.length || 0);
     const noInformationCount = monitor?.noInformationIds?.length || 0;
     const totalCount = students.length;
-    return { presentCount, leaveCount, absentCount, noInformationCount, totalCount };
+
+    return {
+      presentCount,
+      leaveCount,
+      absentCount,
+      noInformationCount,
+      totalCount,
+    };
   }, [monitor, students.length]);
 
-  const openCreateModal = React.useCallback((date?: string) => {
-    const student = students.find((item) => item.id === selectedStudentId);
-    if (!student) return;
+  const openCreateModal = React.useCallback(
+    (date?: string) => {
+      const student = students.find((item) => item.id === selectedStudentId);
+      if (!student) return;
 
-    setEditorError("");
-    setEditorExistingRecordId(null);
-    setEditor({
-      mode: "add",
-      studentId: student.id,
-      studentName: student.name,
-      date: date || getDefaultDateForMonth(selectedMonth),
-      checkIn: "",
-      checkOut: "",
-      status: "",
-      note: "",
-      checkoutSource: "OPERATOR_MANUAL",
-      autoCheckout: false,
-      autoCheckoutReason: null
-    });
-  }, [selectedMonth, selectedStudentId, students]);
-
-  const openEditModal = React.useCallback(async (recordId: string) => {
-    setEditorLoading(true);
-    setEditorError("");
-    setEditorExistingRecordId(null);
-    try {
-      const record = await apiGet<AttendanceRecordDetail>(`/attendance/records/${encodeURIComponent(recordId)}`);
-      const student = students.find((item) => item.id === record.studentId) || selectedStudent;
+      setEditorError("");
+      setEditorExistingRecordId(null);
       setEditor({
-        mode: "edit",
-        recordId: record.id,
-        studentId: record.studentId,
-        studentName: student?.name || "Mahasiswa",
-        date: record.date,
-        checkIn: String(record.checkIn || record.in || ""),
-        checkOut: String(record.checkOut || record.out || ""),
-        status: (record.status as EditableAttendanceStatus) || "",
-        note: String(record.note || ""),
-        checkoutSource: record.checkoutSource || null,
-        autoCheckout: Boolean(record.autoCheckout),
-        autoCheckoutReason: record.autoCheckoutReason || null
+        mode: "add",
+        studentId: student.id,
+        studentName: student.name,
+        date: date || getDefaultDateForMonth(selectedMonth),
+        checkIn: "",
+        checkOut: "",
+        status: "",
+        note: "",
+        checkoutSource: "OPERATOR_MANUAL",
+        autoCheckout: false,
+        autoCheckoutReason: null,
       });
-    } catch (err: any) {
-      setError(err?.message || "Gagal memuat detail absensi.");
-    } finally {
-      setEditorLoading(false);
-    }
-  }, [selectedStudent, students]);
+    },
+    [selectedMonth, selectedStudentId, students]
+  );
+
+  const openEditModal = React.useCallback(
+    async (recordId: string) => {
+      setEditorLoading(true);
+      setEditorError("");
+      setEditorExistingRecordId(null);
+
+      try {
+        const record = await apiGet<AttendanceRecordDetail>(`/attendance/records/${encodeURIComponent(recordId)}`);
+        const student = students.find((item) => item.id === record.studentId) || selectedStudent;
+
+        setEditor({
+          mode: "edit",
+          recordId: record.id,
+          studentId: record.studentId,
+          studentName: student?.name || "Mahasiswa",
+          date: record.date,
+          checkIn: String(record.checkIn || record.in || ""),
+          checkOut: String(record.checkOut || record.out || ""),
+          status: (record.status as EditableAttendanceStatus) || "",
+          note: String(record.note || ""),
+          checkoutSource: record.checkoutSource || null,
+          autoCheckout: Boolean(record.autoCheckout),
+          autoCheckoutReason: record.autoCheckoutReason || null,
+        });
+      } catch (err: any) {
+        setError(err?.message || "Gagal memuat detail absensi.");
+      } finally {
+        setEditorLoading(false);
+      }
+    },
+    [selectedStudent, students]
+  );
 
   const closeEditor = React.useCallback(() => {
     setEditor(null);
@@ -448,24 +523,29 @@ export default function KehadiranMahasiswa() {
     setEditorExistingRecordId(null);
   }, []);
 
-  const handleDeleteRecord = React.useCallback(async (recordId: string) => {
-    const confirmed = await confirm({
-      title: "Hapus data absensi?",
-      description: "Data absensi yang dihapus tidak akan tampil lagi di riwayat mahasiswa ini.",
-      confirmLabel: "Hapus",
-      cancelLabel: "Batal",
-      variant: "danger"
-    });
-    if (!confirmed) return;
+  const handleDeleteRecord = React.useCallback(
+    async (recordId: string) => {
+      const confirmed = await confirm({
+        title: "Hapus data absensi?",
+        description: "Data absensi yang dihapus tidak akan tampil lagi di riwayat mahasiswa ini.",
+        confirmLabel: "Hapus",
+        cancelLabel: "Batal",
+        variant: "danger",
+      });
 
-    setError("");
-    try {
-      await apiDelete(`/attendance/records/${encodeURIComponent(recordId)}`);
-      await Promise.all([loadDetail(), loadOverview()]);
-    } catch (err: any) {
-      setError(err?.message || "Gagal menghapus data absensi.");
-    }
-  }, [confirm, loadDetail, loadOverview]);
+      if (!confirmed) return;
+
+      setError("");
+
+      try {
+        await apiDelete(`/attendance/records/${encodeURIComponent(recordId)}`);
+        await Promise.all([loadDetail(), loadOverview()]);
+      } catch (err: any) {
+        setError(err?.message || "Gagal menghapus data absensi.");
+      }
+    },
+    [confirm, loadDetail, loadOverview]
+  );
 
   const handleSaveRecord = React.useCallback(async () => {
     if (!editor) return;
@@ -508,7 +588,7 @@ export default function KehadiranMahasiswa() {
       checkIn: editor.checkIn || null,
       checkOut: editor.checkOut || null,
       status: editor.status || null,
-      note: editor.note.trim() || null
+      note: editor.note.trim() || null,
     };
 
     try {
@@ -522,9 +602,11 @@ export default function KehadiranMahasiswa() {
       await Promise.all([loadDetail(), loadOverview()]);
     } catch (err: any) {
       const apiError = err instanceof ApiError ? err : null;
+
       if (apiError?.status === 409 && apiError.body?.existingRecordId) {
         setEditorExistingRecordId(String(apiError.body.existingRecordId));
       }
+
       setEditorError(err?.message || "Gagal menyimpan data absensi.");
     } finally {
       setSaving(false);
@@ -547,6 +629,7 @@ export default function KehadiranMahasiswa() {
               Pantau status hadir hari ini lalu lihat detail bulanan setiap mahasiswa.
             </p>
           </div>
+
           <button
             onClick={() => void loadOverview()}
             disabled={overviewLoading}
@@ -565,6 +648,7 @@ export default function KehadiranMahasiswa() {
             </div>
             <p className="text-2xl font-black text-foreground">{summary.totalCount}</p>
           </div>
+
           <div className="rounded-[16px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-emerald-600">
               <UserCheck size={18} />
@@ -572,13 +656,15 @@ export default function KehadiranMahasiswa() {
             </div>
             <p className="text-2xl font-black text-foreground">{summary.presentCount}</p>
           </div>
+
           <div className="rounded-[16px] border border-amber-200 bg-amber-50 p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-amber-600">
               <CalendarCheck size={18} />
-              <span className="text-xs font-black uppercase tracking-wide">Sedang Cuti</span>
+              <span className="text-xs font-black uppercase tracking-wide">Izin / Cuti / WFH</span>
             </div>
             <p className="text-2xl font-black text-foreground">{summary.leaveCount}</p>
           </div>
+
           <div className="rounded-[16px] border border-red-200 bg-red-50 p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-red-600">
               <UserMinus size={18} />
@@ -601,20 +687,23 @@ export default function KehadiranMahasiswa() {
                   className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
+
               <div className="flex flex-wrap gap-2">
-                {(["Semua", "Hadir", "Cuti", "Tidak Hadir", "Belum Ada Info"] as const).map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setStatusFilter(item)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-black transition-colors ${
-                      statusFilter === item
-                        ? "border-[#0AB600] bg-[#0AB600] text-white"
-                        : "border-border bg-slate-50 text-muted-foreground hover:bg-slate-100"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
+                {(["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Tidak Hadir", "Belum Ada Info"] as const).map(
+                  (item) => (
+                    <button
+                      key={item}
+                      onClick={() => setStatusFilter(item)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-black transition-colors ${
+                        statusFilter === item
+                          ? "border-[#0AB600] bg-[#0AB600] text-white"
+                          : "border-border bg-slate-50 text-muted-foreground hover:bg-slate-100"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
               </div>
             </div>
 
@@ -630,6 +719,7 @@ export default function KehadiranMahasiswa() {
               ) : (
                 filteredStudents.map((student) => {
                   const isActive = student.id === selectedStudent?.id;
+
                   return (
                     <button
                       key={student.id}
@@ -638,16 +728,24 @@ export default function KehadiranMahasiswa() {
                         isActive ? "bg-[#F0FFF0]" : "hover:bg-slate-50"
                       }`}
                     >
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-black ${student.color}`}>
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-black ${student.color}`}
+                      >
                         {student.initials}
                       </div>
+
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-black text-foreground">{student.name}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
                           {student.nim} · {student.prodi}
                         </p>
                       </div>
-                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${getStatusBadgeClasses(student.todayStatus)}`}>
+
+                      <span
+                        className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${getStatusBadgeClasses(
+                          student.todayStatus
+                        )}`}
+                      >
                         {student.todayStatus}
                       </span>
                     </button>
@@ -673,6 +771,7 @@ export default function KehadiranMahasiswa() {
                     </p>
                   )}
                 </div>
+
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => openCreateModal()}
@@ -682,6 +781,7 @@ export default function KehadiranMahasiswa() {
                     <Plus size={16} />
                     Tambah Absensi Manual
                   </button>
+
                   <div className="flex items-center gap-2">
                     <CalendarDays size={16} className="text-muted-foreground" />
                     <input
@@ -717,12 +817,15 @@ export default function KehadiranMahasiswa() {
                       <p className="text-2xl font-black text-foreground">{detail.today?.checkIn || "--:--"}</p>
                       {detail.today?.checkoutSource && (
                         <span
-                          className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getCheckoutSourceClasses(detail.today.checkoutSource)}`}
+                          className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getCheckoutSourceClasses(
+                            detail.today.checkoutSource
+                          )}`}
                         >
                           {getCheckoutSourceLabel(detail.today.checkoutSource)}
                         </span>
                       )}
                     </div>
+
                     <div className="rounded-[16px] border border-border bg-slate-50 p-4">
                       <div className="mb-2 flex items-center gap-2 text-muted-foreground">
                         <Clock3 size={15} />
@@ -738,18 +841,25 @@ export default function KehadiranMahasiswa() {
                         </span>
                       )}
                     </div>
+
                     <div className="rounded-[16px] border border-border bg-slate-50 p-4">
                       <div className="mb-2 flex items-center gap-2 text-muted-foreground">
                         <MapPin size={15} />
                         <span className="text-xs font-black uppercase tracking-wide">Status Hari Ini</span>
                       </div>
                       <div className="flex flex-col items-start gap-2">
-                        <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${getStatusBadgeClasses(detail.today?.status)}`}>
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${getStatusBadgeClasses(
+                            detail.today?.status
+                          )}`}
+                        >
                           {detail.today?.status || "Belum Check-in"}
                         </span>
                         {detail.today?.checkoutSource && (
                           <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getCheckoutSourceClasses(detail.today.checkoutSource)}`}
+                            className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getCheckoutSourceClasses(
+                              detail.today.checkoutSource
+                            )}`}
                           >
                             {getCheckoutSourceLabel(detail.today.checkoutSource)}
                           </span>
@@ -771,7 +881,9 @@ export default function KehadiranMahasiswa() {
                       <div key={item.name} className="rounded-[16px] border border-border bg-white p-4 shadow-sm">
                         <div className="mb-2 flex items-center gap-2">
                           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                          <span className="text-xs font-black uppercase tracking-wide text-muted-foreground">{item.name}</span>
+                          <span className="text-xs font-black uppercase tracking-wide text-muted-foreground">
+                            {item.name}
+                          </span>
                         </div>
                         <p className="text-2xl font-black text-foreground">{item.value}</p>
                         <p className="text-[11px] text-muted-foreground">hari pada bulan ini</p>
@@ -816,12 +928,18 @@ export default function KehadiranMahasiswa() {
                             <td className="px-5 py-3.5 text-muted-foreground">{row.duration}</td>
                             <td className="px-5 py-3.5">
                               <div className="flex flex-col items-start gap-1">
-                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getHistoryBadgeClasses(row.statusColor)}`}>
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getHistoryBadgeClasses(
+                                    row.statusColor
+                                  )}`}
+                                >
                                   {row.status}
                                 </span>
                                 {row.checkoutSource && (
                                   <span
-                                    className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${getCheckoutSourceClasses(row.checkoutSource)}`}
+                                    className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${getCheckoutSourceClasses(
+                                      row.checkoutSource
+                                    )}`}
                                   >
                                     {getCheckoutSourceLabel(row.checkoutSource)}
                                   </span>
@@ -903,9 +1021,7 @@ export default function KehadiranMahasiswa() {
               <h3 className="mt-1 text-xl font-black text-foreground">
                 {editor?.mode === "edit" ? "Ubah Absensi Mahasiswa" : "Tambah Absensi Manual"}
               </h3>
-              {editor?.studentName && (
-                <p className="mt-1 text-sm text-muted-foreground">{editor.studentName}</p>
-              )}
+              {editor?.studentName && <p className="mt-1 text-sm text-muted-foreground">{editor.studentName}</p>}
             </div>
 
             {editorLoading ? (
@@ -942,6 +1058,9 @@ export default function KehadiranMahasiswa() {
                       <option value="">Pilih status otomatis</option>
                       <option value="Hadir">Hadir</option>
                       <option value="Cuti">Cuti</option>
+                      <option value="Izin">Izin</option>
+                      <option value="Sakit">Sakit</option>
+                      <option value="WFH">WFH</option>
                       <option value="Tidak Hadir">Tidak Hadir</option>
                     </select>
                   </label>
@@ -987,7 +1106,9 @@ export default function KehadiranMahasiswa() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   {editor.checkoutSource && (
                     <span
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getCheckoutSourceClasses(editor.checkoutSource)}`}
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${getCheckoutSourceClasses(
+                        editor.checkoutSource
+                      )}`}
                     >
                       {getCheckoutSourceLabel(editor.checkoutSource)}
                     </span>
@@ -1039,6 +1160,7 @@ export default function KehadiranMahasiswa() {
           </div>
         </div>
       )}
+
       {confirmDialog}
     </OperatorLayout>
   );
