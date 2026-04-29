@@ -265,7 +265,12 @@ export default function LogbookMonitor() {
               {/* Student Header */}
               <div className="bg-white border border-border rounded-[14px] p-4 shadow-sm flex items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black ${selectedStudent.color}`}>{selectedStudent.initials}</div>
+                  <ProfileAvatar
+                      name={selectedStudent.name}
+                      photoUrl={selectedStudent.photoUrl || selectedStudent.photo_url}
+                      className="size-14"
+                      fallbackClassName={`${selectedStudent.color} font-black`}
+                    />
                   <div>
                     <h2 className="font-black text-foreground">{selectedStudent.name}</h2>
                     <p className="text-xs text-muted-foreground">{selectedStudent.nim} · {selectedStudent.prodi}</p>

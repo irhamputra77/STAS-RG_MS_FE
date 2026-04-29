@@ -1,3 +1,4 @@
+import { ProfileAvatar } from "../../components/ProfileAvatar";
 import React, { useEffect, useState, useMemo } from "react";
 import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
@@ -550,7 +551,12 @@ export default function DatabaseMahasiswa() {
               </div>
               <div className="p-5">
                 <div className="flex flex-col items-center gap-3 mb-5 pb-5 border-b border-border">
-                  <Avatar initials={activeStudent.initials} color={activeStudent.color} size="lg" />
+                  <ProfileAvatar
+                      name={activeStudent.name}
+                      photoUrl={activeStudent.photoUrl || activeStudent.photo_url}
+                      className="size-20"
+                      fallbackClassName={`${activeStudent.color} text-white text-lg font-black`}
+                   />
                   <div className="text-center">
                     <p className="font-black text-foreground">{activeStudent.name}</p>
                     <p className="text-xs font-mono text-muted-foreground">{activeStudent.nim}</p>

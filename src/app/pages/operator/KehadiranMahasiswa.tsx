@@ -1,3 +1,4 @@
+import { ProfileAvatar } from "../../components/ProfileAvatar";
 import React from "react";
 import {
   Calendar,
@@ -728,11 +729,12 @@ export default function KehadiranMahasiswa() {
                         isActive ? "bg-[#F0FFF0]" : "hover:bg-slate-50"
                       }`}
                     >
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-black ${student.color}`}
-                      >
-                        {student.initials}
-                      </div>
+                    <ProfileAvatar
+                        name={student.name}
+                        photoUrl={student.photoUrl || student.photo_url}
+                        className="size-10"
+                        fallbackClassName="bg-[#0AB600] text-white text-xs font-black"
+                      />
 
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-black text-foreground">{student.name}</p>
