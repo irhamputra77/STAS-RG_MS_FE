@@ -42,9 +42,15 @@ type WarningData = {
 
 type AttendanceMonitorToday = {
   date?: string;
+  timezone?: string;
+  currentTime?: string;
+  lockVisibleAfter?: string;
+  lockWindowOpen?: boolean;
   presentIds?: string[];
   leaveIds?: string[];
   absentIds?: string[];
+  reportedAbsentIds?: string[];
+  noInformationIds?: string[];
 };
 
 type StudentAccessLock = {
@@ -635,8 +641,8 @@ export default function OperatorDashboard() {
   const suratMenunggu = summary?.suratMenunggu ?? pendingSurat.length;
   const logbookHariIni = summary?.logbookTerbaru?.length ?? 0;
   const resignCount = resignationRequests.filter(r => ["Menunggu", "Menunggu Dosen"].includes(r.finalStatus)).length;
-  const currentHour = new Date().getHours();
-  const hasPassedAttendanceCutoff = currentHour >= 10;
+  const lockVisibleAfter = attendanceMonitor?.lockVisibleAfter || "10:00";
+  const hasPassedAttendanceCutoff = Boolean(attendanceMonitor?.lockWindowOpen);
   const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
   const presentIdSet = new Set((attendanceMonitor?.presentIds || []).map(String));
@@ -820,7 +826,7 @@ export default function OperatorDashboard() {
             {!hasPassedAttendanceCutoff ? (
               <div className="px-4 py-8 text-center">
                 <p className="text-xs font-black text-foreground">Daftar belum ditampilkan</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Mahasiswa akan masuk ke section ini jika sampai lewat pukul 10.00 WIB belum melakukan presensi.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Mahasiswa akan masuk ke section ini jika sampai lewat pukul {lockVisibleAfter} WIB belum memiliki informasi absensi.</p>
               </div>
             ) : tidakHadirMhs.length === 0 ? (
               <div className="px-4 py-8 text-center">
@@ -836,7 +842,7 @@ export default function OperatorDashboard() {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground leading-snug break-words">{m.studentName}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {m.referenceDate ? `${getLockReasonLabel(m.accessLock?.reason || "ATTENDANCE_ABSENT")} - ${m.referenceDate}` : "Lewat batas presensi 10.00 WIB"}
+                          {m.referenceDate ? `${getLockReasonLabel(m.accessLock?.reason || "ATTENDANCE_ABSENT")} - ${m.referenceDate}` : `Lewat batas presensi ${lockVisibleAfter} WIB`}
                         </p>
                         {m.accessLock?.lockedAt && (
                           <p className="text-[10px] font-bold text-red-500 mt-0.5">Dikunci: {new Date(m.accessLock.lockedAt).toLocaleString("id-ID")}</p>

@@ -32,9 +32,15 @@ type StudentRow = {
 
 type AttendanceMonitorToday = {
   date?: string;
+  timezone?: string;
+  currentTime?: string;
+  lockVisibleAfter?: string;
+  lockWindowOpen?: boolean;
   presentIds?: string[];
   leaveIds?: string[];
   absentIds?: string[];
+  reportedAbsentIds?: string[];
+  noInformationIds?: string[];
 };
 
 type AttendanceDetail = {
@@ -63,7 +69,7 @@ type AttendanceDetail = {
   }>;
 };
 
-type AttendanceStatus = "Hadir" | "Cuti" | "Tidak Hadir";
+type AttendanceStatus = "Hadir" | "Cuti" | "Tidak Hadir" | "Belum Ada Info";
 type EditableAttendanceStatus = "" | AttendanceStatus;
 type AttendanceEditorMode = "add" | "edit";
 
@@ -216,6 +222,8 @@ function getStatusBadgeClasses(status: AttendanceStatus | string) {
     case "Tidak Hadir":
     case "Belum Check-in":
       return "bg-red-100 text-red-600 border-red-200";
+    case "Belum Ada Info":
+      return "bg-slate-100 text-slate-600 border-slate-200";
     default:
       return "bg-slate-100 text-slate-600 border-slate-200";
   }
@@ -329,14 +337,21 @@ export default function KehadiranMahasiswa() {
 
   const presentSet = React.useMemo(() => new Set(monitor?.presentIds || []), [monitor?.presentIds]);
   const leaveSet = React.useMemo(() => new Set(monitor?.leaveIds || []), [monitor?.leaveIds]);
+  const lockedAbsentSet = React.useMemo(() => new Set(monitor?.absentIds || []), [monitor?.absentIds]);
+  const reportedAbsentSet = React.useMemo(() => new Set(monitor?.reportedAbsentIds || []), [monitor?.reportedAbsentIds]);
+  const noInformationSet = React.useMemo(() => new Set(monitor?.noInformationIds || []), [monitor?.noInformationIds]);
 
   const studentsWithStatus = React.useMemo(() => {
     return students.map((student) => {
-      let todayStatus: AttendanceStatus = "Tidak Hadir";
+      let todayStatus: AttendanceStatus = "Belum Ada Info";
       if (presentSet.has(student.id)) {
         todayStatus = "Hadir";
       } else if (leaveSet.has(student.id)) {
         todayStatus = "Cuti";
+      } else if (lockedAbsentSet.has(student.id) || reportedAbsentSet.has(student.id)) {
+        todayStatus = "Tidak Hadir";
+      } else if (!noInformationSet.has(student.id) && monitor?.lockWindowOpen) {
+        todayStatus = "Tidak Hadir";
       }
 
       return {
@@ -344,7 +359,7 @@ export default function KehadiranMahasiswa() {
         todayStatus,
       };
     });
-  }, [leaveSet, presentSet, students]);
+  }, [leaveSet, lockedAbsentSet, monitor?.lockWindowOpen, noInformationSet, presentSet, reportedAbsentSet, students]);
 
   const filteredStudents = React.useMemo(() => {
     const normalizedQuery = search.trim().toLowerCase();
@@ -372,9 +387,10 @@ export default function KehadiranMahasiswa() {
   const summary = React.useMemo(() => {
     const presentCount = monitor?.presentIds?.length || 0;
     const leaveCount = monitor?.leaveIds?.length || 0;
-    const absentCount = monitor?.absentIds?.length || 0;
+    const absentCount = (monitor?.absentIds?.length || 0) + (monitor?.reportedAbsentIds?.length || 0);
+    const noInformationCount = monitor?.noInformationIds?.length || 0;
     const totalCount = students.length;
-    return { presentCount, leaveCount, absentCount, totalCount };
+    return { presentCount, leaveCount, absentCount, noInformationCount, totalCount };
   }, [monitor, students.length]);
 
   const openCreateModal = React.useCallback((date?: string) => {
@@ -586,7 +602,7 @@ export default function KehadiranMahasiswa() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                {(["Semua", "Hadir", "Cuti", "Tidak Hadir"] as const).map((item) => (
+                {(["Semua", "Hadir", "Cuti", "Tidak Hadir", "Belum Ada Info"] as const).map((item) => (
                   <button
                     key={item}
                     onClick={() => setStatusFilter(item)}
