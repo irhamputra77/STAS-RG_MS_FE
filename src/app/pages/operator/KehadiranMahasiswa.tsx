@@ -29,6 +29,8 @@ type StudentRow = {
   prodi: string;
   status: string;
   color: string;
+  photoUrl?: string | null;
+  photo_url?: string | null;
 };
 
 type LeaveRequestType = "cuti" | "izin" | "sakit" | "wfh";
@@ -316,9 +318,11 @@ export default function KehadiranMahasiswa() {
     setError("");
 
     try {
+      const cacheKey = Date.now();
+
       const [studentRows, monitorRows] = await Promise.all([
-        apiGet<Array<any>>("/students"),
-        apiGet<AttendanceMonitorToday>("/attendance/monitor/today"),
+        apiGet<Array<any>>(`/students?_=${cacheKey}`),
+        apiGet<AttendanceMonitorToday>(`/attendance/monitor/today?_=${cacheKey}`),
       ]);
 
       const mappedStudents = (studentRows || []).map((item: any, index: number) => ({
@@ -337,6 +341,8 @@ export default function KehadiranMahasiswa() {
         prodi: item?.prodi || "-",
         status: item?.status || "Aktif",
         color: AVATAR_COLORS[index % AVATAR_COLORS.length],
+        photoUrl: item?.photoUrl || item?.photo_url || null,
+        photo_url: item?.photoUrl || item?.photo_url || null,
       }));
 
       setStudents(mappedStudents);
@@ -368,8 +374,12 @@ export default function KehadiranMahasiswa() {
     setDetailLoading(true);
 
     try {
+      const cacheKey = Date.now();
+
       const response = await apiGet<AttendanceDetail>(
-        `/attendance?studentId=${encodeURIComponent(selectedStudentId)}&month=${encodeURIComponent(selectedMonth)}`
+        `/attendance?studentId=${encodeURIComponent(selectedStudentId)}&month=${encodeURIComponent(
+          selectedMonth
+        )}&_=${cacheKey}`
       );
 
       setDetail(response);
@@ -461,6 +471,10 @@ export default function KehadiranMahasiswa() {
     };
   }, [monitor, students.length]);
 
+  const reloadAttendanceData = React.useCallback(async () => {
+    await Promise.all([loadOverview(), loadDetail()]);
+  }, [loadOverview, loadDetail]);
+
   const openCreateModal = React.useCallback(
     (date?: string) => {
       const student = students.find((item) => item.id === selectedStudentId);
@@ -540,12 +554,12 @@ export default function KehadiranMahasiswa() {
 
       try {
         await apiDelete(`/attendance/records/${encodeURIComponent(recordId)}`);
-        await Promise.all([loadDetail(), loadOverview()]);
+        await reloadAttendanceData();
       } catch (err: any) {
         setError(err?.message || "Gagal menghapus data absensi.");
       }
     },
-    [confirm, loadDetail, loadOverview]
+    [confirm, reloadAttendanceData]
   );
 
   const handleSaveRecord = React.useCallback(async () => {
@@ -599,8 +613,8 @@ export default function KehadiranMahasiswa() {
         await apiPatch(`/attendance/records/${encodeURIComponent(editor.recordId)}`, payload);
       }
 
+      await reloadAttendanceData();
       closeEditor();
-      await Promise.all([loadDetail(), loadOverview()]);
     } catch (err: any) {
       const apiError = err instanceof ApiError ? err : null;
 
@@ -612,7 +626,7 @@ export default function KehadiranMahasiswa() {
     } finally {
       setSaving(false);
     }
-  }, [closeEditor, editor, loadDetail, loadOverview]);
+  }, [closeEditor, editor, reloadAttendanceData]);
 
   return (
     <OperatorLayout title="Kehadiran Mahasiswa">
@@ -729,11 +743,11 @@ export default function KehadiranMahasiswa() {
                         isActive ? "bg-[#F0FFF0]" : "hover:bg-slate-50"
                       }`}
                     >
-                    <ProfileAvatar
+                      <ProfileAvatar
                         name={student.name}
                         photoUrl={student.photoUrl || student.photo_url}
                         className="size-10"
-                        fallbackClassName="bg-[#0AB600] text-white text-xs font-black"
+                        fallbackClassName={`${student.color} text-xs font-black`}
                       />
 
                       <div className="min-w-0 flex-1">
