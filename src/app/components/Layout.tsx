@@ -1,15 +1,35 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
-  LayoutDashboard, BookOpen, FileText, Settings, Bell, Search,
-  GraduationCap, MapPin, Award, ScrollText, FlaskConical,
-  Check, X, CheckCheck, BookMarked, MessageSquare, CalendarClock,
-  FileCheck, Megaphone, AlertTriangle, ChevronRight, LogOut, Menu,
+  LayoutDashboard,
+  BookOpen,
+  FileText,
+  Settings,
+  Bell,
+  Search,
+  GraduationCap,
+  MapPin,
+  Award,
+  ScrollText,
+  FlaskConical,
+  X,
+  CheckCheck,
+  BookMarked,
+  MessageSquare,
+  CalendarClock,
+  FileCheck,
+  Megaphone,
+  AlertTriangle,
+  ChevronRight,
+  LogOut,
+  Menu,
   Lock,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { AppNotification, NotificationType, useNotifications } from "../hooks/useNotifications";
 import { apiGet } from "../lib/api";
+import { ProfileAvatar } from "./ProfileAvatar";
+import { useSyncedStoredUser } from "../lib/userProfileSync";
 
 type StudentAccessLock = {
   id?: string;
@@ -39,108 +59,25 @@ function isRisetStudentType(tipe?: string | null) {
   return String(tipe || "").trim().toLowerCase() === "riset";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NOTIFICATION DATA & TYPES
-// ─────────────────────────────────────────────────────────────────────────────
-
-const INITIAL_NOTIFS: AppNotification[] = [
-  {
-    id: "n1",
-    type: "deadline",
-    title: "⚠️ Deadline Mendekat — H-1",
-    body: "Tugas \"Analisis Dataset Sensor Suhu dari Node Ke-8\" akan jatuh tempo besok, 10 Mar 2026.",
-    time: "Baru saja",
-    timeMs: Date.now() - 1 * 60 * 1000,
-    read: false,
-    link: "/research",
-  },
-  {
-    id: "n2",
-    type: "komentar",
-    title: "Komentar Baru dari Dr. Andi Kurniawan",
-    body: "\"Pastikan arsitektur LSTM-nya menggunakan dropout minimal 0.2 untuk mencegah overfitting.\"",
-    time: "14 menit lalu",
-    timeMs: Date.now() - 14 * 60 * 1000,
-    read: false,
-    link: "/research",
-  },
-  {
-    id: "n3",
-    type: "riset",
-    title: "Milestone Baru Ditambahkan",
-    body: "Milestone \"Uji Lapangan Fase 2\" telah ditambahkan ke proyek IoT Monitoring oleh ketua tim.",
-    time: "1 jam lalu",
-    timeMs: Date.now() - 60 * 60 * 1000,
-    read: false,
-    link: "/research",
-  },
-  {
-    id: "n4",
-    type: "cuti",
-    title: "Pengajuan Cuti Disetujui ✓",
-    body: "Pengajuan cuti Anda tanggal 20–22 Mar 2026 telah disetujui oleh Dr. Andi Kurniawan.",
-    time: "3 jam lalu",
-    timeMs: Date.now() - 3 * 60 * 60 * 1000,
-    read: false,
-    link: "/leave",
-  },
-  {
-    id: "n5",
-    type: "logbook",
-    title: "Logbook Belum Diisi Hari Ini",
-    body: "Kamu belum mengisi logbook untuk Selasa, 17 Mar 2026. Isi sebelum pukul 23.59.",
-    time: "5 jam lalu",
-    timeMs: Date.now() - 5 * 60 * 60 * 1000,
-    read: true,
-    link: "/logbook",
-  },
-  {
-    id: "n6",
-    type: "pengumuman",
-    title: "Pengumuman: Seminar Proposal TA",
-    body: "Seminar proposal TA akan dilaksanakan pada 25 Mar 2026. Pastikan dokumen lengkap H-3 sebelum acara.",
-    time: "Kemarin",
-    timeMs: Date.now() - 26 * 60 * 60 * 1000,
-    read: true,
-    link: "/draft",
-  },
-  {
-    id: "n7",
-    type: "dokumen",
-    title: "Dokumen Perlu Revisi",
-    body: "Sertifikat PKM yang Anda unggah perlu diperbaiki — resolusi gambar terlalu rendah (min. 300 dpi).",
-    time: "2 hari lalu",
-    timeMs: Date.now() - 2 * 24 * 60 * 60 * 1000,
-    read: true,
-    link: "/documents",
-  },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NOTIFICATION ICON helper
-// ─────────────────────────────────────────────────────────────────────────────
-
 function NotifIcon({ type }: { type: NotificationType }) {
   const map: Record<NotificationType, { icon: React.ReactNode; bg: string; text: string }> = {
-    logbook:     { icon: <BookMarked size={15} />,    bg: "bg-green-100",  text: "text-green-700" },
-    riset:       { icon: <FlaskConical size={15} />,  bg: "bg-green-100",  text: "text-green-700" },
-    komentar:    { icon: <MessageSquare size={15} />, bg: "bg-blue-100",    text: "text-blue-600"   },
-    cuti:        { icon: <FileCheck size={15} />,     bg: "bg-emerald-100", text: "text-emerald-600"},
-    deadline:    { icon: <AlertTriangle size={15} />, bg: "bg-red-100",     text: "text-red-500"    },
-    pengumuman:  { icon: <Megaphone size={15} />,     bg: "bg-amber-100",   text: "text-amber-600"  },
-    dokumen:     { icon: <FileCheck size={15} />,     bg: "bg-slate-100",   text: "text-slate-500"  },
+    logbook: { icon: <BookMarked size={15} />, bg: "bg-green-100", text: "text-green-700" },
+    riset: { icon: <FlaskConical size={15} />, bg: "bg-green-100", text: "text-green-700" },
+    komentar: { icon: <MessageSquare size={15} />, bg: "bg-blue-100", text: "text-blue-600" },
+    cuti: { icon: <FileCheck size={15} />, bg: "bg-emerald-100", text: "text-emerald-600" },
+    deadline: { icon: <AlertTriangle size={15} />, bg: "bg-red-100", text: "text-red-500" },
+    pengumuman: { icon: <Megaphone size={15} />, bg: "bg-amber-100", text: "text-amber-600" },
+    dokumen: { icon: <FileCheck size={15} />, bg: "bg-slate-100", text: "text-slate-500" },
   };
+
   const c = map[type];
+
   return (
     <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 ${c.bg} ${c.text}`}>
       {c.icon}
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NOTIFICATION DROPDOWN
-// ─────────────────────────────────────────────────────────────────────────────
 
 function NotificationPanel({
   notifs,
@@ -161,8 +98,6 @@ function NotificationPanel({
 
   return (
     <div className="fixed inset-x-4 top-20 md:absolute md:inset-x-auto md:top-[calc(100%+10px)] md:right-0 w-auto md:w-[400px] bg-white rounded-[18px] shadow-2xl border border-border z-[300] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-
-      {/* Header */}
       <div className="px-4 md:px-5 pt-4 md:pt-5 pb-3 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -173,6 +108,7 @@ function NotificationPanel({
               </span>
             )}
           </div>
+
           <div className="flex items-center gap-1">
             {unreadCount > 0 && (
               <button
@@ -180,9 +116,11 @@ function NotificationPanel({
                 className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-[9px] text-xs font-bold text-primary hover:bg-green-50 transition-colors"
                 title="Tandai semua sebagai dibaca"
               >
-                <CheckCheck size={14} /> <span className="hidden sm:inline">Semua dibaca</span>
+                <CheckCheck size={14} />
+                <span className="hidden sm:inline">Semua dibaca</span>
               </button>
             )}
+
             <button
               onClick={onClose}
               className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
@@ -192,16 +130,16 @@ function NotificationPanel({
           </div>
         </div>
 
-        {/* Filter tabs */}
         <div className="flex gap-1 bg-muted/40 p-0.5 rounded-[10px]">
-          {([["all", "Semua"], ["unread", "Belum Dibaca"]] as const).map(([f, label]) => (
+          {([
+            ["all", "Semua"],
+            ["unread", "Belum Dibaca"],
+          ] as const).map(([f, label]) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`flex-1 py-1.5 rounded-[8px] text-xs font-bold transition-all ${
-                filter === f
-                  ? "bg-white text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                filter === f ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <span className="hidden sm:inline">{label} ({f === "all" ? notifs.length : unreadCount})</span>
@@ -211,7 +149,6 @@ function NotificationPanel({
         </div>
       </div>
 
-      {/* List */}
       <div className="max-h-[60vh] md:max-h-[380px] overflow-y-auto">
         {visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -233,9 +170,11 @@ function NotificationPanel({
                 className={`group relative flex items-start gap-3 px-4 md:px-5 py-3 md:py-4 cursor-pointer transition-colors ${
                   n.read ? "hover:bg-slate-50/60" : "bg-green-50/40 hover:bg-green-50"
                 }`}
-                onClick={() => { onRead(n.id); onClose(); }}
+                onClick={() => {
+                  onRead(n.id);
+                  onClose();
+                }}
               >
-                {/* Unread dot */}
                 {!n.read && (
                   <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#0AB600]" />
                 )}
@@ -243,20 +182,30 @@ function NotificationPanel({
                 <NotifIcon type={n.type} />
 
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs md:text-sm leading-snug mb-0.5 ${n.read ? "font-medium text-foreground/80" : "font-bold text-foreground"}`}>
+                  <p
+                    className={`text-xs md:text-sm leading-snug mb-0.5 ${
+                      n.read ? "font-medium text-foreground/80" : "font-bold text-foreground"
+                    }`}
+                  >
                     {n.title}
                   </p>
                   <p className="text-[11px] md:text-[12px] font-medium text-muted-foreground leading-relaxed line-clamp-2">
                     {n.body}
                   </p>
-                  <p className={`text-[10px] md:text-[11px] font-bold mt-1.5 ${n.read ? "text-muted-foreground/70" : "text-[#0AB600]"}`}>
+                  <p
+                    className={`text-[10px] md:text-[11px] font-bold mt-1.5 ${
+                      n.read ? "text-muted-foreground/70" : "text-[#0AB600]"
+                    }`}
+                  >
                     {n.time}
                   </p>
                 </div>
 
-                {/* Dismiss button */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); onDismiss(n.id); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDismiss(n.id);
+                  }}
                   className="shrink-0 w-8 h-8 md:w-6 md:h-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 md:opacity-0 md:group-hover:opacity-100 transition-all mt-0.5"
                   title="Hapus notifikasi"
                 >
@@ -268,7 +217,6 @@ function NotificationPanel({
         )}
       </div>
 
-      {/* Footer */}
       <div className="border-t border-border px-4 md:px-5 py-3 bg-slate-50/60 flex items-center justify-between">
         <p className="text-[10px] md:text-[11px] font-medium text-muted-foreground">
           {unreadCount === 0 ? "Semua sudah dibaca" : `${unreadCount} belum dibaca`}
@@ -287,10 +235,6 @@ function NotificationPanel({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LAYOUT
-// ─────────────────────────────────────────────────────────────────────────────
-
 interface LayoutProps {
   children: React.ReactNode;
   title?: string;
@@ -299,24 +243,35 @@ interface LayoutProps {
 export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user: authUser, logout } = useAuth();
+  const syncedUser = useSyncedStoredUser();
+  const user = syncedUser || authUser;
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [accessLock, setAccessLock] = useState<StudentAccessLock | null>(null);
+  const [checkingAccessLock, setCheckingAccessLock] = useState(false);
+  const [headerPhotoUrl, setHeaderPhotoUrl] = useState(user?.photoUrl || user?.photo_url || "");
+  const bellRef = useRef<HTMLDivElement>(null);
+
   const fallbackNotifs = React.useMemo<AppNotification[]>(() => {
     const base: AppNotification[] = [];
+
     try {
       const warnings = JSON.parse(localStorage.getItem("stas_operator_warnings") || "[]");
       warnings.forEach((w: any) => {
-        if (!base.find(n => n.id === w.id)) base.unshift({ ...w, read: false });
+        if (!base.find((n) => n.id === w.id)) base.unshift({ ...w, read: false });
       });
     } catch {}
+
     return base;
   }, []);
+
   const { notifs, unreadCount, markRead, markAllRead, dismiss } = useNotifications({
     role: user?.role,
     fallback: fallbackNotifs,
   });
-  const isRisetStudent = user?.role === "mahasiswa" && isRisetStudentType(user?.tipe);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
+
   const [warningPopup, setWarningPopup] = useState<{ title: string; body: string } | null>(() => {
     try {
       const w = JSON.parse(localStorage.getItem("stas_operator_warnings") || "[]");
@@ -324,9 +279,6 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     } catch {}
     return null;
   });
-  const [accessLock, setAccessLock] = useState<StudentAccessLock | null>(null);
-  const [checkingAccessLock, setCheckingAccessLock] = useState(false);
-  const bellRef = useRef<HTMLDivElement>(null);
 
   const refreshAccessLock = React.useCallback(async () => {
     if (user?.role !== "mahasiswa") {
@@ -339,27 +291,44 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
       const data = await apiGet<StudentAccessLock>("/student-access-locks/me");
       setAccessLock(isActiveAccessLock(data) ? data : null);
     } catch {
-      // If another endpoint already raised the lock event, keep that state.
-    }
-    finally {
+      // Keep previous lock state.
+    } finally {
       setCheckingAccessLock(false);
     }
   }, [user?.role]);
 
-  // Close panel on outside click
+  useEffect(() => {
+    const loadHeaderProfile = async () => {
+      if (!user?.id) {
+        setHeaderPhotoUrl("");
+        return;
+      }
+
+      try {
+        const profile = await apiGet<any>(`/profile/${encodeURIComponent(user.id)}`);
+        setHeaderPhotoUrl(profile?.photoUrl || profile?.photo_url || user?.photoUrl || user?.photo_url || "");
+      } catch {
+        setHeaderPhotoUrl(user?.photoUrl || user?.photo_url || "");
+      }
+    };
+
+    void loadHeaderProfile();
+  }, [user?.id, user?.photoUrl, user?.photo_url]);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
         setIsPanelOpen(false);
       }
     }
+
     if (isPanelOpen) document.addEventListener("mousedown", handleClick);
+
     return () => document.removeEventListener("mousedown", handleClick);
   }, [isPanelOpen]);
 
-  // Close panel on route change
-  useEffect(() => { 
-    setIsPanelOpen(false); 
+  useEffect(() => {
+    setIsPanelOpen(false);
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
 
@@ -377,7 +346,9 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
+
     const interval = window.setInterval(refreshAccessLock, 60000);
+
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
@@ -388,7 +359,9 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   useEffect(() => {
     const onAccessLocked = (event: Event) => {
       if (user?.role !== "mahasiswa") return;
+
       const detail = (event as CustomEvent).detail || {};
+
       setAccessLock({
         id: detail.id || undefined,
         locked: true,
@@ -401,25 +374,28 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     };
 
     window.addEventListener("stas:access-locked", onAccessLocked);
+
     return () => window.removeEventListener("stas:access-locked", onAccessLocked);
   }, [user?.role]);
 
   const navItems = [
-    { name: "Dashboard",           path: "/dashboard",  icon: LayoutDashboard },
-    { name: "Kehadiran (GPS)",     path: "/attendance", icon: MapPin },
-    { name: "Logbook",             path: "/logbook",    icon: BookOpen },
-    { name: "Riset Saya",          path: "/research",   icon: FlaskConical },
+    { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+    { name: "Kehadiran (GPS)", path: "/attendance", icon: MapPin },
+    { name: "Logbook", path: "/logbook", icon: BookOpen },
+    { name: "Riset Saya", path: "/research", icon: FlaskConical },
     { name: "Pengajuan", path: "/leave", icon: FileText },
-    { name: "Dokumen & Sertifikat",path: "/documents",  icon: Award },
-    { name: "Draft TA / Jurnal",   path: "/draft",      icon: ScrollText },
+    { name: "Dokumen & Sertifikat", path: "/documents", icon: Award },
+    { name: "Draft TA / Jurnal", path: "/draft", icon: ScrollText },
   ];
 
-  const handleLogout = () => { logout(); navigate("/login"); };
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
     <div className="h-screen w-screen bg-background text-foreground overflow-hidden flex">
       <div className="w-full flex h-screen overflow-hidden bg-background relative">
-        {/* ── Sidebar (Desktop) ── */}
         <aside className="hidden lg:flex w-[248px] bg-white border-r border-border flex-col shrink-0 z-20">
           <div className="h-[60px] flex items-center px-6 border-b border-border">
             <div className="font-bold text-xl text-primary flex items-center gap-2">
@@ -432,38 +408,60 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
 
           <nav className="flex-1 px-4 py-6 flex flex-col gap-2 overflow-y-auto">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.path || (location.pathname.startsWith(item.path) && item.path !== "/dashboard");
+              const isActive =
+                location.pathname === item.path ||
+                (location.pathname.startsWith(item.path) && item.path !== "/dashboard");
+
               return (
-                <Link key={item.path} to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${isActive ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
-                  <item.icon size={20} /> {item.name}
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${
+                    isActive ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <item.icon size={20} />
+                  {item.name}
                 </Link>
               );
             })}
 
             <div className="mt-auto flex flex-col gap-1">
-              <Link to="/settings"
-                className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${location.pathname === "/settings" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
-                <Settings size={20} /> Pengaturan
+              <Link
+                to="/settings"
+                className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${
+                  location.pathname === "/settings"
+                    ? "bg-primary text-white"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                <Settings size={20} />
+                Pengaturan
               </Link>
-              <button onClick={handleLogout}
-                className="flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors text-muted-foreground hover:bg-red-50 hover:text-red-600 w-full text-left">
-                <LogOut size={20} /> Keluar
+
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors text-muted-foreground hover:bg-red-50 hover:text-red-600 w-full text-left"
+              >
+                <LogOut size={20} />
+                Keluar
               </button>
             </div>
           </nav>
         </aside>
 
-        {/* ��─ Mobile Sidebar Overlay ── */}
         {isMobileMenuOpen && (
-          <div 
+          <div
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
 
-        {/* ── Mobile Sidebar ── */}
-        <aside className={`fixed inset-y-0 left-0 w-[280px] bg-white border-r border-border flex flex-col z-50 lg:hidden transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <aside
+          className={`fixed inset-y-0 left-0 w-[280px] bg-white border-r border-border flex flex-col z-50 lg:hidden transition-transform duration-300 ${
+            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
           <div className="h-[60px] flex items-center justify-between px-6 border-b border-border">
             <div className="font-bold text-xl text-primary flex items-center gap-2">
               <div className="w-8 h-8 rounded-[14px] bg-primary flex items-center justify-center text-white">
@@ -471,7 +469,8 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
               </div>
               STAS-RG
             </div>
-            <button 
+
+            <button
               onClick={() => setIsMobileMenuOpen(false)}
               className="p-2 hover:bg-muted/50 rounded-lg transition-colors"
             >
@@ -481,33 +480,51 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
 
           <nav className="flex-1 px-4 py-6 flex flex-col gap-2 overflow-y-auto">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.path || (location.pathname.startsWith(item.path) && item.path !== "/dashboard");
+              const isActive =
+                location.pathname === item.path ||
+                (location.pathname.startsWith(item.path) && item.path !== "/dashboard");
+
               return (
-                <Link key={item.path} to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${isActive ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
-                  <item.icon size={20} /> {item.name}
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${
+                    isActive ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <item.icon size={20} />
+                  {item.name}
                 </Link>
               );
             })}
 
             <div className="mt-auto flex flex-col gap-1">
-              <Link to="/settings"
-                className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${location.pathname === "/settings" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
-                <Settings size={20} /> Pengaturan
+              <Link
+                to="/settings"
+                className={`flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors ${
+                  location.pathname === "/settings"
+                    ? "bg-primary text-white"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                <Settings size={20} />
+                Pengaturan
               </Link>
-              <button onClick={handleLogout}
-                className="flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors text-muted-foreground hover:bg-red-50 hover:text-red-600 w-full text-left">
-                <LogOut size={20} /> Keluar
+
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 px-4 py-3 rounded-[14px] font-medium transition-colors text-muted-foreground hover:bg-red-50 hover:text-red-600 w-full text-left"
+              >
+                <LogOut size={20} />
+                Keluar
               </button>
             </div>
           </nav>
         </aside>
 
-        {/* ── Main ── */}
         <div className="flex-1 flex flex-col min-w-0 z-10">
           <header className="h-[60px] bg-white border-b border-border flex items-center justify-between px-4 md:px-8 shrink-0">
-            {/* Mobile Menu Button */}
-            <button 
+            <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="lg:hidden p-2 hover:bg-muted/50 rounded-lg transition-colors"
             >
@@ -515,16 +532,27 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
             </button>
 
             <h1 className="text-base md:text-lg font-bold text-foreground truncate">{title}</h1>
+
             <div className="flex items-center gap-3 md:gap-6">
-              {/* Search - Hidden on mobile */}
               <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-background border border-border rounded-[14px] w-48 lg:w-64 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
                 <Search size={18} className="text-muted-foreground" />
-                <input type="text" placeholder="Cari kelas, tugas..." className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full" />
+                <input
+                  type="text"
+                  placeholder="Cari kelas, tugas..."
+                  className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
+                />
               </div>
+
               <div className="flex items-center gap-3 md:gap-5">
                 <div ref={bellRef} className="relative">
-                  <button onClick={() => setIsPanelOpen((v) => !v)}
-                    className={`relative p-1.5 rounded-[10px] transition-colors ${isPanelOpen ? "bg-[#F0FFF0] text-[#0AB600]" : "text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}>
+                  <button
+                    onClick={() => setIsPanelOpen((value) => !value)}
+                    className={`relative p-1.5 rounded-[10px] transition-colors ${
+                      isPanelOpen
+                        ? "bg-[#F0FFF0] text-[#0AB600]"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                    }`}
+                  >
                     <Bell size={20} className="md:w-[22px] md:h-[22px]" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-destructive rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white shadow-sm">
@@ -532,13 +560,24 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
                       </span>
                     )}
                   </button>
+
                   {isPanelOpen && (
-                    <NotificationPanel notifs={notifs} onRead={markRead} onReadAll={markAllRead} onDismiss={dismiss} onClose={() => setIsPanelOpen(false)} />
+                    <NotificationPanel
+                      notifs={notifs}
+                      onRead={markRead}
+                      onReadAll={markAllRead}
+                      onDismiss={dismiss}
+                      onClose={() => setIsPanelOpen(false)}
+                    />
                   )}
                 </div>
-                <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-[#0AB600] flex items-center justify-center text-white font-black text-sm shadow-sm ring-2 ring-white cursor-pointer">
-                  {user?.initials || "IR"}
-                </div>
+
+                <ProfileAvatar
+                  name={user?.name}
+                  photoUrl={headerPhotoUrl || user?.photoUrl || user?.photo_url}
+                  className="size-9 md:size-10 shadow-sm ring-2 ring-white cursor-pointer"
+                  fallbackClassName="bg-[#0AB600] text-white text-sm font-black"
+                />
               </div>
             </div>
           </header>
@@ -547,29 +586,39 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
         </div>
       </div>
 
-      {/* Operator Warning Popup */}
       {warningPopup && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[440px] overflow-hidden">
             <div className="bg-amber-500 px-6 py-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0"><AlertTriangle size={20} className="text-white" /></div>
-              <div><p className="font-black text-white">Peringatan dari Admin</p><p className="text-xs text-white/80">STAS-RG Management System</p></div>
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-white" />
+              </div>
+              <div>
+                <p className="font-black text-white">Peringatan dari Admin</p>
+                <p className="text-xs text-white/80">STAS-RG Management System</p>
+              </div>
             </div>
+
             <div className="p-6">
               <h3 className="font-black text-foreground mb-2">{warningPopup.title}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed">{warningPopup.body}</p>
             </div>
+
             <div className="px-6 pb-6">
-              <button onClick={() => {
-                if (warningPopup) localStorage.setItem("stas_warning_seen_" + (warningPopup as any).id, "1");
-                setWarningPopup(null);
-              }} className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-[12px] transition-colors">
+              <button
+                onClick={() => {
+                  if (warningPopup) localStorage.setItem("stas_warning_seen_" + (warningPopup as any).id, "1");
+                  setWarningPopup(null);
+                }}
+                className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-[12px] transition-colors"
+              >
                 Saya Mengerti
               </button>
             </div>
           </div>
         </div>
       )}
+
       {isActiveAccessLock(accessLock) && (
         <div className="fixed inset-0 z-[900] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-[460px] overflow-hidden rounded-[22px] border border-red-200 bg-white shadow-2xl">
@@ -582,14 +631,16 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
                 <p className="text-xs font-bold text-white/80">Status kehadiran membutuhkan verifikasi admin</p>
               </div>
             </div>
+
             <div className="p-6">
-              <h3 className="mb-2 text-base font-black text-foreground">
-                Akses Dikunci
-              </h3>
+              <h3 className="mb-2 text-base font-black text-foreground">Akses Dikunci</h3>
               <p className="text-sm font-medium leading-relaxed text-muted-foreground">
                 {accessLock?.message ||
-                  `Akun Anda dikunci karena terdeteksi tidak hadir pada ${accessLock?.date || "hari ini"}. Hubungi admin untuk membuka kembali akses website.`}
+                  `Akun Anda dikunci karena terdeteksi tidak hadir pada ${
+                    accessLock?.date || "hari ini"
+                  }. Hubungi admin untuk membuka kembali akses website.`}
               </p>
+
               <div className="mt-4 grid grid-cols-1 gap-2 rounded-[14px] border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Tanggal</span>
@@ -600,9 +651,11 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
                   <span>{getAccessLockReasonLabel(accessLock?.reason)}</span>
                 </div>
               </div>
+
               <div className="mt-5 rounded-[14px] border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
                 Selama akses terkunci, Anda tidak dapat menggunakan fitur website sampai admin membuka akses.
               </div>
+
               <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   onClick={refreshAccessLock}
@@ -611,6 +664,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
                 >
                   {checkingAccessLock ? "Mengecek..." : "Cek Ulang Status"}
                 </button>
+
                 <button
                   onClick={handleLogout}
                   className="h-10 rounded-[12px] border border-border bg-white text-sm font-black text-muted-foreground transition-colors hover:bg-slate-50 hover:text-foreground"
