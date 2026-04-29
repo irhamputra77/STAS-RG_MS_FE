@@ -1,3 +1,4 @@
+import { ProfileAvatar } from "../../components/ProfileAvatar";
 import React, { useEffect, useMemo, useState } from "react";
 import { useConfirmDialog } from "../../components/ConfirmDialog";
 import { OperatorLayout } from "../../components/OperatorLayout";
