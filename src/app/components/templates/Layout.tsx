@@ -25,11 +25,11 @@ import {
   Menu,
   Lock,
 } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
-import { AppNotification, NotificationType, useNotifications } from "../hooks/useNotifications";
-import { apiGet } from "../lib/api";
-import { ProfileAvatar } from "./ProfileAvatar";
-import { useSyncedStoredUser } from "../lib/userProfileSync";
+import { useAuth } from "../../context/AuthContext";
+import { AppNotification, NotificationType, useNotifications } from "../../hooks/useNotifications";
+import { apiGet } from "../../lib/api";
+import { ProfileAvatar } from "../molecules/ProfileAvatar";
+import { useSyncedStoredUser } from "../../lib/userProfileSync";
 
 type StudentAccessLock = {
   id?: string;

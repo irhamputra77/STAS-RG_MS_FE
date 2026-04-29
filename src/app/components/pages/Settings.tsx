@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Layout } from "../components/Layout";
-import { ProfileAvatar } from "../components/ProfileAvatar";
+import { Layout } from "../templates/Layout";
+import { ProfileAvatar } from "../molecules/ProfileAvatar";
 import {
   User,
   Info,
@@ -21,9 +21,9 @@ import {
   FileCheck,
   Calendar,
 } from "lucide-react";
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../lib/api";
-import { getWfhSourceMeta, getWfhSummary } from "../lib/wfh";
-import { updateStoredUserProfile } from "../lib/userProfileSync";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../../lib/api";
+import { getWfhSourceMeta, getWfhSummary } from "../../lib/wfh";
+import { updateStoredUserProfile } from "../../lib/userProfileSync";
 
 type Tab = "profil" | "akun" | "password" | "notifikasi" | "pengunduran";
 

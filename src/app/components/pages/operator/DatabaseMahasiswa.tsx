@@ -1,10 +1,10 @@
-import { ProfileAvatar } from "../../components/ProfileAvatar";
+import { ProfileAvatar } from "../../molecules/ProfileAvatar";
 import React, { useEffect, useState, useMemo } from "react";
-import { useConfirmDialog } from "../../components/ConfirmDialog";
-import { OperatorLayout } from "../../components/OperatorLayout";
+import { useConfirmDialog } from "../../molecules/ConfirmDialog";
+import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2 } from "lucide-react";
-import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
-import { getWfhSourceMeta, getWfhSummary } from "../../lib/wfh";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
+import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 
 type MahasiswaRecord = any;
 

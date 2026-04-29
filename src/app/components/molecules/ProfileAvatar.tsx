@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../atoms/avatar";
 
 type ProfileAvatarProps = {
   name?: string | null;

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(xargs -I {} basename {})",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(find src *)",
+      "Bash(ls src/app/pages/)",
+      "Bash(grep -n \"ProfileAvatar\\\\|from.*\\\\\\\\./\" src/app/components/templates/OperatorLayout.tsx src/app/components/templates/DosenLayout.tsx src/app/components/templates/Layout.tsx)"
     ]
   }
 }

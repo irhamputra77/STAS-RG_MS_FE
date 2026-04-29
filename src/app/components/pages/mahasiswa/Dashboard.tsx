@@ -7,8 +7,8 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2, Hourglass, Check,
   Target, GitBranch, TrendingUp, MessageSquare, Calendar,
 } from "lucide-react";
-import { apiGet, getStoredUser } from "../lib/api";
-import { getWfhSourceMeta, getWfhSummary } from "../lib/wfh";
+import { apiGet, getStoredUser } from "../../../lib/api";
+import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 
 function getActiveMilestone(project: any) {
   const milestones = project?.milestones || [];

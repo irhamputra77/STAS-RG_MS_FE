@@ -1,4 +1,4 @@
-import { ProfileAvatar } from "../../components/ProfileAvatar";
+import { ProfileAvatar } from "../../molecules/ProfileAvatar";
 import React from "react";
 import {
   Calendar,

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCcw, Save, Search, Settings2, Users, X } from "lucide-react";
-import { OperatorLayout } from "../../components/OperatorLayout";
-import { apiGet, apiPatch } from "../../lib/api";
+import { OperatorLayout } from "../../templates/OperatorLayout";
+import { apiGet, apiPatch } from "../../../lib/api";
 
 // Data row for student WFH settings
 export type StudentSettingRow = {
