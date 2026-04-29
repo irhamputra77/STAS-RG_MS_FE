@@ -7,7 +7,8 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2, Hourglass, Check,
   Target, GitBranch, TrendingUp, MessageSquare, Calendar,
 } from "lucide-react";
-import { apiGet, getStoredUser } from "../../../lib/api";
+import { apiGet, getStoredUser } from "../lib/api";
+import { getWfhSourceMeta, getWfhSummary } from "../lib/wfh";
 
 function getActiveMilestone(project: any) {
   const milestones = project?.milestones || [];
@@ -48,15 +49,6 @@ function getLeaveTypeStyle(item: any) {
   if (label === "Sakit") return "bg-rose-100 text-rose-700";
   if (label === "WFH") return "bg-sky-100 text-sky-700";
   return "bg-indigo-100 text-indigo-700";
-}
-
-function readNumber(...values: unknown[]) {
-  for (const value of values) {
-    if (value === null || value === undefined || value === "") continue;
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 0;
 }
 
 function isRisetStudentType(tipe?: string | null) {
@@ -268,28 +260,11 @@ export default function Dashboard() {
   const sisaCuti = dashboardData?.stats?.sisaCuti ?? 0;
   const totalCuti = dashboardData?.stats?.totalCuti ?? 0;
   const cutiPct = totalCuti > 0 ? Math.round((sisaCuti / totalCuti) * 100) : 0;
-  const totalWfh = readNumber(
-    dashboardData?.stats?.wfhQuota,
-    dashboardData?.stats?.totalWfh,
-    dashboardData?.stats?.wfh_quota,
-    dashboardData?.student?.wfhQuota,
-    dashboardData?.student?.wfh_quota,
-    dashboardData?.profile?.wfhQuota,
-    dashboardData?.profile?.wfh_quota
-  );
-  const usedWfh = readNumber(
-    dashboardData?.stats?.wfhUsed,
-    dashboardData?.stats?.usedWfh,
-    dashboardData?.stats?.wfh_used,
-    dashboardData?.student?.wfhUsed,
-    dashboardData?.student?.wfh_used
-  );
-  const remainingWfh = readNumber(
-    dashboardData?.stats?.wfhRemaining,
-    dashboardData?.stats?.sisaWfh,
-    dashboardData?.stats?.wfh_remaining,
-    totalWfh > 0 ? Math.max(totalWfh - usedWfh, 0) : 0
-  );
+  const wfhSummary = getWfhSummary(dashboardData?.stats, dashboardData?.student, dashboardData?.profile);
+  const totalWfh = wfhSummary.wfhQuota;
+  const usedWfh = wfhSummary.wfhUsed;
+  const remainingWfh = wfhSummary.wfhRemaining;
+  const wfhSourceMeta = getWfhSourceMeta(wfhSummary.wfhQuotaSource);
   const wfhPct = totalWfh > 0 ? Math.round((remainingWfh / totalWfh) * 100) : 0;
 
   const draftRecent = dashboardData?.draftRecent || [];
@@ -409,7 +384,7 @@ export default function Dashboard() {
             value={totalWfh > 0
               ? <><span>{remainingWfh}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{totalWfh}</span></>
               : <span className="text-base md:text-lg">Tidak ada</span>}
-            sub={totalWfh > 0 ? "Hari WFH tersisa" : "Anda tidak punya jatah WFH"}
+            sub={wfhSourceMeta.helperText || (totalWfh > 0 ? "Hari WFH tersisa" : "Anda tidak punya jatah WFH")}
             barPct={wfhPct}
             barColor="bg-sky-500"
             href="/leave"
@@ -672,9 +647,22 @@ export default function Dashboard() {
                       {totalWfh > 0 ? `${remainingWfh} hari WFH tersisa` : "Anda tidak punya jatah WFH"}
                     </p>
                     <p className="text-[10px] font-medium text-sky-600">
-                      {totalWfh > 0 ? `dari ${totalWfh} jatah WFH` : "Hubungi admin jika membutuhkan akses WFH"}
+                      {totalWfh > 0 ? `dari ${totalWfh} jatah WFH • terpakai ${usedWfh} hari` : "Hubungi admin jika membutuhkan akses WFH"}
                     </p>
+                    {wfhSourceMeta.helperText && (
+                      <p className="mt-1 text-[10px] font-semibold text-sky-700">
+                        {wfhSourceMeta.helperText}
+                      </p>
+                    )}
                   </div>
+                  {wfhSummary.wfhQuotaSource !== "unknown" && (
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${wfhSummary.wfhQuotaSource === "mentor"
+                        ? "bg-sky-100 text-sky-700 border border-sky-200"
+                        : "bg-amber-100 text-amber-700 border border-amber-200"
+                      }`}>
+                      {wfhSourceMeta.label}
+                    </span>
+                  )}
                 </div>
                 {/* Recent list */}
                 {cutiRecent.map((c: any) => (
