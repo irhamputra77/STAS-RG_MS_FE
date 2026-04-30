@@ -26,35 +26,12 @@ export class ApiError extends Error {
   }
 }
 
-function getRoleHeader() {
-  try {
-    const raw = localStorage.getItem("stas_user");
-    if (!raw) return null;
-    const user = JSON.parse(raw);
-    return user?.role || null;
-  } catch {
-    return null;
-  }
-}
-
-function getUserIdHeader() {
-  try {
-    const raw = localStorage.getItem("stas_user");
-    if (!raw) return null;
-    const user = JSON.parse(raw);
-    return user?.id || null;
-  } catch {
-    return null;
-  }
-}
-
+// Header role / user-id TIDAK lagi dikirim dari client.
+// Backend mengandalkan JWT di httpOnly cookie sebagai satu-satunya
+// sumber kebenaran identitas user (aman dari manipulasi via DevTools).
 function getRequestHeaders(options?: RequestInit) {
-  const role = getRoleHeader();
-  const userId = getUserIdHeader();
   return {
     "Content-Type": "application/json",
-    ...(role ? { "x-user-role": String(role) } : {}),
-    ...(userId ? { "x-user-id": String(userId) } : {}),
     ...(options?.headers || {})
   };
 }
