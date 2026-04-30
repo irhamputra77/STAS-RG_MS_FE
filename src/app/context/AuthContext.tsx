@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from "react";
+import { apiPost } from "../lib/api";
 
 export type UserRole = "mahasiswa" | "operator" | "dosen";
 
@@ -35,10 +36,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
     localStorage.setItem("stas_user", JSON.stringify(u));
   };
-  const logout = () => {
+
+  const clearLocalSession = React.useCallback(() => {
     setUser(null);
     localStorage.removeItem("stas_user");
+  }, []);
+
+  const logout = () => {
+    void apiPost("/auth/logout").catch(() => {});
+    clearLocalSession();
   };
+
+  React.useEffect(() => {
+    const onAuthExpired = () => clearLocalSession();
+    window.addEventListener("stas:auth-expired", onAuthExpired);
+    return () => window.removeEventListener("stas:auth-expired", onAuthExpired);
+  }, [clearLocalSession]);
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>

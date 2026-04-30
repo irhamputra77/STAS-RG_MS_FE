@@ -75,20 +75,28 @@ function getFilenameFromDisposition(disposition: string | null) {
   return plainMatch?.[1] || null;
 }
 
+function emitAuthExpired(path: string) {
+  if (typeof window === "undefined" || path === "/auth/login") return;
+  window.dispatchEvent(new CustomEvent("stas:auth-expired"));
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const headers = getRequestHeaders(options);
 
   const response = await fetch(url, {
+    ...options,
     headers,
-    credentials: "include",
-    ...options
+    credentials: "include"
   });
 
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
     const message = body?.message || `HTTP ${response.status}`;
+    if (response.status === 401) {
+      emitAuthExpired(path);
+    }
     if (response.status === 423 && body?.accessLocked && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("stas:access-locked", {
         detail: {
@@ -109,10 +117,10 @@ export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
-export function apiPost<T>(path: string, payload: unknown): Promise<T> {
+export function apiPost<T>(path: string, payload?: unknown): Promise<T> {
   return request<T>(path, {
     method: "POST",
-    body: JSON.stringify(payload)
+    ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
   });
 }
 
@@ -160,6 +168,10 @@ export async function apiGetBlob(path: string): Promise<BlobResponse> {
       } catch {
         message = errorText;
       }
+    }
+
+    if (response.status === 401) {
+      emitAuthExpired(path);
     }
 
     if (response.status === 423 && parsedBody?.accessLocked && typeof window !== "undefined") {

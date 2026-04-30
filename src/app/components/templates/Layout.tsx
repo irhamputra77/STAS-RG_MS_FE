@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { AppNotification, NotificationType, useNotifications } from "../../hooks/useNotifications";
-import { apiGet, apiPost } from "../../lib/api";
+import { apiGet } from "../../lib/api";
 import { ProfileAvatar } from "../molecules/ProfileAvatar";
 import { useSyncedStoredUser } from "../../lib/userProfileSync";
 
@@ -410,7 +410,6 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     };
 
     const doAutoLogout = () => {
-      void apiPost("/auth/logout", {}).catch(() => {});
       logout();
       navigate("/login");
     };
@@ -447,7 +446,6 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   ];
 
   const handleLogout = () => {
-    void apiPost("/auth/logout", {}).catch(() => {});
     logout();
     navigate("/login");
   };
