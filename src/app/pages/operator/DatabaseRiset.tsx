@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { OperatorLayout } from "../../components/OperatorLayout";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../lib/api";
-import { Search, Plus, X, Target, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ChevronRight } from "lucide-react";
+import { Search, Plus, X, Target, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ChevronRight, ClipboardList, Calendar, MapPin, ChevronDown, ChevronUp } from "lucide-react";
 
 const STEP_LABELS = ["Info Dasar", "Tim", "Periode & Mitra", "Milestone"];
 const PERAN_OPTIONS = ["Ketua", "Pembimbing", "Anggota Inti", "Backend Dev", "Frontend Dev", "Hardware Dev", "Data Analyst", "Asisten Peneliti", "Fullstack Dev"];
@@ -36,8 +36,36 @@ interface Lecturer {
   email?: string;
 }
 
+interface MeetingAttendee {
+  id: number;
+  userId?: string;
+  name: string;
+  roleLabel?: string;
+  attended: boolean;
+}
+
+interface MeetingNote {
+  id: string;
+  title: string;
+  meetingDate: string;
+  location?: string;
+  agenda?: string;
+  content: string;
+  decisions?: string;
+  nextMeetingDate?: string;
+  createdBy?: string;
+  createdAt: string;
+  attendees: MeetingAttendee[];
+  attendeeCount: number;
+}
+
 function statusColor(s: string) {
   return s === "Aktif" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : s === "Selesai" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-red-100 text-red-600 border-red-200";
+}
+
+function fmtDate(d?: string | null) {
+  if (!d) return "-";
+  try { return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }); } catch { return d; }
 }
 
 export default function DatabaseRiset() {
@@ -48,7 +76,7 @@ export default function DatabaseRiset() {
   const [research, setResearch] = useState<ResearchProject[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
   const [selected, setSelected] = useState<ResearchProject | null>(null);
-  const [detailTab, setDetailTab] = useState<"info" | "anggota" | "akses">("info");
+  const [detailTab, setDetailTab] = useState<"info" | "anggota" | "akses" | "notulensi">("info");
   const [modalOpen, setModalOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [boardAccess, setBoardAccess] = useState<Record<string, string[]>>({});
@@ -74,6 +102,68 @@ export default function DatabaseRiset() {
     funding: "",
     milestones: [] as string[]
   });
+
+  // ─── Meeting state ───────────────────────────────────────────────────────────
+  const [meetings, setMeetings] = useState<Record<string, MeetingNote[]>>({});
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  const [savingMeeting, setSavingMeeting] = useState(false);
+  const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
+  const [meetingForm, setMeetingForm] = useState({
+    title: "", meetingDate: "", location: "", agenda: "",
+    content: "", decisions: "", nextMeetingDate: ""
+  });
+  const [meetingAttendees, setMeetingAttendees] = useState<MeetingAttendee[]>([]);
+
+  const openMeetingModal = () => {
+    const projectMembers = selected ? (members[selected.id] || []) : [];
+    setMeetingAttendees(projectMembers.map((m: any) => ({
+      id: 0,
+      userId: m.user_id,
+      name: m.name,
+      roleLabel: m.peran || "",
+      attended: true
+    })));
+    setMeetingForm({ title: "", meetingDate: "", location: "", agenda: "", content: "", decisions: "", nextMeetingDate: "" });
+    setMeetingModalOpen(true);
+  };
+
+  const handleCreateMeeting = async () => {
+    if (!selected?.id) return;
+    if (!meetingForm.title.trim()) { setError("Judul notulensi wajib diisi."); return; }
+    if (!meetingForm.meetingDate) { setError("Tanggal rapat wajib diisi."); return; }
+    if (!meetingForm.content.trim()) { setError("Isi notulensi wajib diisi."); return; }
+    setSavingMeeting(true);
+    setError("");
+    try {
+      await apiPost(`/research/${selected.id}/meetings`, {
+        ...meetingForm,
+        attendees: meetingAttendees.filter(a => a.name.trim())
+      });
+      const updated = await apiGet<MeetingNote[]>(`/research/${selected.id}/meetings`);
+      setMeetings(prev => ({ ...prev, [selected.id]: updated || [] }));
+      setMeetingModalOpen(false);
+    } catch (err: any) {
+      setError(err?.message || "Gagal membuat notulensi.");
+    } finally {
+      setSavingMeeting(false);
+    }
+  };
+
+  const handleDeleteMeeting = async (meetingId: string) => {
+    if (!selected?.id) return;
+    if (!confirm("Hapus notulensi ini?")) return;
+    try {
+      await apiDelete(`/research/${selected.id}/meetings/${meetingId}`);
+      setMeetings(prev => ({ ...prev, [selected.id]: (prev[selected.id] || []).filter(m => m.id !== meetingId) }));
+      if (expandedMeeting === meetingId) setExpandedMeeting(null);
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus notulensi.");
+    }
+  };
+
+  const toggleAttendee = (userId: string) => {
+    setMeetingAttendees(prev => prev.map(a => a.userId === userId ? { ...a, attended: !a.attended } : a));
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -107,19 +197,21 @@ export default function DatabaseRiset() {
 
   useEffect(() => {
     if (selected?.id) {
-      const loadMembersAndAccess = async () => {
+      const loadProjectData = async () => {
         try {
-          const [memberData, accessData] = await Promise.all([
+          const [memberData, accessData, meetingData] = await Promise.all([
             apiGet<Array<any>>(`/research/${selected.id}/members`),
-            apiGet<Array<any>>(`/research/${selected.id}/board-access`)
+            apiGet<Array<any>>(`/research/${selected.id}/board-access`),
+            apiGet<MeetingNote[]>(`/research/${selected.id}/meetings`)
           ]);
           setMembers(prev => ({ ...prev, [selected.id]: memberData || [] }));
           setBoardAccess(prev => ({ ...prev, [selected.id]: (accessData || []).map((item: any) => item.user_id) }));
+          setMeetings(prev => ({ ...prev, [selected.id]: meetingData || [] }));
         } catch (err) {
-          console.error("Gagal memuat members/board access");
+          console.error("Gagal memuat data proyek");
         }
       };
-      loadMembersAndAccess();
+      loadProjectData();
     }
   }, [selected?.id]);
 
@@ -132,6 +224,7 @@ export default function DatabaseRiset() {
   const dosenInRiset    = selected ? (members[selected.id] || []).filter((m: any) => m.member_type === "Dosen") : [];
   const currentAccess   = selected ? (boardAccess[selected.id] || []) : [];
   const nonAccessMembers = mahasiswaInRiset.filter((m: any) => !currentAccess.includes(m.user_id));
+  const projectMeetings  = selected ? (meetings[selected.id] || []) : [];
 
   const revokeAccess = async (risetId: string, mid: string) => {
     await apiDelete(`/research/${risetId}/board-access/${mid}`);
@@ -200,7 +293,7 @@ export default function DatabaseRiset() {
 
   const handleDeleteResearch = async (risetId: string, risetTitle: string) => {
     if (!confirm(`Hapus riset "${risetTitle}"?\n\nSemua data terkait (anggota, milestone, logbook) akan ikut terhapus.`)) return;
-    
+
     try {
       await apiDelete(`/research/${risetId}`);
       const updatedResearch = await apiGet<ResearchProject[]>("/research");
@@ -225,7 +318,6 @@ export default function DatabaseRiset() {
         ? `${new Date(formData.startDate).toLocaleDateString("id-ID")} - ${new Date(formData.endDate).toLocaleDateString("id-ID")}`
         : null;
 
-      // Find supervisor's user_id for membership
       const supervisorLecturer = lecturers.find(l => l.id === formData.supervisorId);
       const supervisorUserId = supervisorLecturer?.user_id;
 
@@ -245,10 +337,7 @@ export default function DatabaseRiset() {
 
       await apiPost("/research", payload);
 
-      // Add supervisor and students as members
       const memberPromises = [];
-      
-      // Add supervisor as member (use user_id, not lecturer id)
       if (supervisorUserId) {
         memberPromises.push(
           apiPost(`/research/${risetId}/members`, {
@@ -260,7 +349,6 @@ export default function DatabaseRiset() {
         );
       }
 
-      // Add students as members
       for (const studentId of formData.studentIds) {
         memberPromises.push(
           apiPost(`/research/${risetId}/members`, {
@@ -274,36 +362,15 @@ export default function DatabaseRiset() {
       await Promise.all(memberPromises);
 
       const milestonePromises = formData.milestones
-        .map((label, index) => label.trim())
+        .map((label) => label.trim())
         .filter(Boolean)
-        .map((label, index) => apiPost(`/research/${risetId}/milestones`, {
-          label,
-          done: false,
-          sortOrder: index
-        }));
+        .map((label, index) => apiPost(`/research/${risetId}/milestones`, { label, done: false, sortOrder: index }));
 
-      if (milestonePromises.length > 0) {
-        await Promise.all(milestonePromises);
-      }
+      if (milestonePromises.length > 0) await Promise.all(milestonePromises);
 
-      // Reload data
       const updatedResearch = await apiGet<ResearchProject[]>("/research");
       setResearch(updatedResearch || []);
-
-      // Reset form
-      setFormData({
-        title: "",
-        description: "",
-        category: "",
-        status: "Aktif",
-        supervisorId: "",
-        studentIds: [],
-        startDate: "",
-        endDate: "",
-        mitra: "",
-        funding: "",
-        milestones: []
-      });
+      setFormData({ title: "", description: "", category: "", status: "Aktif", supervisorId: "", studentIds: [], startDate: "", endDate: "", mitra: "", funding: "", milestones: [] });
       setModalOpen(false);
       setStep(0);
     } catch (err: any) {
@@ -370,7 +437,6 @@ export default function DatabaseRiset() {
                       </div>
                       <div className="p-4">
                         <h3 className="font-black text-foreground text-sm leading-snug mb-1 line-clamp-2">{r.title}</h3>
-                        {/* Dosen list */}
                         <div className="flex flex-wrap gap-1 mb-2">
                           {dosen.map((d: any) => (
                             <span key={d.user_id} className={`text-[10px] font-black px-2 py-0.5 rounded ${d.peran === "Ketua Riset" || d.peran === "Pembimbing" ? "bg-[#E6FFE6] text-[#0AB600]" : "bg-slate-100 text-slate-600"}`}>
@@ -389,7 +455,6 @@ export default function DatabaseRiset() {
                             <span className="text-[10px] font-black text-[#0AB600]">{r.progress}%</span>
                           </div>
                         </div>
-                        {/* Progress Board Button */}
                         <button
                           onClick={(e) => { e.stopPropagation(); navigate("/operator/progress-board", { state: { projectIds: [r.id] } }); }}
                           className="w-full h-8 flex items-center justify-center gap-2 text-[11px] font-black text-white bg-[#0AB600] hover:bg-[#099800] rounded-[8px] transition-colors"
@@ -432,15 +497,15 @@ export default function DatabaseRiset() {
             )}
           </div>
 
-          {/* Detail Panel – Riset */}
+          {/* Detail Panel */}
           {selected && (
-            <div className="w-[330px] shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden max-h-[75vh] overflow-y-auto">
+            <div className="w-[340px] shrink-0 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden max-h-[75vh] overflow-y-auto">
               <div className="h-16 bg-gradient-to-br from-[#0AB600] to-[#065e00] relative">
                 <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle at 80% 20%, white 1px, transparent 1px)", backgroundSize: "12px 12px" }} />
-                <div className="absolute bottom-0 left-0 right-0 px-4 pb-0 flex gap-1">
-                  {(["info", "anggota", "akses"] as const).map(t => (
-                    <button key={t} onClick={() => setDetailTab(t)} className={`px-3 py-2 text-[11px] font-black transition-colors rounded-t-[8px] ${detailTab === t ? "bg-white text-foreground" : "text-white/70 hover:text-white"}`}>
-                      {t === "info" ? "Info" : t === "anggota" ? "Tim" : "Board Access"}
+                <div className="absolute bottom-0 left-0 right-0 px-3 pb-0 flex gap-0.5">
+                  {(["info", "anggota", "akses", "notulensi"] as const).map(t => (
+                    <button key={t} onClick={() => setDetailTab(t)} className={`px-2.5 py-1.5 text-[10px] font-black transition-colors rounded-t-[8px] ${detailTab === t ? "bg-white text-foreground" : "text-white/70 hover:text-white"}`}>
+                      {t === "info" ? "Info" : t === "anggota" ? "Tim" : t === "akses" ? "Akses" : "Notulensi"}
                     </button>
                   ))}
                 </div>
@@ -477,7 +542,6 @@ export default function DatabaseRiset() {
 
                 {detailTab === "anggota" && (
                   <div>
-                    {/* Dosen Section */}
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide flex items-center gap-1"><BookOpen size={10} /> Dosen Tim ({dosenInRiset.length})</p>
@@ -496,7 +560,6 @@ export default function DatabaseRiset() {
                         </div>
                       ))}
                     </div>
-                    {/* Mahasiswa Section */}
                     <div>
                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1"><Users size={10} /> Mahasiswa ({mahasiswaInRiset.length})</p>
                       {mahasiswaInRiset.map((m: any) => (
@@ -554,6 +617,101 @@ export default function DatabaseRiset() {
                     ))}
                   </div>
                 )}
+
+                {detailTab === "notulensi" && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                        <ClipboardList size={10} /> Notulensi ({projectMeetings.length})
+                      </p>
+                      <button
+                        onClick={openMeetingModal}
+                        className="text-[10px] font-black text-[#0AB600] hover:bg-green-50 px-2 py-0.5 rounded-[8px] transition-colors flex items-center gap-0.5"
+                      >
+                        <Plus size={9} strokeWidth={3} /> Tambah
+                      </button>
+                    </div>
+
+                    {projectMeetings.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <ClipboardList size={28} className="mx-auto mb-2 opacity-30" />
+                        <p className="text-xs font-bold">Belum ada notulensi</p>
+                        <p className="text-[10px] mt-0.5">Catat rapat pertama tim ini</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {projectMeetings.map(m => (
+                          <div key={m.id} className="border border-border rounded-[10px] overflow-hidden">
+                            <button
+                              onClick={() => setExpandedMeeting(expandedMeeting === m.id ? null : m.id)}
+                              className="w-full text-left px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-black text-foreground line-clamp-1">{m.title}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                      <Calendar size={9} /> {fmtDate(m.meetingDate)}
+                                    </span>
+                                    {m.location && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><MapPin size={9} /> {m.location}</span>}
+                                    <span className="text-[10px] text-muted-foreground">{m.attendeeCount} hadir</span>
+                                  </div>
+                                </div>
+                                {expandedMeeting === m.id ? <ChevronUp size={12} className="text-muted-foreground shrink-0 mt-0.5" /> : <ChevronDown size={12} className="text-muted-foreground shrink-0 mt-0.5" />}
+                              </div>
+                            </button>
+
+                            {expandedMeeting === m.id && (
+                              <div className="px-3 pb-3 border-t border-border bg-slate-50/50">
+                                {m.agenda && (
+                                  <div className="mt-2">
+                                    <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wide mb-0.5">Agenda</p>
+                                    <p className="text-[11px] text-foreground whitespace-pre-wrap">{m.agenda}</p>
+                                  </div>
+                                )}
+                                <div className="mt-2">
+                                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wide mb-0.5">Notulensi</p>
+                                  <p className="text-[11px] text-foreground whitespace-pre-wrap line-clamp-6">{m.content}</p>
+                                </div>
+                                {m.decisions && (
+                                  <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-[8px]">
+                                    <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Keputusan</p>
+                                    <p className="text-[11px] text-amber-900 whitespace-pre-wrap">{m.decisions}</p>
+                                  </div>
+                                )}
+                                {m.nextMeetingDate && (
+                                  <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-1">
+                                    <Calendar size={9} /> Rapat berikutnya: <span className="font-black text-foreground">{fmtDate(m.nextMeetingDate)}</span>
+                                  </div>
+                                )}
+                                {m.attendees.length > 0 && (
+                                  <div className="mt-2">
+                                    <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wide mb-1">Peserta</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {m.attendees.map(a => (
+                                        <span key={a.id} className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${a.attended ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400 line-through"}`}>
+                                          {a.name}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="mt-3 flex justify-end">
+                                  <button
+                                    onClick={() => handleDeleteMeeting(m.id)}
+                                    className="text-[10px] font-black text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded-[6px] transition-colors flex items-center gap-0.5"
+                                  >
+                                    <Trash2 size={10} /> Hapus
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -586,6 +744,90 @@ export default function DatabaseRiset() {
             <div className="px-6 pb-6 flex gap-3">
               <button onClick={() => setAddMemberModal(false)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50">Batal</button>
               <button disabled={savingMembers || selectedNewMembers.length === 0} onClick={handleAddMembers} className="flex-1 h-10 bg-[#0AB600] hover:bg-[#099800] disabled:bg-[#8ad98a] text-white text-sm font-black rounded-[10px]">{savingMembers ? "Menyimpan..." : "Tambahkan"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Meeting Notes Modal */}
+      {meetingModalOpen && selected && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setMeetingModalOpen(false)}>
+          <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-foreground">Tambah Notulensi</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{selected.title}</p>
+              </div>
+              <button onClick={() => setMeetingModalOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground"><X size={16} /></button>
+            </div>
+
+            <div className="p-6 flex flex-col gap-4">
+              {/* Info Rapat */}
+              <div>
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-3">Info Rapat</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-xs font-black text-foreground block mb-1">Judul Rapat *</label>
+                    <input value={meetingForm.title} onChange={e => setMeetingForm(p => ({ ...p, title: e.target.value }))} placeholder="Rapat Progres Sprint 3..." className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-foreground block mb-1">Tanggal Rapat *</label>
+                    <input type="date" value={meetingForm.meetingDate} onChange={e => setMeetingForm(p => ({ ...p, meetingDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-foreground block mb-1">Lokasi</label>
+                    <input value={meetingForm.location} onChange={e => setMeetingForm(p => ({ ...p, location: e.target.value }))} placeholder="Online / Lab STAS-RG" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs font-black text-foreground block mb-1">Agenda</label>
+                    <textarea value={meetingForm.agenda} onChange={e => setMeetingForm(p => ({ ...p, agenda: e.target.value }))} rows={2} placeholder="Poin-poin agenda rapat..." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all resize-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Konten Notulensi */}
+              <div>
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-3">Konten</p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="text-xs font-black text-foreground block mb-1">Isi Notulensi *</label>
+                    <textarea value={meetingForm.content} onChange={e => setMeetingForm(p => ({ ...p, content: e.target.value }))} rows={5} placeholder="Catatan lengkap jalannya rapat..." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all resize-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-foreground block mb-1">Keputusan / Action Items</label>
+                    <textarea value={meetingForm.decisions} onChange={e => setMeetingForm(p => ({ ...p, decisions: e.target.value }))} rows={3} placeholder="Keputusan yang diambil dan tindak lanjut..." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all resize-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-foreground block mb-1">Rapat Berikutnya</label>
+                    <input type="date" value={meetingForm.nextMeetingDate} onChange={e => setMeetingForm(p => ({ ...p, nextMeetingDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Peserta */}
+              {meetingAttendees.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2">Peserta ({meetingAttendees.filter(a => a.attended).length} hadir)</p>
+                  <div className="flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
+                    {meetingAttendees.map(a => (
+                      <label key={a.userId} className="flex items-center gap-2.5 p-2 rounded-[8px] border border-border hover:bg-slate-50 cursor-pointer transition-colors">
+                        <input type="checkbox" checked={a.attended} onChange={() => toggleAttendee(a.userId!)} className="accent-[#0AB600] shrink-0" />
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 bg-indigo-600 text-white">{a.name?.charAt(0)?.toUpperCase()}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-black text-foreground truncate">{a.name}</p>
+                          {a.roleLabel && <p className="text-[9px] text-muted-foreground">{a.roleLabel}</p>}
+                        </div>
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${a.attended ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{a.attended ? "Hadir" : "Tidak"}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 pb-6 flex gap-3">
+              <button onClick={() => setMeetingModalOpen(false)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50">Batal</button>
+              <button disabled={savingMeeting} onClick={handleCreateMeeting} className="flex-1 h-10 bg-[#0AB600] hover:bg-[#099800] disabled:bg-green-400 text-white text-sm font-black rounded-[10px]">{savingMeeting ? "Menyimpan..." : "Simpan Notulensi"}</button>
             </div>
           </div>
         </div>

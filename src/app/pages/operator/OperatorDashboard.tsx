@@ -4,7 +4,7 @@ import { OperatorLayout } from "../../components/OperatorLayout";
 import {
   Users, FlaskConical, CalendarCheck, FileText, BookOpen, Kanban,
   AlertTriangle, Check, X, ChevronRight, Clock,
-  TrendingDown, UserX, AlertCircle, ArrowRight, Bell,
+  TrendingDown, UserX, AlertCircle, ArrowRight, Bell, ClipboardList,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../lib/api";
 
@@ -261,7 +261,9 @@ export default function OperatorDashboard() {
           category: item.category || "-",
           description: item.description || "-",
           funding: item.funding || "-",
-          milestones: []
+          milestones: [],
+          meetingCount: Number(item.meeting_count) || 0,
+          lastMeetingDate: item.last_meeting_date || null
         }));
 
         const yesterday = new Date();
@@ -520,15 +522,27 @@ export default function OperatorDashboard() {
               </div>
               <div className="divide-y divide-border">
                 {researches.map(r => (
-                  <div key={r.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-black text-foreground line-clamp-1">{r.title}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{r.supervisor} · {r.mahasiswaCount + r.dosenCount} anggota</p>
+                  <div key={r.id} className="px-5 py-3.5 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-foreground line-clamp-1">{r.title}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{r.supervisor} · {r.mahasiswaCount + r.dosenCount} anggota</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="w-24 h-1.5 bg-slate-100 rounded-full"><div className="bg-[#0AB600] h-1.5 rounded-full" style={{ width: `${r.progress}%` }} /></div>
+                        <span className="text-[10px] font-black text-[#0AB600] w-8 text-right">{r.progress}%</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${r.status === "Aktif" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{r.status}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="w-24 h-1.5 bg-slate-100 rounded-full"><div className="bg-[#0AB600] h-1.5 rounded-full" style={{ width: `${r.progress}%` }} /></div>
-                      <span className="text-[10px] font-black text-[#0AB600] w-8 text-right">{r.progress}%</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${r.status === "Aktif" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{r.status}</span>
+                    <div className="flex items-center gap-1 mt-1.5 text-[10px] text-muted-foreground">
+                      <ClipboardList size={9} className="shrink-0" />
+                      <span>{r.meetingCount} notulensi</span>
+                      {r.lastMeetingDate && (
+                        <>
+                          <span className="mx-1">·</span>
+                          <span>Terakhir: <span className="font-black text-foreground">{new Date(r.lastMeetingDate).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span></span>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
