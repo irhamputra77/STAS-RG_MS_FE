@@ -546,15 +546,23 @@ function PasswordInput({
   );
 }
 
-function PasswordStrength({ password }: { password: string }) {
-  const checks = [
-    { label: "Min. 8 karakter", ok: password.length >= 8 },
-    { label: "Huruf besar", ok: /[A-Z]/.test(password) },
-    { label: "Angka", ok: /[0-9]/.test(password) },
-    { label: "Karakter khusus", ok: /[^a-zA-Z0-9]/.test(password) },
-  ];
+const PASSWORD_RULES = [
+  { label: "Min. 8 karakter", test: (password: string) => password.length >= 8 },
+  { label: "Huruf besar", test: (password: string) => /[A-Z]/.test(password) },
+  { label: "Angka", test: (password: string) => /[0-9]/.test(password) },
+  { label: "Karakter khusus", test: (password: string) => /[^a-zA-Z0-9]/.test(password) },
+];
 
-  const score = checks.filter((item) => item.ok).length;
+function getPasswordScore(password: string) {
+  return PASSWORD_RULES.filter((item) => item.test(password)).length;
+}
+
+function PasswordStrength({ password }: { password: string }) {
+  const checks = PASSWORD_RULES.map((item) => ({
+    label: item.label,
+    ok: item.test(password),
+  }));
+  const score = getPasswordScore(password);
 
   const levels = [
     { label: "Lemah", color: "bg-red-500", textColor: "text-red-600" },
@@ -611,20 +619,65 @@ function TabPassword() {
   const [current, setCurrent] = useState("");
   const [newPass, setNewPass] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const match = newPass === confirm && confirm.length > 0;
+  const passwordScore = getPasswordScore(newPass);
+  const hasOuterWhitespace = newPass.length > 0 && newPass !== newPass.trim();
+  const canSubmit =
+    !saving &&
+    current.trim().length > 0 &&
+    match &&
+    !hasOuterWhitespace &&
+    passwordScore >= 3;
 
   const savePassword = async () => {
-    if (!user?.id || !match) return;
+    setError("");
+    setSuccess("");
 
-    await apiPut(`/profile/${encodeURIComponent(user.id)}/password`, {
-      oldPassword: current,
-      newPassword: newPass,
-    });
+    if (!user?.id) {
+      setError("Sesi pengguna tidak ditemukan. Silakan login ulang.");
+      return;
+    }
 
-    setCurrent("");
-    setNewPass("");
-    setConfirm("");
+    if (!current.trim()) {
+      setError("Password saat ini wajib diisi.");
+      return;
+    }
+
+    if (hasOuterWhitespace) {
+      setError("Password baru tidak boleh diawali atau diakhiri spasi.");
+      return;
+    }
+
+    if (passwordScore < 3) {
+      setError("Password baru masih terlalu lemah. Gunakan minimal 8 karakter serta kombinasikan huruf besar, angka, atau karakter khusus.");
+      return;
+    }
+
+    if (!match) {
+      setError("Konfirmasi password belum cocok.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await apiPut(`/profile/${encodeURIComponent(user.id)}/password`, {
+        oldPassword: current,
+        newPassword: newPass,
+      });
+
+      setCurrent("");
+      setNewPass("");
+      setConfirm("");
+      setSuccess("Password berhasil diperbarui.");
+    } catch (err: any) {
+      setError(err?.message || "Gagal memperbarui password.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -633,6 +686,17 @@ function TabPassword() {
       <SectionDesc>Gunakan password yang kuat dan belum pernah dipakai di platform lain.</SectionDesc>
 
       <div className="flex flex-col gap-5 max-w-[480px]">
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            {success}
+          </div>
+        )}
+
         <PasswordInput label="Password Saat Ini" value={current} onChange={setCurrent} placeholder="Masukkan password lama" />
 
         <div className="h-px bg-border" />
@@ -640,6 +704,12 @@ function TabPassword() {
         <div>
           <PasswordInput label="Password Baru" value={newPass} onChange={setNewPass} placeholder="Buat password baru" />
           {newPass.length > 0 && <PasswordStrength password={newPass} />}
+          {hasOuterWhitespace && (
+            <div className="mt-2 flex items-center gap-1.5 text-xs font-bold text-red-500">
+              <X size={13} strokeWidth={3} />
+              Password tidak boleh diawali atau diakhiri spasi
+            </div>
+          )}
         </div>
 
         <div>
@@ -665,7 +735,7 @@ function TabPassword() {
         </div>
 
         <div className="pt-2">
-          <SaveButton label="Perbarui Password" onClick={savePassword} />
+          <SaveButton label={saving ? "Memperbarui..." : "Perbarui Password"} onClick={savePassword} disabled={!canSubmit} />
         </div>
       </div>
     </div>

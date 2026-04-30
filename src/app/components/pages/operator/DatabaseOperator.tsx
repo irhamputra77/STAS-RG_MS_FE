@@ -166,6 +166,11 @@ export default function DatabaseOperator() {
       return;
     }
 
+    if (form.password.trim() && form.password.trim().length < 6) {
+      setError("Password minimal 6 karakter.");
+      return;
+    }
+
     try {
       setSaving(true);
       setError("");
@@ -483,7 +488,7 @@ export default function DatabaseOperator() {
                   type="password"
                   value={form.password}
                   onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-                  placeholder={modal === "add" ? "Password awal" : "Kosongkan jika tidak diubah"}
+                  placeholder={modal === "add" ? "Minimal 6 karakter" : "Kosongkan jika tidak diubah"}
                   className="h-10 w-full rounded-[10px] border border-border px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-300"
                 />
               </div>
