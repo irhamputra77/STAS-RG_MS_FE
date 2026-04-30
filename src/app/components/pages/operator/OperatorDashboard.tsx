@@ -51,6 +51,9 @@ type AttendanceMonitorToday = {
   absentIds?: string[];
   reportedAbsentIds?: string[];
   noInformationIds?: string[];
+  magangUnderHoursIds?: string[];
+  magangMissingCheckoutIds?: string[];
+  magangLockedIds?: string[];
 };
 
 type StudentAccessLock = {
@@ -61,6 +64,8 @@ type StudentAccessLock = {
   nim?: string;
   date?: string;
   reason?: string;
+  reasonLabel?: string;
+  reasonDetail?: string;
   status?: string;
   locked?: boolean;
   active?: boolean;
@@ -167,9 +172,27 @@ function displayStatus(status: string) {
   return status.replace("Operator", "Admin");
 }
 
-function getLockReasonLabel(reason?: string | null) {
-  if (reason === "ATTENDANCE_ABSENT") return "Tidak Hadir";
-  return reason || "-";
+const ACCESS_LOCK_REASON_LABELS: Record<string, string> = {
+  ATTENDANCE_ABSENT: "Belum Ada Informasi Absensi",
+  WORK_HOURS_UNDER_8: "Jam Kerja Magang Kurang dari 8 Jam",
+  CHECKOUT_MISSING_22: "Belum Checkout Sampai 22.00 WIB",
+};
+
+const ACCESS_LOCK_REASON_MESSAGES: Record<string, string> = {
+  ATTENDANCE_ABSENT: "Belum ada informasi absensi setelah pukul 10.00 WIB.",
+  WORK_HOURS_UNDER_8: "Durasi kerja Magang hari ini kurang dari 8 jam.",
+  CHECKOUT_MISSING_22: "Mahasiswa Magang belum checkout sampai pukul 22.00 WIB.",
+};
+
+function getLockReasonLabel(reason?: string | null, reasonLabel?: string | null) {
+  if (reasonLabel) return reasonLabel;
+  const key = String(reason || "");
+  return ACCESS_LOCK_REASON_LABELS[key] || reason || "-";
+}
+
+function getLockReasonDetail(lock?: StudentAccessLock | null) {
+  if (!lock) return "";
+  return lock.reasonDetail || ACCESS_LOCK_REASON_MESSAGES[String(lock.reason || "")] || "";
 }
 
 export default function OperatorDashboard() {
@@ -489,7 +512,9 @@ export default function OperatorDashboard() {
             studentInitials: item.student_initials || item.studentInitials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
             nim: item.nim || item.student_nim || "-",
             date: item.date || item.reference_date || item.referenceDate || null,
-            reason: item.reason || item.lock_reason || item.lockReason || "Tidak hadir",
+            reason: item.reason || item.lock_reason || item.lockReason || "ATTENDANCE_ABSENT",
+            reasonLabel: item.reasonLabel || item.reason_label || null,
+            reasonDetail: item.reasonDetail || item.reason_detail || item.message || null,
             status: item.status || "LOCKED",
             locked: Boolean(item.locked ?? true),
             active: Boolean(item.active ?? true),
@@ -647,6 +672,12 @@ export default function OperatorDashboard() {
 
   const presentIdSet = new Set((attendanceMonitor?.presentIds || []).map(String));
   const hadirHariIniMhs = students.filter((item) => presentIdSet.has(String(item.id)));
+  const getStudentById = (studentId: string) =>
+    students.find((item) => String(item.id) === String(studentId));
+  const getStudentTypeLabel = (studentId: string) =>
+    getStudentById(studentId)?.tipe || "Mahasiswa";
+  const isMagangStudent = (studentId: string) =>
+    String(getStudentTypeLabel(studentId)).trim().toLowerCase() === "magang";
   const getAccessLockForStudent = (studentId: string) =>
     accessLocks.find((item) => String(item.studentId) === String(studentId));
   const lockedAbsentMhs: AttendanceAbsentItem[] = accessLocks.map((lock) => ({
@@ -835,32 +866,45 @@ export default function OperatorDashboard() {
               </div>
             ) : (
               <div className="max-h-[360px] overflow-y-auto">
-                {tidakHadirMhs.map(m => (
-                  <div key={m.id} className="px-4 py-3 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-black text-foreground leading-snug break-words">{m.studentName}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {m.referenceDate ? `${getLockReasonLabel(m.accessLock?.reason || "ATTENDANCE_ABSENT")} - ${m.referenceDate}` : `Lewat batas presensi ${lockVisibleAfter} WIB`}
-                        </p>
-                        {m.accessLock?.lockedAt && (
-                          <p className="text-[10px] font-bold text-red-500 mt-0.5">Dikunci: {new Date(m.accessLock.lockedAt).toLocaleString("id-ID")}</p>
-                        )}
+                {tidakHadirMhs.map(m => {
+                  const studentType = getStudentTypeLabel(m.studentId);
+                  const isMagang = isMagangStudent(m.studentId);
+
+                  return (
+                    <div key={m.id} className="px-4 py-3 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="text-xs font-black text-foreground leading-snug break-words">{m.studentName}</p>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-slate-600">{studentType}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {m.referenceDate ? `${m.accessLock?.reasonLabel || getLockReasonLabel(m.accessLock?.reason || "ATTENDANCE_ABSENT")} - ${m.referenceDate}` : `Lewat batas presensi ${lockVisibleAfter} WIB`}
+                          </p>
+                          {m.accessLock?.lockedAt && (
+                            <p className="text-[10px] font-bold text-red-500 mt-0.5">Dikunci: {new Date(m.accessLock.lockedAt).toLocaleString("id-ID")}</p>
+                          )}
+                          {m.accessLock && isMagang && (
+                            <p className="mt-2 rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[10px] font-bold leading-snug text-red-600">
+                              Akses ditangguhkan. Detail dan pembukaan akses tersedia di panel Akses Ditangguhkan.
+                            </p>
+                          )}
+                        </div>
                       </div>
+                      {m.accessLock && !isMagang && (
+                        <div className="mt-3 flex flex-wrap gap-2 pl-11">
+                          <button
+                            onClick={() => handleUnlockAccess(m.accessLock!)}
+                            className="h-7 rounded-[7px] bg-emerald-500 px-2.5 text-[9px] font-black text-white transition-colors hover:bg-emerald-600"
+                          >
+                            Buka Akses
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {m.accessLock && (
-                      <div className="mt-3 flex flex-wrap gap-2 pl-11">
-                        <button
-                          onClick={() => handleUnlockAccess(m.accessLock!)}
-                          className="h-7 rounded-[7px] bg-emerald-500 px-2.5 text-[9px] font-black text-white transition-colors hover:bg-emerald-600"
-                        >
-                          Buka Akses
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -918,8 +962,14 @@ export default function OperatorDashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground leading-snug break-words">{lock.studentName}</p>
-                        <p className="text-[10px] text-muted-foreground">{lock.nim}</p>
-                        <p className="text-[10px] font-bold text-rose-700 mt-0.5">{getLockReasonLabel(lock.reason)}</p>
+                        <p className="text-[10px] text-muted-foreground">{lock.nim} · {getStudentTypeLabel(lock.studentId)}</p>
+                        <div className="mt-1.5 rounded-[9px] border border-rose-100 bg-rose-50 px-2.5 py-2">
+                          <p className="text-[9px] font-black uppercase tracking-wide text-rose-500">Alasan Ditangguhkan</p>
+                          <p className="text-[10px] font-black text-rose-700 mt-0.5">{getLockReasonLabel(lock.reason, lock.reasonLabel)}</p>
+                        </div>
+                        {getLockReasonDetail(lock) && (
+                          <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">{getLockReasonDetail(lock)}</p>
+                        )}
                         {lock.lockedAt && (
                           <p className="text-[10px] text-muted-foreground mt-0.5">
                             {new Date(lock.lockedAt).toLocaleString("id-ID")}
