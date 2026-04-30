@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { AppNotification, NotificationType, useNotifications } from "../../hooks/useNotifications";
-import { apiGet } from "../../lib/api";
+import { apiGet, apiPost } from "../../lib/api";
 import { ProfileAvatar } from "../molecules/ProfileAvatar";
 import { useSyncedStoredUser } from "../../lib/userProfileSync";
 
@@ -378,6 +378,64 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     return () => window.removeEventListener("stas:access-locked", onAccessLocked);
   }, [user?.role]);
 
+  // Auto-logout mahasiswa tepat pukul 22:00 WIB agar session tidak bisa digunakan untuk check-in
+  useEffect(() => {
+    if (user?.role !== "mahasiswa") return;
+
+    const CUTOFF_HOUR = 22;
+
+    const getJakartaHour = () => {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Jakarta",
+        hour: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date());
+      return parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+    };
+
+    const msUntilCutoff = () => {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Jakarta",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date());
+      const h = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+      const m = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+      const s = parseInt(parts.find((p) => p.type === "second")?.value ?? "0", 10);
+      const currentSec = h * 3600 + m * 60 + s;
+      const cutoffSec = CUTOFF_HOUR * 3600;
+      return currentSec >= cutoffSec ? 0 : (cutoffSec - currentSec) * 1000;
+    };
+
+    const doAutoLogout = () => {
+      void apiPost("/auth/logout", {}).catch(() => {});
+      logout();
+      navigate("/login");
+    };
+
+    if (getJakartaHour() >= CUTOFF_HOUR) {
+      doAutoLogout();
+      return;
+    }
+
+    const timer = window.setTimeout(doAutoLogout, msUntilCutoff());
+
+    const checkExpiry = () => {
+      if (getJakartaHour() >= CUTOFF_HOUR) doAutoLogout();
+    };
+
+    window.addEventListener("focus", checkExpiry);
+    document.addEventListener("visibilitychange", checkExpiry);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", checkExpiry);
+      document.removeEventListener("visibilitychange", checkExpiry);
+    };
+  }, [user?.role, logout, navigate]);
+
   const navItems = [
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Kehadiran (GPS)", path: "/attendance", icon: MapPin },
@@ -389,6 +447,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   ];
 
   const handleLogout = () => {
+    void apiPost("/auth/logout", {}).catch(() => {});
     logout();
     navigate("/login");
   };

@@ -59,6 +59,16 @@ const DEFAULT_GPS_POLICY: GpsPolicy = {
 };
 
 const EXTREME_GPS_ACCURACY_THRESHOLD = 1000;
+const CHECK_IN_CUTOFF_HOUR = 22; // 22:00 WIB
+
+const isAfterCheckInCutoff = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  return parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10) >= CHECK_IN_CUTOFF_HOUR;
+};
 
 const normalizeNumber = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -460,6 +470,11 @@ export default function Attendance() {
     if (isDesktopAttendanceBlocked) {
       setGpsWarning("");
       setError("Absensi GPS mahasiswa harus dilakukan dari HP/perangkat mobile dengan Precise Location atau High Accuracy aktif.");
+      return;
+    }
+    if (todayData.status !== "Berlangsung" && isAfterCheckInCutoff()) {
+      setGpsWarning("");
+      setError("Check-in tidak diizinkan setelah pukul 22.00 WIB. Silakan coba besok.");
       return;
     }
     if (todayData.status === "Berlangsung") {
