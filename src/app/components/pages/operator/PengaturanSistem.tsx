@@ -3,6 +3,7 @@ import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Globe, MapPin, CalendarOff, Bell, Save, Check, AlertTriangle, Crosshair } from "lucide-react";
 import { apiGet, apiPatch } from "../../../lib/api";
+import { HolidayItem, normalizeHolidays } from "../../../lib/holidays";
 
 const TABS = [
   { id: "umum", label: "Umum", icon: Globe },
@@ -123,8 +124,11 @@ export default function PengaturanSistem() {
     magangWorkDays: "5",
     earlyCheckoutWarning: true,
     autoCheckoutEnabled: true,
-    autoCheckoutTime: "22:00"
+    autoCheckoutTime: "22:00",
+    excludeHolidaysFromWorkdays: true,
+    holidays: [] as HolidayItem[]
   });
+  const [holidayForm, setHolidayForm] = useState({ date: "", name: "" });
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [gpsUpdating, setGpsUpdating] = useState(false);
@@ -185,7 +189,9 @@ export default function PengaturanSistem() {
           magangWorkDays: String(data?.attendanceRules?.magangWorkDays || "5"),
           earlyCheckoutWarning: Boolean(data?.attendanceRules?.earlyCheckoutWarning ?? true),
           autoCheckoutEnabled: Boolean(data?.attendanceRules?.autoCheckoutEnabled ?? true),
-          autoCheckoutTime: String(data?.attendanceRules?.autoCheckoutTime || "22:00")
+          autoCheckoutTime: String(data?.attendanceRules?.autoCheckoutTime || "22:00"),
+          excludeHolidaysFromWorkdays: Boolean(data?.attendanceRules?.excludeHolidaysFromWorkdays ?? true),
+          holidays: normalizeHolidays(data?.attendanceRules?.holidays || data?.holidays)
         });
 
       } catch (err: any) {
@@ -467,7 +473,9 @@ export default function PengaturanSistem() {
           magangWorkDays: String(latest?.attendanceRules?.magangWorkDays || attendanceRules.magangWorkDays),
           earlyCheckoutWarning: Boolean(latest?.attendanceRules?.earlyCheckoutWarning ?? attendanceRules.earlyCheckoutWarning),
           autoCheckoutEnabled: Boolean(latest?.attendanceRules?.autoCheckoutEnabled ?? attendanceRules.autoCheckoutEnabled),
-          autoCheckoutTime: String(latest?.attendanceRules?.autoCheckoutTime || attendanceRules.autoCheckoutTime)
+          autoCheckoutTime: String(latest?.attendanceRules?.autoCheckoutTime || attendanceRules.autoCheckoutTime),
+          excludeHolidaysFromWorkdays: Boolean(latest?.attendanceRules?.excludeHolidaysFromWorkdays ?? attendanceRules.excludeHolidaysFromWorkdays),
+          holidays: normalizeHolidays(latest?.attendanceRules?.holidays || attendanceRules.holidays)
         });
         setWarning("");
         window.dispatchEvent(new CustomEvent("stas:settings-updated", { detail: latest }));
@@ -508,6 +516,33 @@ export default function PengaturanSistem() {
     setShowLowAccuracyOptions(false);
     setWarning("Silakan isi latitude dan longitude secara manual berdasarkan titik peta yang benar, lalu klik Simpan Perubahan.");
     latitudeInputRef.current?.focus();
+  };
+
+  const addHoliday = () => {
+    const date = holidayForm.date.trim();
+    const name = holidayForm.name.trim() || "Tanggal Merah";
+    if (!date) {
+      setWarning("Tanggal libur wajib diisi sebelum ditambahkan.");
+      return;
+    }
+
+    setAttendanceRules((prev) => {
+      const nextHoliday = { date, name, type: "custom", active: true };
+      const holidays = normalizeHolidays([
+        ...prev.holidays.filter((holiday) => holiday.date !== date),
+        nextHoliday,
+      ]);
+      return { ...prev, holidays };
+    });
+    setHolidayForm({ date: "", name: "" });
+    setWarning("Tanggal merah ditambahkan ke daftar. Klik Simpan Perubahan agar tersimpan di server.");
+  };
+
+  const removeHoliday = (date: string) => {
+    setAttendanceRules((prev) => ({
+      ...prev,
+      holidays: prev.holidays.filter((holiday) => holiday.date !== date),
+    }));
   };
 
   const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -808,6 +843,57 @@ export default function PengaturanSistem() {
                     <p className="mt-2 text-[11px] text-muted-foreground">
                       Sistem akan otomatis checkout mahasiswa yang masih aktif pada pukul {attendanceRules.autoCheckoutTime} WIB.
                     </p>
+                  </div>
+                  <div className="mt-4 rounded-[12px] border border-rose-200 bg-rose-50 p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black text-rose-700">Tanggal Merah / Libur Kampus</p>
+                        <p className="mt-1 text-[11px] text-rose-700/80">Hari libur tidak dihitung sebagai hari wajib hadir, tidak memicu status tidak hadir, dan absensi mahasiswa akan dikunci.</p>
+                      </div>
+                      <label className="flex shrink-0 items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={attendanceRules.excludeHolidaysFromWorkdays}
+                          onChange={(e) => setAttendanceRules((prev) => ({ ...prev, excludeHolidaysFromWorkdays: e.target.checked }))}
+                          className="accent-rose-600"
+                        />
+                        <span className="text-[11px] font-black text-rose-700">Kecualikan</span>
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[150px_minmax(0,1fr)_auto]">
+                      <input
+                        type="date"
+                        value={holidayForm.date}
+                        onChange={(e) => setHolidayForm((prev) => ({ ...prev, date: e.target.value }))}
+                        className="h-9 rounded-[8px] border border-rose-200 bg-white px-3 text-xs font-bold text-foreground outline-none focus:ring-2 focus:ring-rose-200"
+                      />
+                      <input
+                        value={holidayForm.name}
+                        onChange={(e) => setHolidayForm((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Nama libur, contoh: Idul Fitri"
+                        className="h-9 rounded-[8px] border border-rose-200 bg-white px-3 text-xs font-bold text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-rose-200"
+                      />
+                      <button type="button" onClick={addHoliday} className="h-9 rounded-[8px] bg-rose-600 px-3 text-xs font-black text-white hover:bg-rose-700">
+                        Tambah
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2">
+                      {attendanceRules.holidays.length > 0 ? attendanceRules.holidays.map((holiday) => (
+                        <div key={holiday.date} className="flex items-center justify-between gap-3 rounded-[9px] border border-rose-200 bg-white px-3 py-2">
+                          <div>
+                            <p className="text-xs font-black text-foreground">{holiday.name}</p>
+                            <p className="text-[10px] font-bold text-muted-foreground">{holiday.date}</p>
+                          </div>
+                          <button type="button" onClick={() => removeHoliday(holiday.date)} className="text-[10px] font-black text-rose-600 hover:text-rose-800">
+                            Hapus
+                          </button>
+                        </div>
+                      )) : (
+                        <p className="rounded-[9px] border border-dashed border-rose-200 bg-white/70 px-3 py-2 text-[11px] font-semibold text-rose-700">
+                          Belum ada tanggal merah yang diatur manual.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <SaveRow onSave={saveSystemSettings} />

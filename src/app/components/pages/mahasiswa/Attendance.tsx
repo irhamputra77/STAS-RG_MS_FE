@@ -4,6 +4,7 @@ import { Layout } from "../../templates/Layout";
 import { AlertTriangle, MapPin, Clock, LogIn, LogOut, Search } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { ApiError, apiGet, apiPost, getStoredUser } from "../../../lib/api";
+import { HolidayItem, findHolidayForDate, normalizeHolidays } from "../../../lib/holidays";
 
 type GpsInfo = {
   latitude: number;
@@ -175,8 +176,11 @@ export default function Attendance() {
     magangMinCheckoutHours: 8,
     earlyCheckoutWarning: true,
     autoCheckoutEnabled: true,
-    autoCheckoutTime: "22:00"
+    autoCheckoutTime: "22:00",
+    excludeHolidaysFromWorkdays: true,
+    holidays: [] as HolidayItem[]
   });
+  const [todayHoliday, setTodayHoliday] = useState<HolidayItem | null>(null);
   const [studentType, setStudentType] = useState<string>(String(user?.tipe || ""));
   const [lastGpsAccuracy, setLastGpsAccuracy] = useState<number | null>(null);
   const [lastGpsResult, setLastGpsResult] = useState<GpsResult | null>(null);
@@ -213,12 +217,20 @@ export default function Attendance() {
         setStudentType(String(data?.student?.tipe || data?.studentType));
       }
       if (data?.attendanceRules) {
+        const holidays = normalizeHolidays(data.attendanceRules.holidays || data.holidays);
+        const holidayFromResponse =
+          typeof data.todayHoliday === "string"
+            ? { date: getJakartaDateKey(), name: data.todayHoliday, type: "system", active: true }
+            : normalizeHolidays(data.todayHoliday ? [data.todayHoliday] : [])[0] || null;
         setAttendanceRules({
           magangMinCheckoutHours: Number(data.attendanceRules.magangMinCheckoutHours) || 8,
           earlyCheckoutWarning: Boolean(data.attendanceRules.earlyCheckoutWarning ?? true),
           autoCheckoutEnabled: Boolean(data.attendanceRules.autoCheckoutEnabled ?? true),
-          autoCheckoutTime: String(data.attendanceRules.autoCheckoutTime || "22:00")
+          autoCheckoutTime: String(data.attendanceRules.autoCheckoutTime || "22:00"),
+          excludeHolidaysFromWorkdays: Boolean(data.attendanceRules.excludeHolidaysFromWorkdays ?? true),
+          holidays
         });
+        setTodayHoliday(holidayFromResponse || findHolidayForDate(holidays));
       }
       setError("");
       return nextGpsPolicy;
@@ -279,12 +291,16 @@ export default function Attendance() {
         ]);
 
         if (!active) return;
+        const holidays = normalizeHolidays(settings?.attendanceRules?.holidays || settings?.holidays);
         setAttendanceRules({
           magangMinCheckoutHours: Number(settings?.attendanceRules?.magangMinCheckoutHours) || 8,
           earlyCheckoutWarning: Boolean(settings?.attendanceRules?.earlyCheckoutWarning ?? true),
           autoCheckoutEnabled: Boolean(settings?.attendanceRules?.autoCheckoutEnabled ?? true),
-          autoCheckoutTime: String(settings?.attendanceRules?.autoCheckoutTime || "22:00")
+          autoCheckoutTime: String(settings?.attendanceRules?.autoCheckoutTime || "22:00"),
+          excludeHolidaysFromWorkdays: Boolean(settings?.attendanceRules?.excludeHolidaysFromWorkdays ?? true),
+          holidays
         });
+        setTodayHoliday((current) => current || findHolidayForDate(holidays));
         if (profile?.tipe) {
           setStudentType(String(profile.tipe));
         }
@@ -467,6 +483,14 @@ export default function Attendance() {
 
   const handleAttendanceAction = async (forceEarlyCheckout = false) => {
     if (!user?.id || submitting || checkingLogbook) return;
+    const holidayToday = attendanceRules.excludeHolidaysFromWorkdays
+      ? todayHoliday || findHolidayForDate(attendanceRules.holidays, getJakartaDateKey())
+      : null;
+    if (holidayToday && todayData.status !== "Berlangsung") {
+      setGpsWarning("");
+      setError(`Hari ini libur (${holidayToday.name}). Absensi tidak wajib dan tidak dihitung tidak hadir.`);
+      return;
+    }
     if (isDesktopAttendanceBlocked) {
       setGpsWarning("");
       setError("Absensi GPS mahasiswa harus dilakukan dari HP/perangkat mobile dengan Precise Location atau High Accuracy aktif.");
@@ -607,13 +631,14 @@ export default function Attendance() {
     ? Math.round(((chartData.find(d => d.name === "Hadir")?.value || 0) / totalDays) * 100)
     : 0;
 
-  const filters = ["Semua", "Hadir", "Tidak Hadir", "Cuti"];
+  const filters = ["Semua", "Hadir", "Tidak Hadir", "Cuti", "Libur"];
 
   const filteredData = historyData.filter((row) => {
     if (activeFilter === "Semua") return true;
     if (activeFilter === "Hadir") return row.status === "Hadir";
     if (activeFilter === "Tidak Hadir") return row.status === "Tidak Hadir";
     if (activeFilter === "Cuti") return row.status === "Cuti";
+    if (activeFilter === "Libur") return row.status === "Libur";
     return true;
   });
 
@@ -625,6 +650,10 @@ export default function Attendance() {
         return "text-destructive bg-destructive/10 border-destructive/20";
       case "amber":
         return "text-accent bg-accent/10 border-accent/20";
+      case "rose":
+        return "text-rose-700 bg-rose-50 border-rose-200";
+      case "sky":
+        return "text-sky-700 bg-sky-50 border-sky-200";
       case "gray":
         return "text-muted-foreground bg-muted border-border";
       default:
@@ -650,6 +679,10 @@ export default function Attendance() {
       radius: gpsPolicy.radiusMeters
     }
     : gpsInfo;
+  const currentHoliday = attendanceRules.excludeHolidaysFromWorkdays
+    ? todayHoliday || findHolidayForDate(attendanceRules.holidays)
+    : null;
+  const holidayCheckInBlocked = Boolean(currentHoliday && todayData.status !== "Berlangsung");
 
   return (
     <Layout title="Kehadiran (GPS)">
@@ -734,6 +767,12 @@ export default function Attendance() {
             {error}
           </div>
         )}
+        {currentHoliday && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+            Hari ini tanggal merah: {currentHoliday.name}. Hari ini tidak dihitung sebagai kewajiban hadir.
+            {todayData.status === "Berlangsung" ? " Anda tetap bisa check-out untuk menutup sesi yang sudah berjalan." : ""}
+          </div>
+        )}
 
         {/* Top Section: 2 Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -773,7 +812,7 @@ export default function Attendance() {
               <div className="flex items-center justify-between gap-6 pt-2">
                 <div className="flex-1">
                   <div className="flex items-center justify-between text-xs text-white/70 mb-2">
-                    <span>Status: {todayData.status}</span>
+                    <span>Status: {currentHoliday && todayData.status !== "Berlangsung" ? "Libur" : todayData.status}</span>
                     {targetGps && <span>Radius: {targetGps.radius} m</span>}
                   </div>
                   {attendanceRules.autoCheckoutEnabled && (
@@ -828,12 +867,14 @@ export default function Attendance() {
                 </div>
                 <button
                   onClick={() => handleAttendanceAction()}
-                  disabled={submitting || checkingLogbook || todayData.status === "Selesai" || isDesktopAttendanceBlocked}
+                  disabled={submitting || checkingLogbook || todayData.status === "Selesai" || isDesktopAttendanceBlocked || holidayCheckInBlocked}
                   className="bg-primary hover:bg-primary-light disabled:bg-slate-500 disabled:cursor-not-allowed text-white px-6 py-3 rounded-[12px] font-bold shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                 >
                   {todayData.status === "Berlangsung" ? <LogOut size={18} /> : <MapPin size={18} />}
                   {todayData.status === "Selesai"
                     ? "Absensi Selesai"
+                    : holidayCheckInBlocked
+                      ? "Hari Ini Libur"
                     : isDesktopAttendanceBlocked
                       ? "Gunakan HP untuk Absensi"
                       : checkingLogbook

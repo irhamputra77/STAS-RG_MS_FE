@@ -20,6 +20,7 @@ import {
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "../../../lib/api";
+import { HolidayItem, findHolidayForDate, normalizeHolidays } from "../../../lib/holidays";
 
 type StudentRow = {
   id: string;
@@ -41,6 +42,9 @@ type AttendanceMonitorToday = {
   currentTime?: string;
   lockVisibleAfter?: string;
   lockWindowOpen?: boolean;
+  holidayToday?: string | HolidayItem | null;
+  isHoliday?: boolean;
+  holidays?: HolidayItem[];
   presentIds?: string[];
   leaveIds?: string[];
   leaveTypesByStudentId?: Record<string, LeaveRequestType>;
@@ -81,6 +85,7 @@ type AttendanceStatus =
   | "Izin"
   | "Sakit"
   | "WFH"
+  | "Libur"
   | "Tidak Hadir"
   | "Belum Ada Info";
 
@@ -261,6 +266,8 @@ function getStatusBadgeClasses(status: AttendanceStatus | string | undefined) {
       return "bg-rose-100 text-rose-700 border-rose-200";
     case "WFH":
       return "bg-sky-100 text-sky-700 border-sky-200";
+    case "Libur":
+      return "bg-rose-100 text-rose-700 border-rose-200";
     case "Tidak Hadir":
     case "Belum Check-in":
       return "bg-red-100 text-red-600 border-red-200";
@@ -312,6 +319,7 @@ export default function KehadiranMahasiswa() {
   const [editorError, setEditorError] = React.useState("");
   const [editorExistingRecordId, setEditorExistingRecordId] = React.useState<string | null>(null);
   const [editor, setEditor] = React.useState<AttendanceEditorState | null>(null);
+  const [holidayToday, setHolidayToday] = React.useState<HolidayItem | null>(null);
 
   const loadOverview = React.useCallback(async () => {
     setOverviewLoading(true);
@@ -320,10 +328,17 @@ export default function KehadiranMahasiswa() {
     try {
       const cacheKey = Date.now();
 
-      const [studentRows, monitorRows] = await Promise.all([
+      const [studentRows, monitorRows, settings] = await Promise.all([
         apiGet<Array<any>>(`/students?_=${cacheKey}`),
         apiGet<AttendanceMonitorToday>(`/attendance/monitor/today?_=${cacheKey}`),
+        apiGet<any>("/system-settings").catch(() => null),
       ]);
+      const settingHolidays = normalizeHolidays(settings?.attendanceRules?.holidays || settings?.holidays);
+      const monitorHoliday =
+        typeof monitorRows?.holidayToday === "string"
+          ? { date: monitorRows.date || "", name: monitorRows.holidayToday, type: "system", active: true }
+          : normalizeHolidays(monitorRows?.holidayToday ? [monitorRows.holidayToday] : [])[0] || null;
+      const nextHoliday = monitorHoliday || (monitorRows?.isHoliday ? findHolidayForDate(settingHolidays, monitorRows.date) : null) || findHolidayForDate(settingHolidays, monitorRows?.date);
 
       const mappedStudents = (studentRows || []).map((item: any, index: number) => ({
         id: String(item?.id || ""),
@@ -347,6 +362,7 @@ export default function KehadiranMahasiswa() {
 
       setStudents(mappedStudents);
       setMonitor(monitorRows || null);
+      setHolidayToday(nextHoliday || null);
       setSelectedStudentId((current) => {
         if (current && mappedStudents.some((student) => student.id === current)) {
           return current;
@@ -409,6 +425,8 @@ export default function KehadiranMahasiswa() {
         todayStatus = "Hadir";
       } else if (leaveSet.has(student.id)) {
         todayStatus = getLeaveAttendanceStatus(monitor?.leaveTypesByStudentId?.[student.id]);
+      } else if (holidayToday) {
+        todayStatus = "Libur";
       } else if (lockedAbsentSet.has(student.id) || reportedAbsentSet.has(student.id)) {
         todayStatus = "Tidak Hadir";
       } else if (!noInformationSet.has(student.id) && monitor?.lockWindowOpen) {
@@ -429,6 +447,7 @@ export default function KehadiranMahasiswa() {
     presentSet,
     reportedAbsentSet,
     students,
+    holidayToday,
   ]);
 
   const filteredStudents = React.useMemo(() => {
@@ -456,10 +475,11 @@ export default function KehadiranMahasiswa() {
   }, [filteredStudents, selectedStudent]);
 
   const summary = React.useMemo(() => {
-    const presentCount = monitor?.presentIds?.length || 0;
-    const leaveCount = monitor?.leaveIds?.length || 0;
-    const absentCount = (monitor?.absentIds?.length || 0) + (monitor?.reportedAbsentIds?.length || 0);
-    const noInformationCount = monitor?.noInformationIds?.length || 0;
+    const presentCount = studentsWithStatus.filter((student) => student.todayStatus === "Hadir").length;
+    const leaveCount = studentsWithStatus.filter((student) => ["Cuti", "Izin", "Sakit", "WFH"].includes(student.todayStatus)).length;
+    const absentCount = studentsWithStatus.filter((student) => student.todayStatus === "Tidak Hadir").length;
+    const noInformationCount = studentsWithStatus.filter((student) => student.todayStatus === "Belum Ada Info").length;
+    const holidayCount = studentsWithStatus.filter((student) => student.todayStatus === "Libur").length;
     const totalCount = students.length;
 
     return {
@@ -467,9 +487,10 @@ export default function KehadiranMahasiswa() {
       leaveCount,
       absentCount,
       noInformationCount,
+      holidayCount,
       totalCount,
     };
-  }, [monitor, students.length]);
+  }, [students.length, studentsWithStatus]);
 
   const reloadAttendanceData = React.useCallback(async () => {
     await Promise.all([loadOverview(), loadDetail()]);
@@ -636,6 +657,11 @@ export default function KehadiranMahasiswa() {
             {error}
           </div>
         )}
+        {holidayToday && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+            Hari ini tanggal merah: {holidayToday.name}. Mahasiswa yang tidak check-in tidak dihitung tidak hadir.
+          </div>
+        )}
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
@@ -655,7 +681,7 @@ export default function KehadiranMahasiswa() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
           <div className="rounded-[16px] border border-blue-200 bg-blue-50 p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-blue-600">
               <Users size={18} />
@@ -687,6 +713,14 @@ export default function KehadiranMahasiswa() {
             </div>
             <p className="text-2xl font-black text-foreground">{summary.absentCount}</p>
           </div>
+
+          <div className="rounded-[16px] border border-rose-200 bg-rose-50 p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-2 text-rose-600">
+              <CalendarDays size={18} />
+              <span className="text-xs font-black uppercase tracking-wide">Libur</span>
+            </div>
+            <p className="text-2xl font-black text-foreground">{summary.holidayCount}</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -704,7 +738,7 @@ export default function KehadiranMahasiswa() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {(["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Tidak Hadir", "Belum Ada Info"] as const).map(
+                {(["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Libur", "Tidak Hadir", "Belum Ada Info"] as const).map(
                   (item) => (
                     <button
                       key={item}
@@ -1077,6 +1111,7 @@ export default function KehadiranMahasiswa() {
                       <option value="Izin">Izin</option>
                       <option value="Sakit">Sakit</option>
                       <option value="WFH">WFH</option>
+                      <option value="Libur">Libur</option>
                       <option value="Tidak Hadir">Tidak Hadir</option>
                     </select>
                   </label>
