@@ -8,7 +8,7 @@ import {
   ChevronLeft, Edit2, AlertTriangle, Check, X,
   UploadCloud, Download, Send, FileText,
   Image as ImageIcon, Folder, Plus, Trash2, MessageSquare,
-  Paperclip, GitBranch, ExternalLink, Link as LinkIcon,
+  Paperclip, GitBranch, ExternalLink, Link as LinkIcon, Search,
 } from "lucide-react";
 import { useConfirmDialog } from "../molecules/ConfirmDialog";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../../lib/api";
@@ -542,6 +542,7 @@ export function SharedBoardView({
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [newMemberPeran, setNewMemberPeran] = useState("Anggota");
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
 
   // Computed values (AFTER all hooks)
   const project = availableProjects.find((row) => row.id === activeId) ?? availableProjects[0];
@@ -597,6 +598,13 @@ export function SharedBoardView({
   const ketuaMember = teamMembers.find((m) => m.role.toLowerCase().includes("ketua"));
   const activeMsLabel = getActiveMilestoneLabel(milestones);
   const milestoneProgress = getMilestoneProgress(milestones);
+  const normalizedMemberSearch = memberSearch.trim().toLowerCase();
+  const filteredAvailableCandidates = availableCandidates.filter((candidate) =>
+    !normalizedMemberSearch ||
+    candidate.name.toLowerCase().includes(normalizedMemberSearch) ||
+    candidate.initials.toLowerCase().includes(normalizedMemberSearch) ||
+    candidate.member_type.toLowerCase().includes(normalizedMemberSearch)
+  );
 
   const getAssigneeColor = (initials: string) =>
     teamMembers.find((m) => m.initials === initials)?.color ?? "bg-slate-300 text-white";
@@ -850,6 +858,7 @@ export function SharedBoardView({
 
       setAvailableCandidates(candidates);
       setSelectedCandidateId(null);
+      setMemberSearch("");
       setNewMemberPeran("Anggota");
     } catch (err) {
       console.error("Failed to load candidates:", err);
@@ -936,6 +945,7 @@ export function SharedBoardView({
       
       setIsAddMemberOpen(false);
       setSelectedCandidateId(null);
+      setMemberSearch("");
       setNewMemberPeran("Anggota");
     } catch (err: any) {
       console.error("[Add Member] Error:", err);
@@ -2168,8 +2178,8 @@ export function SharedBoardView({
       {/* ══ Edit Board Modal ══ */}
       {isEditBoardOpen && (
         <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center pt-[6vh] p-4 sm:p-6">
-          <div className="bg-white w-full max-w-[500px] rounded-[20px] shadow-2xl flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-5 md:px-6 border-b border-border/50 bg-slate-50/50">
+          <div className="bg-white w-full max-w-[500px] max-h-[78vh] rounded-[20px] shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-5 md:px-6 border-b border-border/50 bg-slate-50/50 shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl bg-[#F8F5FF] ${accentText} flex items-center justify-center shadow-sm`}><Edit2 size={20} strokeWidth={2.5} /></div>
                 <div>
@@ -2179,7 +2189,7 @@ export function SharedBoardView({
               </div>
               <button onClick={() => setIsEditBoardOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"><X size={16} strokeWidth={2.5} /></button>
             </div>
-            <div className="p-5 md:p-6 flex flex-col gap-5 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 md:p-6 flex flex-col gap-5">
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-slate-700">Nama Proyek</label>
                 <input
@@ -2217,32 +2227,34 @@ export function SharedBoardView({
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-slate-700">Anggota Tim</label>
-                <div className="flex flex-col gap-2">
-                  {teamMembers.map((member, i) => (
-                    <div key={member.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 group hover:border-[#6C47FF]/30 hover:bg-[#F8F5FF] transition-all">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${getAssigneeColor(member.initials)}`}>{member.initials}</div>
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <span className="text-xs font-bold text-slate-800">{member.name}</span>
-                        <span className="text-[10px] font-medium text-slate-400">{member.role}</span>
+                <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2">
+                  <div className="max-h-[210px] overflow-y-auto pr-1 flex flex-col gap-2">
+                    {teamMembers.map((member, i) => (
+                      <div key={member.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-slate-200 group hover:border-[#6C47FF]/30 hover:bg-[#F8F5FF] transition-all">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${getAssigneeColor(member.initials)}`}>{member.initials}</div>
+                        <div className="flex flex-col flex-1 min-w-0">
+                          <span className="text-xs font-bold text-slate-800 truncate">{member.name}</span>
+                          <span className="text-[10px] font-medium text-slate-400">{member.role}</span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveMember(member.id)}
+                          className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-1"
+                        >
+                          <X size={13} strokeWidth={3} />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleRemoveMember(member.id)}
-                        className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-1"
-                      >
-                        <X size={13} strokeWidth={3} />
-                      </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                   <button
                     onClick={openAddMemberModal}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-xs font-bold text-slate-500 hover:text-[#6C47FF] hover:border-[#6C47FF] hover:bg-[#6C47FF]/5 transition-all mt-1"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 bg-white text-xs font-bold text-slate-500 hover:text-[#6C47FF] hover:border-[#6C47FF] hover:bg-[#6C47FF]/5 transition-all"
                   >
                     <Plus size={12} strokeWidth={3} /> Tambah Anggota
                   </button>
                 </div>
               </div>
             </div>
-            <div className="p-5 md:px-6 border-t border-border/50 bg-slate-50/50 flex justify-end gap-3">
+            <div className="p-5 md:px-6 border-t border-border/50 bg-slate-50/50 flex justify-end gap-3 shrink-0">
               <button onClick={() => setIsEditBoardOpen(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">Batal</button>
               <button onClick={() => { void handleSaveBoardHeader(); }} className={`${accentBg} hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all`}>Simpan Perubahan</button>
             </div>
@@ -2389,13 +2401,34 @@ export function SharedBoardView({
               {/* Candidate List */}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-slate-700">Pilih Anggota</label>
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-2.5 focus-within:border-[#6C47FF] focus-within:ring-2 focus-within:ring-[#6C47FF]/20">
+                  <Search size={15} className="shrink-0 text-slate-400" />
+                  <input
+                    value={memberSearch}
+                    onChange={(e) => setMemberSearch(e.target.value)}
+                    placeholder="Cari nama, inisial, atau tipe anggota..."
+                    className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+                  />
+                  {memberSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMemberSearch("")}
+                      className="shrink-0 text-slate-400 hover:text-slate-600"
+                      title="Bersihkan pencarian"
+                    >
+                      <X size={14} strokeWidth={2.5} />
+                    </button>
+                  )}
+                </div>
                 {loadingCandidates ? (
                   <div className="text-center py-6 text-sm text-muted-foreground">Memuat kandidat...</div>
                 ) : availableCandidates.length === 0 ? (
                   <div className="text-center py-6 text-sm text-muted-foreground">Semua user sudah menjadi anggota</div>
+                ) : filteredAvailableCandidates.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground">Tidak ada kandidat yang cocok dengan pencarian.</div>
                 ) : (
                   <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-                    {availableCandidates.map((candidate) => {
+                    {filteredAvailableCandidates.map((candidate) => {
                       const isSelected = selectedCandidateId === candidate.user_id;
                       return (
                         <label

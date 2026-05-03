@@ -1083,7 +1083,7 @@ export default function OperatorDashboard() {
                 <h2 className="text-sm font-black text-foreground flex items-center gap-2"><FlaskConical size={15} className="text-[#0AB600]" /> Ringkasan Riset</h2>
                 <Link to="/operator/riset" className="text-xs font-bold text-[#0AB600] flex items-center gap-0.5 hover:gap-1 transition-all">Semua <ChevronRight size={12} strokeWidth={3} /></Link>
               </div>
-              <div className="divide-y divide-border">
+              <div className="max-h-[460px] divide-y divide-border overflow-y-auto">
                 {researches.map(r => (
                   <div key={r.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
                     <div className="flex-1 min-w-0">
