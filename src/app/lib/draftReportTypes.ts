@@ -6,7 +6,7 @@ export const DEFAULT_DRAFT_REPORT_TYPES = [
   "Laporan Kemajuan",
 ];
 
-const STORAGE_KEY = "stas_draft_report_types_cache";
+let draftReportTypesCache: DraftReportTypeOption[] | null = null;
 
 export type DraftReportTypeOption = {
   id: string;
@@ -37,26 +37,15 @@ function normalizeRows(rows: Array<any>) {
 }
 
 function cacheTypes(rows: DraftReportTypeOption[]) {
-  if (typeof window === "undefined") return rows;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
-  window.dispatchEvent(new CustomEvent("draft-report-types:updated", { detail: rows }));
+  draftReportTypesCache = rows;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("draft-report-types:updated", { detail: rows }));
+  }
   return rows;
 }
 
 export function getCachedDraftReportTypes() {
-  if (typeof window === "undefined") {
-    return normalizeRows([]);
-  }
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return normalizeRows([]);
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return normalizeRows([]);
-    return normalizeRows(parsed);
-  } catch {
-    return normalizeRows([]);
-  }
+  return draftReportTypesCache ? normalizeRows(draftReportTypesCache) : normalizeRows([]);
 }
 
 export async function fetchDraftReportTypes() {

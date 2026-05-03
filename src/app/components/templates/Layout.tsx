@@ -254,31 +254,14 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   const [headerPhotoUrl, setHeaderPhotoUrl] = useState(user?.photoUrl || user?.photo_url || "");
   const bellRef = useRef<HTMLDivElement>(null);
 
-  const fallbackNotifs = React.useMemo<AppNotification[]>(() => {
-    const base: AppNotification[] = [];
-
-    try {
-      const warnings = JSON.parse(localStorage.getItem("stas_operator_warnings") || "[]");
-      warnings.forEach((w: any) => {
-        if (!base.find((n) => n.id === w.id)) base.unshift({ ...w, read: false });
-      });
-    } catch {}
-
-    return base;
-  }, []);
+  const fallbackNotifs = React.useMemo<AppNotification[]>(() => [], []);
 
   const { notifs, unreadCount, markRead, markAllRead, dismiss } = useNotifications({
     role: user?.role,
     fallback: fallbackNotifs,
   });
 
-  const [warningPopup, setWarningPopup] = useState<{ title: string; body: string } | null>(() => {
-    try {
-      const w = JSON.parse(localStorage.getItem("stas_operator_warnings") || "[]");
-      if (w.length > 0 && !localStorage.getItem("stas_warning_seen_" + w[0].id)) return w[0];
-    } catch {}
-    return null;
-  });
+  const [warningPopup, setWarningPopup] = useState<{ title: string; body: string } | null>(null);
 
   const refreshAccessLock = React.useCallback(async () => {
     if (user?.role !== "mahasiswa") {
@@ -664,7 +647,6 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
             <div className="px-6 pb-6">
               <button
                 onClick={() => {
-                  if (warningPopup) localStorage.setItem("stas_warning_seen_" + (warningPopup as any).id, "1");
                   setWarningPopup(null);
                 }}
                 className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-[12px] transition-colors"

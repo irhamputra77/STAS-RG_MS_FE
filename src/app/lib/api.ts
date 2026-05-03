@@ -195,13 +195,17 @@ export function buildQueryPath(path: string, params: Record<string, string | num
   return query ? `${path}?${query}` : path;
 }
 
-export function getStoredUser() {
-  try {
-    const raw = localStorage.getItem("stas_user");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
+let memoryUser: any = null;
+
+export function setStoredUser(user: any) {
+  memoryUser = user || null;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("stas:user-updated"));
   }
+}
+
+export function getStoredUser() {
+  return memoryUser;
 }
 
 export function resolveApiAssetUrl(fileUrl?: string | null) {

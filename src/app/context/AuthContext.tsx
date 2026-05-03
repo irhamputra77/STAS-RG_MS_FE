@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
-import { apiGet, apiPost } from "../lib/api";
+import React, { createContext, ReactNode, useContext, useState } from "react";
+import { apiGet, apiPost, setStoredUser } from "../lib/api";
 
 export type UserRole = "mahasiswa" | "operator" | "dosen";
 
@@ -27,24 +27,17 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Optimistic: pakai cache localStorage untuk render awal supaya tidak flicker login screen.
-  // Tetapi BUKAN source of truth — diverifikasi ulang ke backend di useEffect.
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    try {
-      const s = localStorage.getItem("stas_user");
-      return s ? JSON.parse(s) : null;
-    } catch { return null; }
-  });
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
-  const login = (u: AuthUser) => {
-    setUser(u);
-    localStorage.setItem("stas_user", JSON.stringify(u));
+  const login = (nextUser: AuthUser) => {
+    setUser(nextUser);
+    setStoredUser(nextUser);
   };
 
   const clearLocalSession = React.useCallback(() => {
     setUser(null);
-    localStorage.removeItem("stas_user");
+    setStoredUser(null);
   }, []);
 
   const logout = () => {
@@ -52,10 +45,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearLocalSession();
   };
 
-  // Validasi sesi ke backend saat mount.
-  // Server mengembalikan role/identitas dari JWT yang sudah diverifikasi —
-  // ini override apapun yang ada di localStorage (mencegah privilege escalation
-  // via edit DevTools → localStorage.stas_user.role).
   React.useEffect(() => {
     let cancelled = false;
 
@@ -65,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const verified = res?.user;
         if (verified) {
           setUser(verified);
-          localStorage.setItem("stas_user", JSON.stringify(verified));
+          setStoredUser(verified);
         } else {
           clearLocalSession();
         }
@@ -78,7 +67,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setHydrated(true);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [clearLocalSession]);
 
   React.useEffect(() => {
@@ -95,3 +86,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
+

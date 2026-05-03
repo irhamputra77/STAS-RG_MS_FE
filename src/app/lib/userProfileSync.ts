@@ -1,5 +1,5 @@
 import React from "react";
-import { getStoredUser } from "./api";
+import { getStoredUser, setStoredUser } from "./api";
 
 export function updateStoredUserProfile(payload: Record<string, unknown>) {
   const currentUser = getStoredUser();
@@ -11,8 +11,7 @@ export function updateStoredUserProfile(payload: Record<string, unknown>) {
     ...payload,
   };
 
-  localStorage.setItem("user", JSON.stringify(updatedUser));
-  window.dispatchEvent(new Event("stas:user-updated"));
+  setStoredUser(updatedUser);
 
   return updatedUser;
 }
@@ -26,11 +25,8 @@ export function useSyncedStoredUser() {
     };
 
     window.addEventListener("stas:user-updated", syncUser);
-    window.addEventListener("storage", syncUser);
-
     return () => {
       window.removeEventListener("stas:user-updated", syncUser);
-      window.removeEventListener("storage", syncUser);
     };
   }, []);
 

@@ -46,7 +46,11 @@ const ROLE_HOME: Record<UserRole, string> = {
 };
 
 function RequireAuth() {
-  const { user } = useAuth();
+  const { user, hydrated } = useAuth();
+
+  if (!hydrated) {
+    return <div className="flex h-screen items-center justify-center text-muted-foreground">Memeriksa sesi...</div>;
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -56,7 +60,11 @@ function RequireAuth() {
 }
 
 function RequireRole({ allowedRoles }: { allowedRoles: UserRole[] }) {
-  const { user } = useAuth();
+  const { user, hydrated } = useAuth();
+
+  if (!hydrated) {
+    return <div className="flex h-screen items-center justify-center text-muted-foreground">Memeriksa sesi...</div>;
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;

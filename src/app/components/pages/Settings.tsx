@@ -121,13 +121,7 @@ function TabProfil({
         setNim(profile.nim || "");
         setPhone(profile.phone || "");
         setPhotoUrl(profile.photoUrl || profile.photo_url || "");
-
-        const bioKey = `stas_profile_bio_${user.id}`;
-        const savedBio = localStorage.getItem(bioKey);
-
-        if (savedBio !== null) {
-          setBio(savedBio);
-        }
+        setBio(profile.bio || profile.bioText || profile.bio_text || "");
 
         setLastUpdate(new Date().toLocaleDateString("id-ID"));
       } catch {
@@ -229,6 +223,7 @@ function TabProfil({
       await apiPatch(`/profile/${encodeURIComponent(user.id)}`, {
         name,
         phone,
+        bio,
         photoUrl: nextPhotoUrl || null,
       });
 
@@ -243,7 +238,6 @@ function TabProfil({
         photoUrl: nextPhotoUrl || null,
       });
 
-      localStorage.setItem(`stas_profile_bio_${user.id}`, bio);
       setLastUpdate(new Date().toLocaleDateString("id-ID"));
       setMessage("Profil berhasil diperbarui.");
     } catch (error: any) {

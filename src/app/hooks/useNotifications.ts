@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPatch } from "../lib/api";
+import { getCachedUserUiState, getUserUiState, mergeIds, patchUserUiState } from "../lib/userUiState";
 
 export type NotificationType =
   | "logbook"
@@ -166,9 +167,17 @@ export function useNotifications({
 
     const loadNotifications = async () => {
       try {
-        const rows = await apiGet<Array<any>>("/notifications?limit=20");
+        const [rows, uiState] = await Promise.all([
+          apiGet<Array<any>>("/notifications?limit=20"),
+          getUserUiState(),
+        ]);
         if (!active) return;
-        setNotifs(mapNotificationRows(rows, role));
+        const readIds = new Set(uiState.readNotificationIds);
+        setNotifs(
+          mapNotificationRows(rows, role).map((notification) =>
+            readIds.has(notification.id) ? { ...notification, read: true } : notification
+          )
+        );
       } catch {
         if (!active) return;
         setNotifs((prev) => (prev.length > 0 ? prev : fallback));
@@ -191,6 +200,9 @@ export function useNotifications({
     setNotifs((prev) =>
       prev.map((notif) => (notif.id === id ? { ...notif, read: true } : notif))
     );
+    void patchUserUiState({
+      readNotificationIds: mergeIds(getCachedUserUiState().readNotificationIds, [id]),
+    });
 
     try {
       const response = await apiPatch<{ read_at?: string | null; readAt?: string | null; read?: boolean }>(
@@ -212,7 +224,11 @@ export function useNotifications({
 
   const markAllRead = async () => {
     const readAt = new Date().toISOString();
+    const ids = notifs.map((notification) => notification.id);
     setNotifs((prev) => prev.map((notif) => ({ ...notif, read: true, readAt, read_at: readAt })));
+    void patchUserUiState({
+      readNotificationIds: mergeIds(getCachedUserUiState().readNotificationIds, ids),
+    });
 
     try {
       await apiPatch("/notifications/read-all", {});

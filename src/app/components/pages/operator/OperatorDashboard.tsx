@@ -8,6 +8,13 @@ import {
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../../lib/api";
 import { formatDateYmd } from "../../../lib/date";
+import {
+  getCachedUserUiState,
+  getReadAttendanceWarningIdsForDate,
+  getUserUiState,
+  patchUserUiState,
+  setReadAttendanceWarningIdsForDate,
+} from "../../../lib/userUiState";
 
 type MahasiswaRecord = any;
 type LeaveRequestAll = any;
@@ -118,7 +125,6 @@ type WithdrawalRequestRecord = {
   advisorNote?: string | null;
 };
 
-
 function MiniStatCard({ icon, label, value, color, href, urgent }: { icon: React.ReactNode; label: string; value: number | string; color: string; href: string; urgent?: boolean }) {
   return (
     <Link to={href} className="bg-white border border-border rounded-[14px] p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group flex items-center gap-4">
@@ -197,7 +203,7 @@ function getLockReasonDetail(lock?: StudentAccessLock | null) {
 
 export default function OperatorDashboard() {
   const user = getStoredUser();
-  const attendanceReadStorageKey = `operator-attendance-read:${getJakartaDateKey()}`;
+  const attendanceReadDate = getJakartaDateKey();
   const [students, setStudents] = useState<MahasiswaRecord[]>([]);
   const [pendingCuti, setPendingCuti] = useState<LeaveRequestAll[]>([]);
   const [pendingSurat, setPendingSurat] = useState<LetterRequestAll[]>([]);
@@ -216,26 +222,23 @@ export default function OperatorDashboard() {
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
   const [warningInfo, setWarningInfo] = useState<{ message: string; tone: "success" | "warning" } | null>(null);
-  const [readAttendanceItems, setReadAttendanceItems] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem(attendanceReadStorageKey);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [readAttendanceItems, setReadAttendanceItems] = useState<string[]>(() =>
+    getReadAttendanceWarningIdsForDate(getCachedUserUiState(), attendanceReadDate)
+  );
   const todayLabel = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(attendanceReadStorageKey);
-      setReadAttendanceItems(raw ? JSON.parse(raw) : []);
-    } catch {
-      setReadAttendanceItems([]);
-    }
-  }, [attendanceReadStorageKey]);
+    let active = true;
+
+    getUserUiState().then((state) => {
+      if (!active) return;
+      setReadAttendanceItems(getReadAttendanceWarningIdsForDate(state, attendanceReadDate));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [attendanceReadDate]);
 
   useEffect(() => {
     const colorByIndex = [
@@ -781,9 +784,13 @@ export default function OperatorDashboard() {
   const markAttendanceAsRead = (warning: WarningItem) => {
     const next = Array.from(new Set([...readAttendanceItems, getAttendanceReadId(warning)]));
     setReadAttendanceItems(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(attendanceReadStorageKey, JSON.stringify(next));
-    }
+    void patchUserUiState({
+      readAttendanceWarningIds: setReadAttendanceWarningIdsForDate(
+        getCachedUserUiState().readAttendanceWarningIds,
+        attendanceReadDate,
+        next
+      ),
+    });
   };
 
   return (
