@@ -168,19 +168,6 @@ export default function PengaturanWfhMahasiswa() {
             {message}
           </div>
         )}
-        <div className="rounded-[18px] border border-blue-200 bg-blue-50 px-5 py-4 text-blue-800">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-white text-blue-600 shadow-sm">
-              <Settings2 size={18} />
-            </div>
-            <div>
-              <p className="text-sm font-black">Pengaturan WFH sekarang mengikuti mahasiswa</p>
-              <p className="mt-1 text-xs font-medium leading-relaxed">
-                Backend memetakan kuota WFH langsung pada data mahasiswa.
-              </p>
-            </div>
-          </div>
-        </div>
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           {[
             { label: "Total Mahasiswa", value: summary.studentCount, icon: <Users size={20} className="text-blue-600" />, color: "bg-blue-100" },
@@ -292,11 +279,10 @@ export default function PengaturanWfhMahasiswa() {
                               min={0}
                               value={item.draftQuota}
                               onChange={(event) => handleQuotaChange(item.nim, event.target.value)}
-                              className={`h-10 w-28 rounded-[10px] border px-3 text-sm font-bold text-foreground focus:outline-none focus:ring-2 transition-all ${
-                                isDirty
+                              className={`h-10 w-28 rounded-[10px] border px-3 text-sm font-bold text-foreground focus:outline-none focus:ring-2 transition-all ${isDirty
                                   ? "border-amber-300 bg-amber-50 focus:ring-amber-300"
                                   : "border-border bg-white focus:ring-[#0AB600]/20"
-                              }`}
+                                }`}
                             />
                             <span className="text-xs font-semibold text-muted-foreground">hari</span>
                             {isDirty && (
@@ -307,11 +293,10 @@ export default function PengaturanWfhMahasiswa() {
                           </div>
                         </td>
                         <td className="px-5 py-4">
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${
-                            item.hasSetting
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${item.hasSetting
                               ? "border border-emerald-200 bg-emerald-100 text-emerald-700"
                               : "border border-amber-200 bg-amber-100 text-amber-700"
-                          }`}>
+                            }`}>
                             {item.hasSetting ? "Aktif" : "Belum disetting"}
                           </span>
                         </td>
