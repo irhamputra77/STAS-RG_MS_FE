@@ -36,12 +36,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const clearLocalSession = React.useCallback(() => {
+    try {
+      localStorage.clear();
+    } catch (e) {
+      // ignore
+    }
     setUser(null);
     setStoredUser(null);
   }, []);
 
   const logout = () => {
     void apiPost("/auth/logout").catch(() => {});
+    // notify other tabs/windows and current window to clear session
+    try {
+      localStorage.setItem("stas:auth-expired", String(Date.now()));
+    } catch (e) {
+      // ignore
+    }
+    window.dispatchEvent(new CustomEvent("stas:auth-expired"));
     clearLocalSession();
   };
 
@@ -74,8 +86,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   React.useEffect(() => {
     const onAuthExpired = () => clearLocalSession();
+    const onStorage = (e: StorageEvent) => {
+      // if another tab signalled auth expired, or localStorage was cleared
+      if (e.key === "stas:auth-expired" || e.key === null) {
+        clearLocalSession();
+      }
+    };
+
     window.addEventListener("stas:auth-expired", onAuthExpired);
-    return () => window.removeEventListener("stas:auth-expired", onAuthExpired);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("stas:auth-expired", onAuthExpired);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [clearLocalSession]);
 
   return (
