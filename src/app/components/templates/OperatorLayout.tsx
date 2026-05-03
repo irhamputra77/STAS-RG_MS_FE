@@ -252,14 +252,7 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
             </div>
 
             <div className="flex items-center gap-3 md:gap-6 shrink-0">
-              <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-slate-50 border border-border rounded-[12px] w-48 lg:w-60 focus-within:ring-2 focus-within:ring-amber-300 focus-within:border-amber-400 transition-all">
-                <Search size={16} className="text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Cari mahasiswa, riset..."
-                  className="bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground w-full"
-                />
-              </div>
+
 
               <div className="flex items-center gap-3 md:gap-4">
                 <div ref={bellRef} className="relative">
