@@ -1,48 +1,90 @@
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+const envApiBaseUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+
+export const API_BASE_URL =
+  typeof envApiBaseUrl === "string" && envApiBaseUrl.trim()
+    ? envApiBaseUrl.trim().replace(/\/+$/, "")
+    : (import.meta as any).env?.DEV
+      ? "/api/v1"
+      : "https://ms-api.stas-rg.com/api/v1";
 const API_ORIGIN = API_BASE_URL.replace(/\/api(?:\/v\d+)?\/?$/, "");
 
-function getRoleHeader() {
-  try {
-    const raw = localStorage.getItem("stas_user");
-    if (!raw) return null;
-    const user = JSON.parse(raw);
-    return user?.role || null;
-  } catch {
-    return null;
+export type BlobResponse = {
+  blob: Blob;
+  contentType: string;
+  fileName: string | null;
+};
+
+export class ApiError extends Error {
+  status: number;
+  body: any;
+
+  constructor(message: string, status: number, body: any) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
   }
 }
 
-function getUserIdHeader() {
-  try {
-    const raw = localStorage.getItem("stas_user");
-    if (!raw) return null;
-    const user = JSON.parse(raw);
-    return user?.id || null;
-  } catch {
-    return null;
+// Header role / user-id TIDAK lagi dikirim dari client.
+// Backend mengandalkan JWT di httpOnly cookie sebagai satu-satunya
+// sumber kebenaran identitas user (aman dari manipulasi via DevTools).
+function getRequestHeaders(options?: RequestInit) {
+  return {
+    "Content-Type": "application/json",
+    ...(options?.headers || {})
+  };
+}
+
+function getFilenameFromDisposition(disposition: string | null) {
+  if (!disposition) return null;
+
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
   }
+
+  const plainMatch = disposition.match(/filename="?([^"]+)"?/i);
+  return plainMatch?.[1] || null;
+}
+
+function emitAuthExpired(path: string) {
+  if (typeof window === "undefined" || path === "/auth/login") return;
+  window.dispatchEvent(new CustomEvent("stas:auth-expired"));
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const role = getRoleHeader();
-  const userId = getUserIdHeader();
   const url = `${API_BASE_URL}${path}`;
+  const headers = getRequestHeaders(options);
 
   const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(role ? { "x-user-role": String(role) } : {}),
-      ...(userId ? { "x-user-id": String(userId) } : {}),
-      ...(options?.headers || {})
-    },
-    ...options
+    ...options,
+    headers,
+    credentials: "include"
   });
 
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
     const message = body?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    if (response.status === 401) {
+      emitAuthExpired(path);
+    }
+    if (response.status === 423 && body?.accessLocked && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("stas:access-locked", {
+        detail: {
+          message,
+          accessLocked: true,
+          reason: body?.reason || null,
+          date: body?.date || null
+        }
+      }));
+    }
+    throw new ApiError(message, response.status, body);
   }
 
   return body as T;
@@ -52,10 +94,10 @@ export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
-export function apiPost<T>(path: string, payload: unknown): Promise<T> {
+export function apiPost<T>(path: string, payload?: unknown): Promise<T> {
   return request<T>(path, {
     method: "POST",
-    body: JSON.stringify(payload)
+    ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
   });
 }
 
@@ -77,13 +119,93 @@ export function apiDelete<T>(path: string): Promise<T> {
   return request<T>(path, { method: "DELETE" });
 }
 
-export function getStoredUser() {
-  try {
-    const raw = localStorage.getItem("stas_user");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
+export async function apiGetBlob(path: string): Promise<BlobResponse> {
+  const url = `${API_BASE_URL}${path}`;
+  const headers = getRequestHeaders({
+    headers: {
+      Accept: "application/octet-stream,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json"
+    }
+  });
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers,
+    credentials: "include"
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    let message = `HTTP ${response.status}`;
+    let parsedBody: any = null;
+
+    if (errorText) {
+      try {
+        parsedBody = JSON.parse(errorText);
+        message = parsedBody?.message || message;
+      } catch {
+        message = errorText;
+      }
+    }
+
+    if (response.status === 401) {
+      emitAuthExpired(path);
+    }
+
+    if (response.status === 423 && parsedBody?.accessLocked && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("stas:access-locked", {
+        detail: {
+          message,
+          accessLocked: true,
+          reason: parsedBody?.reason || null,
+          date: parsedBody?.date || null
+        }
+      }));
+    }
+
+    throw new Error(message);
   }
+
+  return {
+    blob: await response.blob(),
+    contentType: response.headers.get("content-type") || "application/octet-stream",
+    fileName: getFilenameFromDisposition(response.headers.get("content-disposition"))
+  };
+}
+
+export function downloadBlob(blob: Blob, fileName?: string | null) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName || `download-${Date.now()}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+export function encodePathSegment(segment: string | number): string {
+  return encodeURIComponent(String(segment));
+}
+
+export function buildQueryPath(path: string, params: Record<string, string | number | boolean | null | undefined>): string {
+  const query = Object.entries(params)
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+  return query ? `${path}?${query}` : path;
+}
+
+let memoryUser: any = null;
+
+export function setStoredUser(user: any) {
+  memoryUser = user || null;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("stas:user-updated"));
+  }
+}
+
+export function getStoredUser() {
+  return memoryUser;
 }
 
 export function resolveApiAssetUrl(fileUrl?: string | null) {
