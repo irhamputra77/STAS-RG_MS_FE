@@ -96,7 +96,39 @@ type ProjectView = {
   ketuaInitials: string;
 };
 
+type BoardPermissions = {
+  role: "mahasiswa" | "dosen" | "operator";
+  isLeaderMember: boolean;
+  canManageCards: boolean;
+  canFillExistingCards: boolean;
+};
+
 const EMPTY_BOARD_COLUMNS: BoardColumns = { todo: [], doing: [], review: [], done: [] };
+
+function getDefaultBoardPermissions(role?: string | null): BoardPermissions {
+  const normalizedRole = String(role || "mahasiswa").toLowerCase() as BoardPermissions["role"];
+  const isPrivileged = normalizedRole === "operator" || normalizedRole === "dosen";
+
+  return {
+    role: ["operator", "dosen", "mahasiswa"].includes(normalizedRole) ? normalizedRole : "mahasiswa",
+    isLeaderMember: false,
+    canManageCards: isPrivileged,
+    canFillExistingCards: true,
+  };
+}
+
+function normalizeBoardPermissions(value: any, fallbackRole?: string | null): BoardPermissions {
+  const fallback = getDefaultBoardPermissions(fallbackRole);
+  if (!value || typeof value !== "object") return fallback;
+  const role = String(value.role || fallback.role).toLowerCase();
+
+  return {
+    role: ["operator", "dosen", "mahasiswa"].includes(role) ? role as BoardPermissions["role"] : fallback.role,
+    isLeaderMember: Boolean(value.isLeaderMember ?? fallback.isLeaderMember),
+    canManageCards: Boolean(value.canManageCards ?? fallback.canManageCards),
+    canFillExistingCards: Boolean(value.canFillExistingCards ?? fallback.canFillExistingCards),
+  };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -260,12 +292,13 @@ function fileToDataUrl(file: File) {
 // ─── MilestoneBanner ─────────────────────────────────────────────────────────
 
 function MilestoneBanner({
-  milestones, progressColor, onToggle, onManage,
+  milestones, progressColor, onToggle, onManage, editable = true,
 }: {
   milestones: Milestone[];
   progressColor: string;
   onToggle: (i: number) => void;
   onManage: () => void;
+  editable?: boolean;
 }) {
   return (
     <div className="flex items-end gap-0 w-full group/banner">
@@ -274,8 +307,9 @@ function MilestoneBanner({
           <div className="flex flex-col items-center gap-1.5">
             <button
               onClick={() => onToggle(i)}
+              disabled={!editable}
               title={m.done ? `Tandai "${m.label}" belum selesai` : `Tandai "${m.label}" selesai`}
-              className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all hover:scale-110 hover:shadow-md focus:outline-none ${m.done ? `${progressColor} border-transparent text-white` : "bg-white border-[#A8E895] hover:border-[#0AB600]"
+              className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all hover:scale-110 hover:shadow-md focus:outline-none disabled:hover:scale-100 disabled:hover:shadow-none disabled:cursor-default ${m.done ? `${progressColor} border-transparent text-white` : "bg-white border-[#A8E895] hover:border-[#0AB600]"
                 }`}
             >
               {m.done ? (
@@ -298,12 +332,14 @@ function MilestoneBanner({
           )}
         </div>
       ))}
-      <button
-        onClick={onManage}
-        className="ml-4 mb-4 shrink-0 flex items-center gap-1.5 px-3 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all opacity-0 group-hover/banner:opacity-100 shadow-sm whitespace-nowrap"
-      >
-        <Edit2 size={10} strokeWidth={3} /> Kelola
-      </button>
+      {editable && (
+        <button
+          onClick={onManage}
+          className="ml-4 mb-4 shrink-0 flex items-center gap-1.5 px-3 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all opacity-0 group-hover/banner:opacity-100 shadow-sm whitespace-nowrap"
+        >
+          <Edit2 size={10} strokeWidth={3} /> Kelola
+        </button>
+      )}
     </div>
   );
 }
@@ -356,6 +392,7 @@ export function SharedBoardView({
   const [milestonesMap, setMilestonesMap] = useState<Record<string, Milestone[]>>({});
   const [teamMembersMap, setTeamMembersMap] = useState<Record<string, TeamMember[]>>({});
   const [tasksMap, setTasksMap] = useState<Record<string, BoardColumns>>({});
+  const [permissionsMap, setPermissionsMap] = useState<Record<string, BoardPermissions>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const projectIdsKey = projectIds.join("|");
@@ -473,6 +510,10 @@ export function SharedBoardView({
         });
 
         setTaskAttachmentsMap((prev) => ({ ...prev, ...nextAttachmentMap }));
+        setPermissionsMap((prev) => ({
+          ...prev,
+          [activeId]: normalizeBoardPermissions(data?.permissions, currentUser?.role)
+        }));
 
         setTasksMap((prev) => ({
           ...prev,
@@ -489,7 +530,7 @@ export function SharedBoardView({
     };
 
     loadBoard();
-  }, [activeId, teamMembersMap]);
+  }, [activeId, currentUser?.role, teamMembersMap]);
 
   // Modal state
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
@@ -548,6 +589,9 @@ export function SharedBoardView({
   const project = availableProjects.find((row) => row.id === activeId) ?? availableProjects[0];
   const milestones = milestonesMap[activeId] ?? [];
   const tasks = tasksMap[activeId] ?? EMPTY_BOARD_COLUMNS;
+  const boardPermissions = permissionsMap[activeId] || getDefaultBoardPermissions(currentUser?.role);
+  const canManageCards = boardPermissions.canManageCards;
+  const canFillExistingCards = canManageCards || boardPermissions.canFillExistingCards;
 
   // Initialize attachment link when project changes
   React.useEffect(() => {
@@ -557,6 +601,10 @@ export function SharedBoardView({
   }, [project?.id]);
 
   const toggleMilestone = async (i: number) => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin mengubah milestone board ini.");
+      return;
+    }
     const current = milestones[i];
     if (!current) return;
     if (current.id) {
@@ -660,6 +708,10 @@ export function SharedBoardView({
   };
 
   const openAddTaskModal = () => {
+    if (!canManageCards) {
+      setTaskFetchMessage("Anda tidak memiliki izin menambah kartu pada board ini.");
+      return;
+    }
     setTaskForm({
       title: "",
       status: "TO DO",
@@ -674,6 +726,10 @@ export function SharedBoardView({
 
   const openEditTaskModal = () => {
     if (!selectedTask) return;
+    if (!canManageCards) {
+      setTaskFetchMessage("Anda tidak memiliki izin mengedit kartu pada board ini.");
+      return;
+    }
     setTaskForm({
       title: selectedTask.title || "",
       status: selectedTask.status || "TO DO",
@@ -687,6 +743,10 @@ export function SharedBoardView({
   };
 
   const openEditBoardModal = () => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin mengubah detail board ini.");
+      return;
+    }
     setBoardForm({
       title: project.shortTitle || "",
       mitra: project.mitra || "",
@@ -737,6 +797,10 @@ export function SharedBoardView({
   };
 
   const handleSaveTask = async () => {
+    if (!canManageCards) {
+      setTaskFetchMessage("Anda tidak memiliki izin menyimpan perubahan kartu pada board ini.");
+      return;
+    }
     const title = taskForm.title.trim();
     if (!title) {
       setTaskFetchMessage("Judul tugas wajib diisi.");
@@ -777,6 +841,10 @@ export function SharedBoardView({
 
   const handleMoveTaskStatus = async (value: string) => {
     if (!selectedTask?.id || !value) return;
+    if (!canManageCards) {
+      setTaskFetchMessage("Anda tidak memiliki izin memindahkan status kartu pada board ini.");
+      return;
+    }
 
     const nextStatus = value === "todo"
       ? "TO DO"
@@ -798,6 +866,10 @@ export function SharedBoardView({
   };
 
   const handleSaveBoardHeader = async () => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin menyimpan detail board ini.");
+      return;
+    }
     try {
       const response = await apiPatch<{ project?: any }>(`/research/${activeId}/board/header`, {
         title: boardForm.title.trim() || project.shortTitle,
@@ -868,6 +940,10 @@ export function SharedBoardView({
   };
 
   const openAddMemberModal = async () => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin menambah anggota board ini.");
+      return;
+    }
     await loadCandidates();
     setIsAddMemberOpen(true);
   };
@@ -878,6 +954,10 @@ export function SharedBoardView({
 
   const handleAddMembers = async () => {
     if (!selectedCandidateId) return;
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin menambah anggota board ini.");
+      return;
+    }
     
     const candidate = availableCandidates.find(c => c.user_id === selectedCandidateId);
     const hasKetua = teamMembers.some(m => m.role.toLowerCase().includes("ketua"));
@@ -960,6 +1040,10 @@ export function SharedBoardView({
   };
 
   const handleRemoveMember = async (userId: string) => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin menghapus anggota board ini.");
+      return;
+    }
     const member = teamMembers.find(m => m.id === userId);
     if (!member) return;
 
@@ -1043,6 +1127,10 @@ export function SharedBoardView({
     if (!activeId) return null;
 
     const data = await apiGet<any>(`/research/${activeId}/board`);
+    setPermissionsMap((prev) => ({
+      ...prev,
+      [activeId]: normalizeBoardPermissions(data?.permissions, currentUser?.role)
+    }));
     const allTasks = Array.isArray(data?.tasks)
       ? data.tasks
       : [
@@ -1127,6 +1215,10 @@ export function SharedBoardView({
 
   const deleteTask = () => {
     if (!selectedTask) return;
+    if (!canManageCards) {
+      setTaskFetchMessage("Anda tidak memiliki izin menghapus kartu pada board ini.");
+      return;
+    }
     void (async () => {
       try {
         await apiDelete(`/research/${activeId}/board/tasks/${selectedTask.id}`);
@@ -1139,6 +1231,10 @@ export function SharedBoardView({
   };
 
   const addMilestone = async () => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin menambah milestone board ini.");
+      return;
+    }
     if (!newMilestoneLabel.trim()) return;
     const response = await apiPost<{ id?: number }>(`/research/${activeId}/milestones`, {
       label: newMilestoneLabel.trim(),
@@ -1153,6 +1249,10 @@ export function SharedBoardView({
   };
 
   const renameMilestone = async (index: number, label: string) => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin mengubah milestone board ini.");
+      return;
+    }
     const current = milestones[index];
     if (!current || !label.trim()) return;
     if (current.id) {
@@ -1167,6 +1267,10 @@ export function SharedBoardView({
   };
 
   const removeMilestone = async (index: number) => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin menghapus milestone board ini.");
+      return;
+    }
     const current = milestones[index];
     if (!current) return;
     if (current.id) {
@@ -1181,6 +1285,10 @@ export function SharedBoardView({
   // ─── Attachment Link Functions ──────────────────────────────────────────────
 
   const saveAttachmentLink = async () => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin mengubah link lampiran board ini.");
+      return;
+    }
     setSavingAttachment(true);
     try {
       await apiPut(`/research/${activeId}`, { attachmentLink: attachmentLink.trim() || null });
@@ -1208,6 +1316,10 @@ export function SharedBoardView({
   };
 
   const sendTaskComment = async () => {
+    if (!canFillExistingCards) {
+      setTaskCommentMessage("Anda tidak memiliki izin mengisi kartu pada board ini.");
+      return;
+    }
     if (!selectedTask?.id || !currentUser?.id) {
       setTaskCommentMessage("Komentar tidak bisa dikirim karena data user atau tugas tidak tersedia.");
       return;
@@ -1246,6 +1358,10 @@ export function SharedBoardView({
   };
 
   const addTaskSubtask = () => {
+    if (!canManageCards) {
+      setTaskChecklistMessage("Anda tidak memiliki izin menambah sub-tugas pada kartu ini.");
+      return;
+    }
     const title = newTaskSubtask.trim();
     if (!title) {
       setTaskChecklistMessage("Sub-tugas kosong tidak bisa ditambahkan.");
@@ -1270,6 +1386,10 @@ export function SharedBoardView({
 
   const removeTaskSubtask = (subtaskId: string) => {
     if (!selectedTask?.id) return;
+    if (!canManageCards) {
+      setTaskChecklistMessage("Anda tidak memiliki izin menghapus sub-tugas pada kartu ini.");
+      return;
+    }
     void (async () => {
       try {
         await apiDelete<{ task?: any }>(
@@ -1284,6 +1404,10 @@ export function SharedBoardView({
   };
 
   const toggleTaskSubtask = (subtaskId: string) => {
+    if (!canFillExistingCards) {
+      setTaskChecklistMessage("Anda tidak memiliki izin mengisi checklist pada kartu ini.");
+      return;
+    }
     const current = taskSubtasks.find((item) => item.id === subtaskId);
     if (!current) return;
 
@@ -1311,6 +1435,11 @@ export function SharedBoardView({
   };
 
   const handleTaskAttachmentUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canFillExistingCards) {
+      setTaskAttachmentMessage("Anda tidak memiliki izin menambahkan lampiran pada kartu ini.");
+      event.target.value = "";
+      return;
+    }
     const files = Array.from(event.target.files || []);
     if (!files.length) {
       setTaskAttachmentMessage("Tidak ada file yang dipilih.");
@@ -1386,20 +1515,28 @@ export function SharedBoardView({
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                title="Edit Board Settings"
-                onClick={openEditBoardModal}
-                className={`flex items-center justify-center bg-white border border-border rounded-xl w-10 h-10 text-slate-500 ${accentHover} hover:bg-slate-50 hover:border-[#0AB600]/30 transition-all shadow-sm`}
-              >
-                <Edit2 size={16} strokeWidth={2.5} />
-              </button>
-              <div className="w-px h-6 bg-border mx-1" />
-              <button
-                onClick={openAddTaskModal}
-                className={`${accentBg} hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2`}
-              >
-                <Plus size={16} strokeWidth={3} /> Tambah Tugas
-              </button>
+              {canManageCards ? (
+                <>
+                  <button
+                    title="Edit Board Settings"
+                    onClick={openEditBoardModal}
+                    className={`flex items-center justify-center bg-white border border-border rounded-xl w-10 h-10 text-slate-500 ${accentHover} hover:bg-slate-50 hover:border-[#0AB600]/30 transition-all shadow-sm`}
+                  >
+                    <Edit2 size={16} strokeWidth={2.5} />
+                  </button>
+                  <div className="w-px h-6 bg-border mx-1" />
+                  <button
+                    onClick={openAddTaskModal}
+                    className={`${accentBg} hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2`}
+                  >
+                    <Plus size={16} strokeWidth={3} /> Tambah Tugas
+                  </button>
+                </>
+              ) : (
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-500 shadow-sm">
+                  {canFillExistingCards ? "Akses isi kartu" : "Akses lihat"}
+                </span>
+              )}
             </div>
           </div>
 
@@ -1411,12 +1548,14 @@ export function SharedBoardView({
                 <div className="flex items-center gap-2">
                   <span>📌</span>
                   <h2 className={`text-lg font-bold ${accentText}`}>{project.shortTitle}</h2>
-                  <button
-                    onClick={openEditBoardModal}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 bg-white/60 border border-[#D8F5D0] text-[#4AB834] hover:text-[#0AB600] hover:bg-white rounded-lg transition-all shadow-sm"
-                  >
-                    <Edit2 size={14} strokeWidth={2.5} />
-                  </button>
+                  {canManageCards && (
+                    <button
+                      onClick={openEditBoardModal}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 bg-white/60 border border-[#D8F5D0] text-[#4AB834] hover:text-[#0AB600] hover:bg-white rounded-lg transition-all shadow-sm"
+                    >
+                      <Edit2 size={14} strokeWidth={2.5} />
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-1.5">
                   {[
@@ -1467,6 +1606,7 @@ export function SharedBoardView({
                 progressColor={project.progressColor}
                 onToggle={toggleMilestone}
                 onManage={() => setIsMilestoneOpen(true)}
+                editable={canManageCards}
               />
             </div>
 
@@ -1720,23 +1860,27 @@ export function SharedBoardView({
                   <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">{selectedTask.sp} SP</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <select
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (!e.target.value) return;
-                      void handleMoveTaskStatus(e.target.value);
-                      e.currentTarget.value = "";
-                    }}
-                    className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-600 focus:outline-none hover:bg-slate-100 cursor-pointer transition-colors"
-                  >
-                    <option value="" disabled>Pindah ke...</option>
-                    <option value="todo">TO DO</option>
-                    <option value="doing">DOING</option>
-                    <option value="review">REVIEW</option>
-                    <option value="done">DONE</option>
-                  </select>
-                  <button onClick={openEditTaskModal} className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors border border-transparent hover:border-slate-200"><Edit2 size={14} /></button>
-                  <button onClick={() => setShowDeleteWarning(true)} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors border border-transparent hover:border-red-200"><Trash2 size={14} /></button>
+                  {canManageCards && (
+                    <>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          void handleMoveTaskStatus(e.target.value);
+                          e.currentTarget.value = "";
+                        }}
+                        className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-600 focus:outline-none hover:bg-slate-100 cursor-pointer transition-colors"
+                      >
+                        <option value="" disabled>Pindah ke...</option>
+                        <option value="todo">TO DO</option>
+                        <option value="doing">DOING</option>
+                        <option value="review">REVIEW</option>
+                        <option value="done">DONE</option>
+                      </select>
+                      <button onClick={openEditTaskModal} className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors border border-transparent hover:border-slate-200"><Edit2 size={14} /></button>
+                      <button onClick={() => setShowDeleteWarning(true)} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors border border-transparent hover:border-red-200"><Trash2 size={14} /></button>
+                    </>
+                  )}
                   <div className="w-px h-5 bg-border mx-1" />
                   <button onClick={closeTask} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors ml-1"><X size={18} /></button>
                 </div>
@@ -1876,25 +2020,28 @@ export function SharedBoardView({
                             : "Belum ada lampiran. Mahasiswa wajib menambahkan lampiran sebelum mencentang sub-tugas."}
                         </p>
                       </div>
-                      <button
-                        onClick={() => checklistAttachmentInputRef.current?.click()}
-                        className="inline-flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
-                      >
-                        <UploadCloud size={14} /> Tambah Lampiran
-                      </button>
+                      {canFillExistingCards && (
+                        <button
+                          onClick={() => checklistAttachmentInputRef.current?.click()}
+                          className="inline-flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+                        >
+                          <UploadCloud size={14} /> Tambah Lampiran
+                        </button>
+                      )}
                     </div>
                     <div className="space-y-2">
                       {taskSubtasks.length === 0 && (
                         <div className="rounded-xl border border-dashed border-border bg-white px-4 py-3 text-sm text-muted-foreground">
-                          Sub-tugas belum ada. Tambahkan item checklist baru di bawah.
+                          {canManageCards ? "Sub-tugas belum ada. Tambahkan item checklist baru di bawah." : "Sub-tugas belum ada."}
                         </div>
                       )}
                       {taskSubtasks.map((item) => (
                         <div key={item.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-border shadow-sm">
                           <button
                             onClick={() => toggleTaskSubtask(item.id)}
+                            disabled={!canFillExistingCards}
                             className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
-                              item.done ? "bg-emerald-500 text-white border-emerald-500" : "bg-slate-50 border-2 border-slate-300 hover:border-[#0AB600]"
+                              item.done ? "bg-emerald-500 text-white border-emerald-500" : "bg-slate-50 border-2 border-slate-300 hover:border-[#0AB600] disabled:hover:border-slate-300 disabled:cursor-not-allowed"
                             }`}
                             title={item.attachmentRequired ? "Checklist ini membutuhkan lampiran untuk mahasiswa." : "Toggle sub-tugas"}
                           >
@@ -1917,31 +2064,35 @@ export function SharedBoardView({
                               )}
                             </div>
                           </div>
-                          <button
-                            onClick={() => removeTaskSubtask(item.id)}
-                            className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors shrink-0"
-                            title="Hapus sub-tugas"
-                          >
-                            <X size={14} />
-                          </button>
+                          {canManageCards && (
+                            <button
+                              onClick={() => removeTaskSubtask(item.id)}
+                              className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors shrink-0"
+                              title="Hapus sub-tugas"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        value={newTaskSubtask}
-                        onChange={(e) => setNewTaskSubtask(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") addTaskSubtask(); }}
-                        placeholder="Tambah sub-tugas baru..."
-                        className="flex-1 rounded-xl border border-border bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20 focus:border-[#0AB600]"
-                      />
-                      <button
-                        onClick={addTaskSubtask}
-                        className={`px-4 py-2.5 rounded-xl text-sm font-bold text-white ${accentBg} hover:opacity-90 transition-colors`}
-                      >
-                        Tambah
-                      </button>
-                    </div>
+                    {canManageCards && (
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          value={newTaskSubtask}
+                          onChange={(e) => setNewTaskSubtask(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") addTaskSubtask(); }}
+                          placeholder="Tambah sub-tugas baru..."
+                          className="flex-1 rounded-xl border border-border bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20 focus:border-[#0AB600]"
+                        />
+                        <button
+                          onClick={addTaskSubtask}
+                          className={`px-4 py-2.5 rounded-xl text-sm font-bold text-white ${accentBg} hover:opacity-90 transition-colors`}
+                        >
+                          Tambah
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1996,6 +2147,7 @@ export function SharedBoardView({
                       );
                     })}
                   </div>
+                  {canFillExistingCards ? (
                   <div className="p-4 bg-white border-t border-border shrink-0">
                     <div className="rounded-2xl border border-border bg-slate-50 p-4 shadow-sm">
                       <div className="flex items-center gap-3 mb-3">
@@ -2057,6 +2209,11 @@ export function SharedBoardView({
                       </div>
                     </div>
                   </div>
+                  ) : (
+                    <div className="p-4 bg-white border-t border-border text-sm font-medium text-muted-foreground shrink-0">
+                      Anda hanya memiliki akses lihat untuk komentar kartu ini.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
