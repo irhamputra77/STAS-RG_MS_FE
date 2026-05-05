@@ -24,6 +24,7 @@ import LayananSurat from "./components/pages/operator/LayananSurat";
 import EksporLaporan from "./components/pages/operator/EksporLaporan";
 import KehadiranMahasiswa from "./components/pages/operator/KehadiranMahasiswa";
 import PengaturanWfhMahasiswa from "./components/pages/operator/PengaturanWfhMahasiswa";
+import DatabaseKegiatan from "./components/pages/operator/DatabaseKegiatan";
 import PengaturanSistem from "./components/pages/operator/PengaturanSistem";
 import AuditLog from "./components/pages/operator/AuditLog";
 import ProgressBoard from "./components/pages/operator/ProgressBoard";
@@ -125,6 +126,7 @@ export const router = createBrowserRouter([
               { path: "dosen", element: <DatabaseDosen /> },
               { path: "operator", element: <DatabaseOperator /> },
               { path: "wfh-mahasiswa", element: <PengaturanWfhMahasiswa /> },
+              { path: "kegiatan", element: <DatabaseKegiatan /> },
               { path: "logbook", element: <LogbookMonitor /> },
               { path: "kehadiran", element: <KehadiranMahasiswa /> },
               { path: "cuti", element: <PersetujuanCuti /> },

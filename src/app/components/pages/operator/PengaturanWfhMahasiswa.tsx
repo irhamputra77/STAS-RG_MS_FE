@@ -42,36 +42,6 @@ function mapStudentRow(item: any): StudentSettingRow {
   };
 }
 
-function mapSettingsItems(items: any[]) {
-  const settingsMap = new Map<string, { wfhQuota: number; hasSetting: boolean }>();
-  for (const item of items) {
-    const nim = String(item?.nim || item?.studentNim || item?.student_nim || "").trim();
-    if (!nim) continue;
-    settingsMap.set(nim, {
-      wfhQuota: readNumber(item?.wfhQuota, item?.wfh_quota),
-      hasSetting: true,
-    });
-  }
-  return settingsMap;
-}
-
-function buildRowsFromStudents(students: any[], settingsItems: any[]) {
-  const settingsMap = mapSettingsItems(settingsItems);
-  return students.map((student: any) => {
-    const nim = String(student?.nim || student?.studentNim || student?.student_nim || "").trim();
-    const studentName = String(student?.nama || student?.studentName || student?.student_name || student?.name || "").trim();
-    const setting = settingsMap.get(nim);
-    const wfhQuota = setting?.wfhQuota ?? 0;
-    const hasSetting = setting?.hasSetting ?? false;
-    return {
-      studentName,
-      nim,
-      wfhQuota,
-      hasSetting,
-      draftQuota: String(wfhQuota),
-    };
-  });
-}
 
 export default function PengaturanWfhMahasiswa() {
   const [rows, setRows] = useState<StudentSettingRow[]>([]);
@@ -85,13 +55,9 @@ export default function PengaturanWfhMahasiswa() {
     setLoading(true);
     setError("");
     try {
-      const [studentsResponse, settingsResponse] = await Promise.all([
-        apiGet<any>("/students"),
-        apiGet<any>("/wfh-settings/students").catch(() => ({ items: [] })),
-      ]);
-      const students = Array.isArray(studentsResponse) ? studentsResponse : Array.isArray(studentsResponse?.items) ? studentsResponse.items : [];
+      const settingsResponse = await apiGet<any>("/wfh-settings/students");
       const settingsItems = Array.isArray(settingsResponse?.items) ? settingsResponse.items : Array.isArray(settingsResponse) ? settingsResponse : [];
-      const rows = buildRowsFromStudents(students, settingsItems);
+      const rows = settingsItems.map((item: any) => mapStudentRow(item));
       setRows(rows);
       setMessage("");
     } catch (err: any) {
@@ -188,7 +154,7 @@ export default function PengaturanWfhMahasiswa() {
         <div className="rounded-[16px] border border-border bg-white shadow-sm overflow-hidden">
           <div className="flex flex-col gap-4 border-b border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-sm font-black text-foreground">Daftar Mahasiswa & Jatah WFH</h2>
+              <h2 className="text-sm font-black text-foreground">Daftar Mahasiswa & Jatah WFH per Minggu</h2>
               <p className="mt-1 text-xs font-medium text-muted-foreground">
                 {dirtyCount > 0 ? `${dirtyCount} perubahan belum disimpan.` : "Semua pengaturan mahasiswa sudah sinkron."}
               </p>
@@ -257,7 +223,7 @@ export default function PengaturanWfhMahasiswa() {
                   <tr className="border-b border-border bg-slate-50">
                     <th className="px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">Nama Mahasiswa</th>
                     <th className="px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">NIM</th>
-                    <th className="px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">Jatah WFH</th>
+                    <th className="px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">Jatah WFH / Minggu</th>
                     <th className="px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">Status Setting</th>
                   </tr>
                 </thead>
@@ -284,7 +250,7 @@ export default function PengaturanWfhMahasiswa() {
                                   : "border-border bg-white focus:ring-[#0AB600]/20"
                                 }`}
                             />
-                            <span className="text-xs font-semibold text-muted-foreground">hari</span>
+                            <span className="text-xs font-semibold text-muted-foreground">hari / minggu</span>
                             {isDirty && (
                               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">
                                 Belum disimpan

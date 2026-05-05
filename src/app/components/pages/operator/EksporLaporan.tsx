@@ -5,6 +5,7 @@ import {
   Calendar,
   CalendarOff,
   Check,
+  ClipboardList,
   Download,
   FileSpreadsheet,
   FileText,
@@ -82,6 +83,12 @@ const TEMPLATE_STYLES: Record<string, { icon: React.ReactNode; iconBg: string; b
     iconBg: "bg-rose-100",
     border: "border-rose-200",
     bg: "bg-rose-50"
+  },
+  "kegiatan-stas": {
+    icon: <ClipboardList size={24} className="text-teal-600" />,
+    iconBg: "bg-teal-100",
+    border: "border-teal-200",
+    bg: "bg-teal-50"
   }
 };
 

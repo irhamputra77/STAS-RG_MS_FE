@@ -7,39 +7,54 @@ const localApiTarget = 'http://localhost:3000'
 
 export default defineConfig({
   plugins: [
-    // The React and Tailwind plugins are both required for Make, even if
-    // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
   ],
   resolve: {
     alias: {
-      // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
     },
   },
-
-  // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
   server: {
     proxy: {
-      // Proxy API calls to backend during development to avoid CORS and allow cookies
       '/api': {
         target: localApiTarget,
         changeOrigin: true,
         secure: false,
-        // keep path as-is (/api/v1/...)
+        cookieDomainRewrite: { "*": "localhost" },
+        cookiePathRewrite: { "*": "/" },
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            const cookies = proxyRes.headers['set-cookie'];
+            if (cookies) {
+              proxyRes.headers['set-cookie'] = cookies.map(cookie =>
+                cookie
+                  .replace(/;\s*secure/gi, '')
+                  .replace(/;\s*SameSite=Strict/gi, '; SameSite=Lax')
+              );
+            }
+          });
+        },
+        onProxyReq: (proxyReq, req) => {
+          if (req.headers.cookie) {
+            proxyReq.setHeader('cookie', req.headers.cookie);
+          }
+        }
       },
-      // Proxy backend-served file URLs so opening /uploads/... does not hit the SPA router
       '/uploads': {
         target: localApiTarget,
         changeOrigin: true,
         secure: false,
+        cookieDomainRewrite: { "*": "localhost" },
+        cookiePathRewrite: { "*": "/" }
       },
       '/files': {
         target: localApiTarget,
         changeOrigin: true,
         secure: false,
+        cookieDomainRewrite: { "*": "localhost" },
+        cookiePathRewrite: { "*": "/" }
       }
     }
   }

@@ -31,6 +31,7 @@ const NAV_ITEMS = [
   { name: "Dashboard", path: "/operator/dashboard", icon: LayoutDashboard },
   { name: "Database Mahasiswa", path: "/operator/mahasiswa", icon: Users },
   { name: "Pengaturan WFH Mahasiswa", path: "/operator/wfh-mahasiswa", icon: Settings2 },
+  { name: "Database Kegiatan", path: "/operator/kegiatan", icon: CalendarCheck },
   { name: "Database Riset", path: "/operator/riset", icon: FlaskConical },
   { name: "Database Dosen", path: "/operator/dosen", icon: Users },
   { name: "Database Admin", path: "/operator/operator", icon: Settings2 },

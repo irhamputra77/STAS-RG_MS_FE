@@ -469,10 +469,11 @@ export default function Attendance() {
   const hasLogbookToday = async () => {
     if (!user?.id) return false;
     const todayKey = getJakartaDateKey();
-    const entries = await apiGet<Array<any>>(`/logbooks?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`);
+    const entries = await apiGet<Array<any>>(`/logbooks?_=${Date.now()}`);
     return (entries || []).some((entry) => {
-      const dateKey = normalizeDateKey(entry?.date || entry?.tanggal || entry?.created_at || entry?.createdAt);
-      return dateKey === todayKey;
+      // date is returned as 'YYYY-MM-DD' string from backend (TO_CHAR)
+      const entryDate = String(entry?.date || "").slice(0, 10);
+      return entryDate === todayKey;
     });
   };
 
@@ -523,6 +524,9 @@ export default function Attendance() {
       return;
     }
 
+    // Capture intent before async calls that may update todayData state
+    const isCheckout = todayData.status === "Berlangsung";
+
     setSubmitting(true);
     setError("");
     setGpsWarning("");
@@ -563,7 +567,7 @@ export default function Attendance() {
         earlyCheckoutAcknowledged: forceEarlyCheckout
       };
 
-      if (todayData.status === "Berlangsung") {
+      if (isCheckout) {
         const result = await apiPost<any>("/attendance/check-out", payload);
         setLastGpsResult({
           accuracyMeters: normalizeNumber(result?.accuracyMeters, accuracy),

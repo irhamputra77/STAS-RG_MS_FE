@@ -128,7 +128,7 @@ export default function LeaveRequest() {
   const wfhSourceMeta = getWfhSourceMeta(wfhSummary.wfhQuotaSource);
 
   const requestTypeOptions = isRisetStudent
-    ? REQUEST_TYPE_OPTIONS.filter((option) => option.value !== "cuti")
+    ? REQUEST_TYPE_OPTIONS.filter((option) => option.value !== "cuti" && option.value !== "wfh")
     : REQUEST_TYPE_OPTIONS;
 
   const loadStudentProfileContext = async () => {
@@ -201,12 +201,10 @@ export default function LeaveRequest() {
   }, [user?.id, user?.role]);
 
   useEffect(() => {
-    if (!isRisetStudent || formData.jenis !== "cuti") return;
-
-    setFormData((prev) => ({
-      ...prev,
-      jenis: "izin",
-    }));
+    if (!isRisetStudent) return;
+    if (formData.jenis === "cuti" || formData.jenis === "wfh") {
+      setFormData((prev) => ({ ...prev, jenis: "izin" }));
+    }
   }, [formData.jenis, isRisetStudent]);
 
   useEffect(() => {
@@ -291,6 +289,11 @@ export default function LeaveRequest() {
 
     if (isRisetStudent && formData.jenis === "cuti") {
       setError("Mahasiswa Riset tidak dapat mengajukan cuti. Silakan pilih Izin atau Sakit.");
+      return;
+    }
+
+    if (isRisetStudent && formData.jenis === "wfh") {
+      setError("Mahasiswa Riset tidak mendapat jatah WFH.");
       return;
     }
 

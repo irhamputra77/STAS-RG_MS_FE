@@ -186,7 +186,7 @@ export default function LogbookForm() {
     setSubmitting(true);
     try {
       // Enforce date rules for mahasiswa when coming from checkout
-      const todayIso = new Date().toISOString().slice(0, 10);
+      const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
       if (fromCheckout && !editId) {
         // Ensure date is today's date when creating from checkout
         setDate(todayIso);
