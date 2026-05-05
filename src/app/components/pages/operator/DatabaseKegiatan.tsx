@@ -899,12 +899,12 @@ export default function DatabaseKegiatan() {
                   </div>
 
                   <label className="block space-y-1.5 text-sm font-bold text-foreground">
-                    <span>Tujuan Kegiatan</span>
+                    <span>Judul Kegiatan</span>
                     <textarea value={form.goal}
                       onChange={(e) => setForm((p) => ({ ...p, goal: e.target.value }))}
                       rows={2}
                       className="w-full rounded-xl border border-border px-3 py-2.5 text-sm font-medium outline-none focus:border-[#0AB600]"
-                      placeholder="Tujuan kegiatan" />
+                      placeholder="Judul Kegiatan" />
                   </label>
 
                   <label className="block space-y-1.5 text-sm font-bold text-foreground">
