@@ -29,6 +29,7 @@ type StudentRow = {
   initials: string;
   prodi: string;
   status: string;
+  tipe?: string | null;
   color: string;
   photoUrl?: string | null;
   photo_url?: string | null;
@@ -42,6 +43,10 @@ type AttendanceMonitorToday = {
   currentTime?: string;
   lockVisibleAfter?: string;
   lockWindowOpen?: boolean;
+  risetWeeklyHoursLockAfter?: string;
+  risetWeeklyHoursLockWindowOpen?: boolean;
+  risetWeeklyUnderHoursIds?: string[];
+  risetWeeklyUnderHoursLockIds?: string[];
   holidayToday?: string | HolidayItem | null;
   isHoliday?: boolean;
   holidays?: HolidayItem[];
@@ -355,6 +360,7 @@ export default function KehadiranMahasiswa() {
           "M",
         prodi: item?.prodi || "-",
         status: item?.status || "Aktif",
+        tipe: item?.tipe || item?.type || null,
         color: AVATAR_COLORS[index % AVATAR_COLORS.length],
         photoUrl: item?.photoUrl || item?.photo_url || null,
         photo_url: item?.photoUrl || item?.photo_url || null,
@@ -416,6 +422,11 @@ export default function KehadiranMahasiswa() {
   const lockedAbsentSet = React.useMemo(() => new Set(monitor?.absentIds || []), [monitor?.absentIds]);
   const reportedAbsentSet = React.useMemo(() => new Set(monitor?.reportedAbsentIds || []), [monitor?.reportedAbsentIds]);
   const noInformationSet = React.useMemo(() => new Set(monitor?.noInformationIds || []), [monitor?.noInformationIds]);
+  const risetWeeklyUnderHoursSet = React.useMemo(() => new Set(monitor?.risetWeeklyUnderHoursIds || []), [monitor?.risetWeeklyUnderHoursIds]);
+  const risetWeeklyUnderHoursLockSet = React.useMemo(() => new Set(monitor?.risetWeeklyUnderHoursLockIds || []), [monitor?.risetWeeklyUnderHoursLockIds]);
+  const isRisetStudent = React.useCallback((student: StudentRow) => {
+    return String(student.tipe || "").trim().toLowerCase() === "riset";
+  }, []);
 
   const studentsWithStatus = React.useMemo(() => {
     return students.map((student) => {
@@ -427,9 +438,9 @@ export default function KehadiranMahasiswa() {
         todayStatus = getLeaveAttendanceStatus(monitor?.leaveTypesByStudentId?.[student.id]);
       } else if (holidayToday) {
         todayStatus = "Libur";
-      } else if (lockedAbsentSet.has(student.id) || reportedAbsentSet.has(student.id)) {
+      } else if (!isRisetStudent(student) && (lockedAbsentSet.has(student.id) || reportedAbsentSet.has(student.id))) {
         todayStatus = "Tidak Hadir";
-      } else if (!noInformationSet.has(student.id) && monitor?.lockWindowOpen) {
+      } else if (!isRisetStudent(student) && !noInformationSet.has(student.id) && monitor?.lockWindowOpen) {
         todayStatus = "Tidak Hadir";
       }
 
@@ -448,6 +459,7 @@ export default function KehadiranMahasiswa() {
     reportedAbsentSet,
     students,
     holidayToday,
+    isRisetStudent,
   ]);
 
   const filteredStudents = React.useMemo(() => {
@@ -480,6 +492,8 @@ export default function KehadiranMahasiswa() {
     const absentCount = studentsWithStatus.filter((student) => student.todayStatus === "Tidak Hadir").length;
     const noInformationCount = studentsWithStatus.filter((student) => student.todayStatus === "Belum Ada Info").length;
     const holidayCount = studentsWithStatus.filter((student) => student.todayStatus === "Libur").length;
+    const risetWeeklyUnderHoursCount = students.filter((student) => isRisetStudent(student) && risetWeeklyUnderHoursSet.has(student.id)).length;
+    const risetWeeklyLockedCount = students.filter((student) => isRisetStudent(student) && risetWeeklyUnderHoursLockSet.has(student.id)).length;
     const totalCount = students.length;
 
     return {
@@ -488,9 +502,11 @@ export default function KehadiranMahasiswa() {
       absentCount,
       noInformationCount,
       holidayCount,
+      risetWeeklyUnderHoursCount,
+      risetWeeklyLockedCount,
       totalCount,
     };
-  }, [students.length, studentsWithStatus]);
+  }, [isRisetStudent, risetWeeklyUnderHoursLockSet, risetWeeklyUnderHoursSet, students, studentsWithStatus]);
 
   const reloadAttendanceData = React.useCallback(async () => {
     await Promise.all([loadOverview(), loadDetail()]);
@@ -681,7 +697,7 @@ export default function KehadiranMahasiswa() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
           <div className="rounded-[16px] border border-blue-200 bg-blue-50 p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-blue-600">
               <Users size={18} />
@@ -720,6 +736,17 @@ export default function KehadiranMahasiswa() {
               <span className="text-xs font-black uppercase tracking-wide">Libur</span>
             </div>
             <p className="text-2xl font-black text-foreground">{summary.holidayCount}</p>
+          </div>
+
+          <div className="rounded-[16px] border border-orange-200 bg-orange-50 p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-2 text-orange-600">
+              <Clock3 size={18} />
+              <span className="text-xs font-black uppercase tracking-wide">Jam Riset Kurang</span>
+            </div>
+            <p className="text-2xl font-black text-foreground">{summary.risetWeeklyUnderHoursCount}</p>
+            <p className="mt-1 text-[10px] font-bold text-orange-700">
+              {summary.risetWeeklyLockedCount} terkunci mingguan
+            </p>
           </div>
         </div>
 
@@ -787,8 +814,13 @@ export default function KehadiranMahasiswa() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-black text-foreground">{student.name}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
-                          {student.nim} · {student.prodi}
+                          {student.nim} · {student.prodi}{student.tipe ? ` · ${student.tipe}` : ""}
                         </p>
+                        {isRisetStudent(student) && risetWeeklyUnderHoursSet.has(student.id) && (
+                          <p className="mt-1 text-[10px] font-black text-orange-600">
+                            Jam Riset mingguan kurang{risetWeeklyUnderHoursLockSet.has(student.id) ? " - akses terkunci" : ""}
+                          </p>
+                        )}
                       </div>
 
                       <span

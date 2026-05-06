@@ -52,7 +52,18 @@ function isActiveAccessLock(lock: StudentAccessLock | null) {
 
 function getAccessLockReasonLabel(reason?: string | null) {
   if (reason === "ATTENDANCE_ABSENT") return "Tidak Hadir";
+  if (reason === "RISET_WEEKLY_HOURS_UNDER_TARGET") return "Jam Kerja Riset Mingguan Tidak Terpenuhi";
   return reason || "-";
+}
+
+function getAccessLockDefaultMessage(reason?: string | null, date?: string | null) {
+  if (reason === "RISET_WEEKLY_HOURS_UNDER_TARGET") {
+    return "Akses dikunci karena jam kerja Riset mingguan belum memenuhi target.";
+  }
+
+  return `Akun Anda dikunci karena terdeteksi tidak hadir pada ${
+    date || "hari ini"
+  }. Hubungi admin untuk membuka kembali akses website.`;
 }
 
 function isRisetStudentType(tipe?: string | null) {
@@ -352,7 +363,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
         status: "LOCKED",
         reason: detail.reason || "ATTENDANCE_ABSENT",
         date: detail.date || null,
-        message: detail.message || "Akses dikunci karena terdeteksi tidak hadir. Hubungi admin.",
+        message: detail.message || getAccessLockDefaultMessage(detail.reason || "ATTENDANCE_ABSENT", detail.date || null),
       });
     };
 
@@ -667,17 +678,14 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
               </div>
               <div>
                 <p className="text-lg font-black text-white">Akses Website Dikunci</p>
-                <p className="text-xs font-bold text-white/80">Status kehadiran membutuhkan verifikasi admin</p>
+                <p className="text-xs font-bold text-white/80">Status akses membutuhkan verifikasi admin</p>
               </div>
             </div>
 
             <div className="p-6">
               <h3 className="mb-2 text-base font-black text-foreground">Akses Dikunci</h3>
               <p className="text-sm font-medium leading-relaxed text-muted-foreground">
-                {accessLock?.message ||
-                  `Akun Anda dikunci karena terdeteksi tidak hadir pada ${
-                    accessLock?.date || "hari ini"
-                  }. Hubungi admin untuk membuka kembali akses website.`}
+                {accessLock?.message || getAccessLockDefaultMessage(accessLock?.reason, accessLock?.date)}
               </p>
 
               <div className="mt-4 grid grid-cols-1 gap-2 rounded-[14px] border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700">

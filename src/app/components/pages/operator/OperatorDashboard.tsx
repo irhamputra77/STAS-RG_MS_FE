@@ -4,7 +4,7 @@ import { OperatorLayout } from "../../templates/OperatorLayout";
 import {
   Users, FlaskConical, CalendarCheck, FileText, BookOpen, Kanban,
   AlertTriangle, Check, X, ChevronRight, Clock,
-  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell, Lock,
+  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell, Lock, Search,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../../lib/api";
 import { formatDateYmd } from "../../../lib/date";
@@ -53,6 +53,8 @@ type AttendanceMonitorToday = {
   currentTime?: string;
   lockVisibleAfter?: string;
   lockWindowOpen?: boolean;
+  risetWeeklyHoursLockAfter?: string;
+  risetWeeklyHoursLockWindowOpen?: boolean;
   presentIds?: string[];
   leaveIds?: string[];
   absentIds?: string[];
@@ -61,6 +63,8 @@ type AttendanceMonitorToday = {
   magangUnderHoursIds?: string[];
   magangMissingCheckoutIds?: string[];
   magangLockedIds?: string[];
+  risetWeeklyUnderHoursIds?: string[];
+  risetWeeklyUnderHoursLockIds?: string[];
 };
 
 type StudentAccessLock = {
@@ -69,6 +73,7 @@ type StudentAccessLock = {
   studentName: string;
   studentInitials?: string;
   nim?: string;
+  studentType?: string | null;
   date?: string;
   reason?: string;
   reasonLabel?: string;
@@ -178,16 +183,25 @@ function displayStatus(status: string) {
   return status.replace("Operator", "Admin");
 }
 
+function matchesSearchQuery(values: Array<string | number | null | undefined>, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  return values.some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+}
+
 const ACCESS_LOCK_REASON_LABELS: Record<string, string> = {
   ATTENDANCE_ABSENT: "Belum Ada Informasi Absensi",
   WORK_HOURS_UNDER_8: "Jam Kerja Magang Kurang dari 8 Jam",
   CHECKOUT_MISSING_22: "Belum Checkout Sampai 22.00 WIB",
+  RISET_WEEKLY_HOURS_UNDER_TARGET: "Jam Kerja Riset Mingguan Tidak Terpenuhi",
 };
 
 const ACCESS_LOCK_REASON_MESSAGES: Record<string, string> = {
   ATTENDANCE_ABSENT: "Belum ada informasi absensi setelah pukul 10.00 WIB.",
   WORK_HOURS_UNDER_8: "Durasi kerja Magang hari ini kurang dari 8 jam.",
   CHECKOUT_MISSING_22: "Mahasiswa Magang belum checkout sampai pukul 22.00 WIB.",
+  RISET_WEEKLY_HOURS_UNDER_TARGET: "Akses dikunci karena jam kerja Riset mingguan belum memenuhi target.",
 };
 
 function getLockReasonLabel(reason?: string | null, reasonLabel?: string | null) {
@@ -222,6 +236,8 @@ export default function OperatorDashboard() {
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
   const [warningInfo, setWarningInfo] = useState<{ message: string; tone: "success" | "warning" } | null>(null);
+  const [absentSearch, setAbsentSearch] = useState("");
+  const [accessLockSearch, setAccessLockSearch] = useState("");
   const [readAttendanceItems, setReadAttendanceItems] = useState<string[]>(() =>
     getReadAttendanceWarningIdsForDate(getCachedUserUiState(), attendanceReadDate)
   );
@@ -514,6 +530,7 @@ export default function OperatorDashboard() {
             studentName: item.student_name || item.studentName || "Mahasiswa",
             studentInitials: item.student_initials || item.studentInitials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
             nim: item.nim || item.student_nim || "-",
+            studentType: item.student_type || item.studentType || item.tipe || null,
             date: item.date || item.reference_date || item.referenceDate || null,
             reason: item.reason || item.lock_reason || item.lockReason || "ATTENDANCE_ABSENT",
             reasonLabel: item.reasonLabel || item.reason_label || null,
@@ -600,8 +617,8 @@ export default function OperatorDashboard() {
         body: `${warning.studentName}, Anda tercatat ${warning.attendanceStatus === "Belum Absen" ? "belum absen" : "tidak hadir"} pada ${warning.referenceDate || "hari ini"}. Hubungi admin jika ada keperluan.`
       },
       low_hours: {
-        title: "Peringatan: Jam Kehadiran Kurang",
-        body: `${warning.studentName}, jam kehadiran Anda minggu ini belum memenuhi target (${warning.currentHours || 0}j/${warning.targetHours || 0}j). Segera penuhi jam minimal.`
+        title: "Peringatan: Jam Riset Mingguan Kurang",
+        body: `${warning.studentName}, jam kerja Riset mingguan Anda belum memenuhi target (${warning.currentHours || 0}j/${warning.targetHours || 0}j). Segera penuhi jam minimal.`
       },
     };
     const msg = messages[warning.type];
@@ -671,32 +688,43 @@ export default function OperatorDashboard() {
   const resignCount = resignationRequests.filter(r => ["Menunggu", "Menunggu Dosen"].includes(r.finalStatus)).length;
   const lockVisibleAfter = attendanceMonitor?.lockVisibleAfter || "10:00";
   const hasPassedAttendanceCutoff = Boolean(attendanceMonitor?.lockWindowOpen);
+  const risetWeeklyHoursLockAfter = attendanceMonitor?.risetWeeklyHoursLockAfter || "-";
+  const hasPassedRisetWeeklyHoursLock = Boolean(attendanceMonitor?.risetWeeklyHoursLockWindowOpen);
   const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
   const presentIdSet = new Set((attendanceMonitor?.presentIds || []).map(String));
   const hadirHariIniMhs = students.filter((item) => presentIdSet.has(String(item.id)));
   const getStudentById = (studentId: string) =>
     students.find((item) => String(item.id) === String(studentId));
-  const getStudentTypeLabel = (studentId: string) =>
-    getStudentById(studentId)?.tipe || "Mahasiswa";
-  const isMagangStudent = (studentId: string) =>
-    String(getStudentTypeLabel(studentId)).trim().toLowerCase() === "magang";
   const getAccessLockForStudent = (studentId: string) =>
     accessLocks.find((item) => String(item.studentId) === String(studentId));
-  const lockedAbsentMhs: AttendanceAbsentItem[] = accessLocks.map((lock) => ({
-    id: lock.id || `lock-${lock.studentId}`,
-    type: "attendance_absent",
-    studentId: String(lock.studentId || ""),
-    recipientUserId: String(lock.studentId || ""),
-    studentName: lock.studentName || "Mahasiswa",
-    studentInitials: lock.studentInitials || lock.studentName?.slice(0, 2)?.toUpperCase() || "M",
-    studentColor: "bg-red-500 text-white",
-    nim: lock.nim || "-",
-    referenceDate: lock.date || getJakartaDateKey(),
-    attendanceStatus: "Tidak Hadir",
-    accessLock: lock,
-  }));
+  const getStudentTypeLabel = (studentId: string, fallbackType?: string | null) =>
+    getStudentById(studentId)?.tipe || fallbackType || getAccessLockForStudent(studentId)?.studentType || "Mahasiswa";
+  const isMagangStudent = (studentId: string, fallbackType?: string | null) =>
+    String(getStudentTypeLabel(studentId, fallbackType)).trim().toLowerCase() === "magang";
+  const isRisetStudent = (studentId: string, fallbackType?: string | null) =>
+    String(getStudentTypeLabel(studentId, fallbackType)).trim().toLowerCase() === "riset";
+  const isDailyAttendanceLock = (lock?: StudentAccessLock | null) =>
+    String(lock?.reason || "") === "ATTENDANCE_ABSENT";
+  const isRisetWeeklyHoursLock = (lock?: StudentAccessLock | null) =>
+    String(lock?.reason || "") === "RISET_WEEKLY_HOURS_UNDER_TARGET";
+  const lockedAbsentMhs: AttendanceAbsentItem[] = accessLocks
+    .filter((lock) => isDailyAttendanceLock(lock) && !isRisetStudent(lock.studentId, lock.studentType))
+    .map((lock) => ({
+      id: lock.id || `lock-${lock.studentId}`,
+      type: "attendance_absent",
+      studentId: String(lock.studentId || ""),
+      recipientUserId: String(lock.studentId || ""),
+      studentName: lock.studentName || "Mahasiswa",
+      studentInitials: lock.studentInitials || lock.studentName?.slice(0, 2)?.toUpperCase() || "M",
+      studentColor: "bg-red-500 text-white",
+      nim: lock.nim || "-",
+      referenceDate: lock.date || getJakartaDateKey(),
+      attendanceStatus: "Tidak Hadir",
+      accessLock: lock,
+    }));
   const warningAbsentMhs: AttendanceAbsentItem[] = warnings.attendanceAbsent
+    .filter((item) => !isRisetStudent(item.studentId))
     .filter((item) => item.attendanceStatus !== "Cuti")
     .map((item) => ({ ...item, accessLock: getAccessLockForStudent(item.studentId) }));
   const tidakHadirMhs = hasPassedAttendanceCutoff
@@ -707,18 +735,58 @@ export default function OperatorDashboard() {
       )
     ]
     : [];
-  const lowHoursMhs = warnings.lowHours;
-  const risetLowHours = lowHoursMhs.filter(m => {
-    const student = students.find((item) => item.id === m.studentId);
-    return student?.tipe === "Riset";
-  });
-  const magangLowHours = lowHoursMhs.filter(m => {
-    const student = students.find((item) => item.id === m.studentId);
-    return student?.tipe === "Magang";
-  });
+  const filteredTidakHadirMhs = tidakHadirMhs.filter((item) =>
+    matchesSearchQuery(
+      [
+        item.studentName,
+        item.nim,
+        getStudentTypeLabel(item.studentId),
+        item.attendanceStatus,
+        item.referenceDate,
+        item.accessLock?.reasonLabel || getLockReasonLabel(item.accessLock?.reason || "ATTENDANCE_ABSENT"),
+      ],
+      absentSearch
+    )
+  );
+  const risetWeeklyUnderHourIdSet = new Set((attendanceMonitor?.risetWeeklyUnderHoursIds || []).map(String));
+  const risetWeeklyUnderHourLockIdSet = new Set((attendanceMonitor?.risetWeeklyUnderHoursLockIds || []).map(String));
+  const risetLowHoursFromWarnings = warnings.lowHours.filter((item) => isRisetStudent(item.studentId));
+  const risetLowHoursFromMonitor: WarningItem[] = students
+    .filter((student) => isRisetStudent(student.id) && risetWeeklyUnderHourIdSet.has(String(student.id)))
+    .filter((student) => !risetLowHoursFromWarnings.some((warning) => String(warning.studentId) === String(student.id)))
+    .map((student) => {
+      return {
+        id: `riset-weekly-hours-${student.id}`,
+        type: "low_hours",
+        studentId: String(student.id),
+        recipientUserId: String(student.id),
+        studentName: student.name || "Mahasiswa Riset",
+        studentInitials: student.initials || student.name?.slice(0, 2)?.toUpperCase() || "M",
+        studentColor: student.color || "bg-orange-500 text-white",
+        nim: student.nim || "-",
+        referenceDate: attendanceMonitor?.date || getJakartaDateKey(),
+        referencePeriod: "Minggu ini",
+        currentHours: student.jamMingguIni ?? null,
+        targetHours: student.jamMingguTarget ?? null,
+      };
+    });
+  const risetLowHours = [...risetLowHoursFromWarnings, ...risetLowHoursFromMonitor];
   const unreadEarlyCheckoutAlerts = earlyCheckoutAlerts.filter((item) => !item.read);
   const earlyCheckoutDisplay = unreadEarlyCheckoutAlerts.length > 0 ? unreadEarlyCheckoutAlerts : earlyCheckoutAlerts;
-  const jamTidakTerpenuhiCount = risetLowHours.length + magangLowHours.length + unreadEarlyCheckoutAlerts.length;
+  const jamTidakTerpenuhiCount = risetLowHours.length + unreadEarlyCheckoutAlerts.length;
+  const filteredAccessLocks = accessLocks.filter((lock) =>
+    matchesSearchQuery(
+      [
+        lock.studentName,
+        lock.nim,
+        getStudentTypeLabel(lock.studentId, lock.studentType),
+        getLockReasonLabel(lock.reason, lock.reasonLabel),
+        getLockReasonDetail(lock),
+        lock.date,
+      ],
+      accessLockSearch
+    )
+  );
 
   const handleUnlockAccess = async (lock: StudentAccessLock) => {
     if (!lock?.id && !lock?.studentId) return;
@@ -859,7 +927,7 @@ export default function OperatorDashboard() {
           {/* Tidak Hadir */}
           <div className="bg-white border border-red-200 rounded-[14px] shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-red-100 bg-red-50/50 flex items-center justify-between gap-3">
-              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><UserX size={13} className="text-red-500 shrink-0" /> Tidak Hadir Hari Ini<span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{tidakHadirMhs.length}</span></h3>
+              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><UserX size={13} className="text-red-500 shrink-0" /> Tidak Hadir Hari Ini<span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{absentSearch.trim() ? `${filteredTidakHadirMhs.length}/${tidakHadirMhs.length}` : tidakHadirMhs.length}</span></h3>
             </div>
             {!hasPassedAttendanceCutoff ? (
               <div className="px-4 py-8 text-center">
@@ -872,8 +940,31 @@ export default function OperatorDashboard() {
                 <p className="text-[10px] text-muted-foreground mt-1">Semua mahasiswa sudah hadir atau memiliki status kehadiran yang valid hari ini.</p>
               </div>
             ) : (
-              <div className="max-h-[360px] overflow-y-auto">
-                {tidakHadirMhs.map(m => {
+              <>
+                <div className="border-b border-red-100 px-4 py-2.5">
+                  <div className="flex h-9 items-center gap-2 rounded-[10px] border border-red-100 bg-white px-3 text-red-500">
+                    <Search size={14} />
+                    <input
+                      value={absentSearch}
+                      onChange={(event) => setAbsentSearch(event.target.value)}
+                      placeholder="Cari nama, NIM, tipe..."
+                      className="min-w-0 flex-1 bg-transparent text-xs font-bold text-foreground outline-none placeholder:text-muted-foreground/60"
+                    />
+                    {absentSearch && (
+                      <button onClick={() => setAbsentSearch("")} className="text-[10px] font-black text-muted-foreground hover:text-red-600">
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {filteredTidakHadirMhs.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-xs font-black text-foreground">Tidak ada hasil pencarian</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Coba gunakan nama, NIM, tipe, atau alasan lain.</p>
+                  </div>
+                ) : (
+              <div className="max-h-[315px] overflow-y-auto">
+                {filteredTidakHadirMhs.map(m => {
                   const studentType = getStudentTypeLabel(m.studentId);
                   const isMagang = isMagangStudent(m.studentId);
 
@@ -913,13 +1004,18 @@ export default function OperatorDashboard() {
                   );
                 })}
               </div>
+                )}
+              </>
             )}
           </div>
 
           {/* Jam Kurang */}
           <div className="bg-white border border-orange-200 rounded-[14px] shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-orange-100 bg-orange-50/50 flex items-center justify-between gap-3">
-              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><TrendingDown size={13} className="text-orange-500 shrink-0" /> Jam Tidak Terpenuhi<span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{jamTidakTerpenuhiCount}</span></h3>
+              <div>
+                <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><TrendingDown size={13} className="text-orange-500 shrink-0" /> Jam Riset Mingguan Kurang<span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{jamTidakTerpenuhiCount}</span></h3>
+                <p className="text-[10px] text-muted-foreground mt-1">Rule mingguan Riset{risetWeeklyHoursLockAfter !== "-" ? `, lock setelah ${risetWeeklyHoursLockAfter}` : ""}.</p>
+              </div>
             </div>
             {earlyCheckoutDisplay.slice(0, 2).map(alert => (
               <div key={alert.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-orange-100 bg-orange-50/40 hover:bg-orange-50 transition-colors">
@@ -936,14 +1032,25 @@ export default function OperatorDashboard() {
                 </button>
               </div>
             ))}
-            {[...risetLowHours.slice(0, 2), ...magangLowHours.slice(0, 1)].map(m => (
+            {risetLowHours.slice(0, 3).map(m => (
               <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
-                <div className="flex-1 min-w-0"><p className="text-xs font-black text-foreground">{m.studentName}</p><p className="text-[10px] text-muted-foreground">{students.find((item) => item.id === m.studentId)?.tipe || "Mahasiswa"}</p></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-foreground">{m.studentName}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Riset mingguan{risetWeeklyUnderHourLockIdSet.has(String(m.studentId)) || isRisetWeeklyHoursLock(getAccessLockForStudent(m.studentId)) ? " - akses terkunci" : hasPassedRisetWeeklyHoursLock ? " - masuk window lock" : ""}
+                  </p>
+                </div>
                 <div className="text-right shrink-0"><p className="text-xs font-black text-orange-600">{m.currentHours || 0}j/{m.targetHours || 0}j</p></div>
                 <button onClick={() => handleSendWarning(m)} className="flex items-center gap-1 h-6 px-2 bg-orange-100 hover:bg-orange-500 text-orange-600 hover:text-white text-[9px] font-black rounded-[6px] transition-all shrink-0"><Bell size={9} /> Kirim</button>
               </div>
             ))}
+            {earlyCheckoutDisplay.length === 0 && risetLowHours.length === 0 && (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Tidak ada pelanggaran jam Riset mingguan</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Mahasiswa Riset yang kurang jam akan muncul dari rule mingguan backend.</p>
+              </div>
+            )}
           </div>
 
           {/* Akses Ditangguhkan */}
@@ -951,7 +1058,7 @@ export default function OperatorDashboard() {
             <div className="px-4 py-3 border-b border-rose-200 bg-rose-50/60 flex items-center justify-between gap-3">
               <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2">
                 <Lock size={13} className="text-rose-700 shrink-0" /> Akses Ditangguhkan
-                <span className="bg-rose-700 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{accessLocks.length}</span>
+                <span className="bg-rose-700 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{accessLockSearch.trim() ? `${filteredAccessLocks.length}/${accessLocks.length}` : accessLocks.length}</span>
               </h3>
             </div>
             {accessLocks.length === 0 ? (
@@ -960,8 +1067,31 @@ export default function OperatorDashboard() {
                 <p className="text-[10px] text-muted-foreground mt-1">Semua mahasiswa memiliki akses sistem yang aktif.</p>
               </div>
             ) : (
-              <div className="max-h-[360px] overflow-y-auto">
-                {accessLocks.map(lock => (
+              <>
+                <div className="border-b border-rose-100 px-4 py-2.5">
+                  <div className="flex h-9 items-center gap-2 rounded-[10px] border border-rose-100 bg-white px-3 text-rose-600">
+                    <Search size={14} />
+                    <input
+                      value={accessLockSearch}
+                      onChange={(event) => setAccessLockSearch(event.target.value)}
+                      placeholder="Cari nama, NIM, alasan..."
+                      className="min-w-0 flex-1 bg-transparent text-xs font-bold text-foreground outline-none placeholder:text-muted-foreground/60"
+                    />
+                    {accessLockSearch && (
+                      <button onClick={() => setAccessLockSearch("")} className="text-[10px] font-black text-muted-foreground hover:text-rose-700">
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {filteredAccessLocks.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-xs font-black text-foreground">Tidak ada hasil pencarian</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Coba gunakan nama, NIM, tipe, atau alasan lock.</p>
+                  </div>
+                ) : (
+              <div className="max-h-[315px] overflow-y-auto">
+                {filteredAccessLocks.map(lock => (
                   <div key={lock.id} className="px-4 py-3 border-b border-border/50 last:border-0 hover:bg-rose-50/30 transition-colors">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-rose-700 text-white">
@@ -969,7 +1099,7 @@ export default function OperatorDashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground leading-snug break-words">{lock.studentName}</p>
-                        <p className="text-[10px] text-muted-foreground">{lock.nim} · {getStudentTypeLabel(lock.studentId)}</p>
+                        <p className="text-[10px] text-muted-foreground">{lock.nim} · {getStudentTypeLabel(lock.studentId, lock.studentType)}</p>
                         <div className="mt-1.5 rounded-[9px] border border-rose-100 bg-rose-50 px-2.5 py-2">
                           <p className="text-[9px] font-black uppercase tracking-wide text-rose-500">Alasan Ditangguhkan</p>
                           <p className="text-[10px] font-black text-rose-700 mt-0.5">{getLockReasonLabel(lock.reason, lock.reasonLabel)}</p>
@@ -995,6 +1125,8 @@ export default function OperatorDashboard() {
                   </div>
                 ))}
               </div>
+                )}
+              </>
             )}
           </div>
         </div>
