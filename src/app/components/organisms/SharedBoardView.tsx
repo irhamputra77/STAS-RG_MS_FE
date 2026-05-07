@@ -13,6 +13,12 @@ import {
 import { useConfirmDialog } from "../molecules/ConfirmDialog";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../../lib/api";
 import { formatDateReadable } from "../../lib/date";
+import {
+  DOSEN_RESEARCH_ROLES,
+  getResearchRoleOptions,
+  MAHASISWA_RESEARCH_ROLES,
+  normalizeResearchRoleForMemberType
+} from "../../lib/researchRoles";
 
 type Milestone = {
   id?: number;
@@ -26,6 +32,7 @@ type TeamMember = {
   name: string;
   initials: string;
   role: string;
+  memberType: "Mahasiswa" | "Dosen" | string;
   color: string;
 };
 
@@ -212,6 +219,24 @@ function getInitialsFromName(value?: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase() || "U";
+}
+
+function mapTeamMember(member: any, index: number): TeamMember {
+  const fallbackInitials = getInitialsFromName(member?.name || "TM");
+  const memberType = member?.member_type || member?.memberType || "Mahasiswa";
+
+  return {
+    id: String(member?.user_id || member?.userId || ""),
+    name: member?.name || "Anggota Tim",
+    initials: member?.initials || fallbackInitials,
+    role: member?.peran || memberType || "Anggota",
+    memberType,
+    color: memberType === "Dosen"
+      ? "bg-blue-500 text-white"
+      : index % 2 === 0
+        ? "bg-[#8B6FFF] text-white"
+        : "bg-emerald-500 text-white"
+  };
 }
 
 function normalizeBoardStatus(value?: string): BoardTask["status"] {
@@ -427,25 +452,7 @@ export function SharedBoardView({
         const nextMilestonesMap: Record<string, Milestone[]> = {};
 
         const mappedProjects: ProjectView[] = detailRows.map(({ row, members, milestones }) => {
-          const teamMembers: TeamMember[] = (members || []).map((member, index) => {
-            const fallbackInitials = String(member?.name || "TM")
-              .split(" ")
-              .map((chunk: string) => chunk[0] || "")
-              .join("")
-              .slice(0, 2)
-              .toUpperCase() || "TM";
-            return {
-              id: member.user_id,
-              name: member.name || "Anggota Tim",
-              initials: member.initials || fallbackInitials,
-              role: member.peran || member.member_type || "Anggota",
-              color: member.member_type === "Dosen"
-                ? "bg-blue-500 text-white"
-                : index % 2 === 0
-                  ? "bg-[#8B6FFF] text-white"
-                  : "bg-emerald-500 text-white"
-            };
-          });
+          const teamMembers: TeamMember[] = (members || []).map(mapTeamMember);
 
           nextTeamMembersMap[row.id] = teamMembers;
           nextMilestonesMap[row.id] = (milestones || []).map((item: any) => ({
@@ -915,18 +922,18 @@ export function SharedBoardView({
 
       const candidates = [
         ...(studentsData || []).map((s: any) => ({
-          user_id: s.user_id,
+          user_id: String(s.user_id || s.userId || s.id || ""),
           name: s.name,
           initials: s.initials,
           member_type: "Mahasiswa"
         })),
         ...(lecturersData || []).map((l: any) => ({
-          user_id: l.user_id,
+          user_id: String(l.user_id || l.userId || l.id || ""),
           name: l.name,
           initials: l.initials,
           member_type: "Dosen"
         }))
-      ].filter((c: any) => !currentMemberIds.has(c.user_id));
+      ].filter((c: any) => c.user_id && !currentMemberIds.has(c.user_id));
 
       setAvailableCandidates(candidates);
       setSelectedCandidateId(null);
@@ -961,9 +968,11 @@ export function SharedBoardView({
     
     const candidate = availableCandidates.find(c => c.user_id === selectedCandidateId);
     const hasKetua = teamMembers.some(m => m.role.toLowerCase().includes("ketua"));
+    const memberType = candidate?.member_type || "Mahasiswa";
+    const peran = normalizeResearchRoleForMemberType(newMemberPeran, memberType);
     
     // Validate Ketua role
-    if (newMemberPeran === "Ketua") {
+    if (peran === "Ketua") {
       if (hasKetua) {
         await confirm({
           title: "Ketua sudah ada",
@@ -989,34 +998,15 @@ export function SharedBoardView({
     try {
       await apiPost(`/research/${activeId}/members`, {
         userId: selectedCandidateId,
-        memberType: candidate?.member_type || "Mahasiswa",
-        peran: newMemberPeran,
+        memberType,
+        peran,
         status: "Aktif"
       });
 
       // Reload members dari API
       const members = await apiGet<Array<any>>(`/research/${activeId}/members`);
       
-      const updatedTeamMembers: TeamMember[] = (members || []).map((member, index) => {
-        const fallbackInitials = String(member?.name || "TM")
-          .split(" ")
-          .map((chunk: string) => chunk[0] || "")
-          .join("")
-          .slice(0, 2)
-          .toUpperCase() || "TM";
-        const mappedMember = {
-          id: member.user_id,
-          name: member.name || "Anggota Tim",
-          initials: member.initials || fallbackInitials,
-          role: member.peran || member.member_type || "Anggota",
-          color: member.member_type === "Dosen"
-            ? "bg-blue-500 text-white"
-            : index % 2 === 0
-              ? "bg-[#8B6FFF] text-white"
-              : "bg-emerald-500 text-white"
-        };
-        return mappedMember;
-      });
+      const updatedTeamMembers: TeamMember[] = (members || []).map(mapTeamMember);
       
       // Update map dan trigger re-render
       setTeamMembersMap(prev => {
@@ -1032,6 +1022,33 @@ export function SharedBoardView({
       await confirm({
         title: "Gagal menambah anggota",
         description: err?.message || "Gagal menambah anggota.",
+        confirmLabel: "Mengerti",
+        variant: "danger",
+        hideCancel: true
+      });
+    }
+  };
+
+  const handleUpdateMemberRole = async (member: TeamMember, peran: string) => {
+    if (!canManageCards) {
+      setLoadError("Anda tidak memiliki izin mengubah peran anggota board ini.");
+      return;
+    }
+
+    const normalizedPeran = normalizeResearchRoleForMemberType(peran, member.memberType);
+    try {
+      await apiPatch(`/research/${activeId}/members/${member.id}`, {
+        memberType: member.memberType,
+        peran: normalizedPeran
+      });
+
+      const members = await apiGet<Array<any>>(`/research/${activeId}/members`);
+      setTeamMembersMap(prev => ({ ...prev, [activeId]: (members || []).map(mapTeamMember) }));
+      await refreshBoardData(selectedTask?.id || null);
+    } catch (err: any) {
+      await confirm({
+        title: "Gagal mengubah peran",
+        description: err?.message || "Gagal mengubah peran anggota.",
         confirmLabel: "Mengerti",
         variant: "danger",
         hideCancel: true
@@ -1061,25 +1078,7 @@ export function SharedBoardView({
 
       // Reload members
       const members = await apiGet<Array<any>>(`/research/${activeId}/members`);
-      const updatedTeamMembers: TeamMember[] = (members || []).map((m, index) => {
-        const fallbackInitials = String(m?.name || "TM")
-          .split(" ")
-          .map((chunk: string) => chunk[0] || "")
-          .join("")
-          .slice(0, 2)
-          .toUpperCase() || "TM";
-        return {
-          id: m.user_id,
-          name: m.name || "Anggota Tim",
-          initials: m.initials || fallbackInitials,
-          role: m.peran || m.member_type || "Anggota",
-          color: m.member_type === "Dosen"
-            ? "bg-blue-500 text-white"
-            : index % 2 === 0
-              ? "bg-[#8B6FFF] text-white"
-              : "bg-emerald-500 text-white"
-        };
-      });
+      const updatedTeamMembers: TeamMember[] = (members || []).map(mapTeamMember);
       setTeamMembersMap(prev => ({ ...prev, [activeId]: updatedTeamMembers }));
     } catch (err: any) {
       console.error("Failed to remove member:", err);
@@ -2391,7 +2390,16 @@ export function SharedBoardView({
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${getAssigneeColor(member.initials)}`}>{member.initials}</div>
                         <div className="flex flex-col flex-1 min-w-0">
                           <span className="text-xs font-bold text-slate-800 truncate">{member.name}</span>
-                          <span className="text-[10px] font-medium text-slate-400">{member.role}</span>
+                          <select
+                            value={member.role}
+                            onChange={(e) => { void handleUpdateMemberRole(member, e.target.value); }}
+                            className="mt-0.5 w-full max-w-[180px] bg-transparent text-[10px] font-bold text-slate-500 outline-none cursor-pointer"
+                            title="Ubah peran anggota"
+                          >
+                            {[member.role, ...getResearchRoleOptions(member.memberType)].filter((role, index, roles) => role && roles.indexOf(role) === index).map((role) => (
+                              <option key={role} value={role}>{role}</option>
+                            ))}
+                          </select>
                         </div>
                         <button
                           onClick={() => handleRemoveMember(member.id)}
@@ -2533,13 +2541,13 @@ export function SharedBoardView({
                   {(() => {
                     const hasKetua = teamMembers.some(m => m.role.toLowerCase().includes("ketua"));
                     const selectedCandidate = availableCandidates.find(c => c.user_id === selectedCandidateId);
-                    const isMahasiswa = selectedCandidate?.member_type === "Mahasiswa";
-                    const allRoles = ["Ketua", "Pembimbing", "Anggota Inti", "Backend Dev", "Frontend Dev", "Hardware Dev", "Data Analyst", "Asisten Peneliti", "Fullstack Dev"];
+                    const roleOptions = selectedCandidate
+                      ? getResearchRoleOptions(selectedCandidate.member_type)
+                      : Array.from(new Set([...MAHASISWA_RESEARCH_ROLES, ...DOSEN_RESEARCH_ROLES]));
                     
-                    // Filter out "Ketua" if already exists or if candidate is Mahasiswa
-                    const filteredRoles = allRoles.filter(role => {
+                    const filteredRoles = roleOptions.filter(role => {
                       if (role === "Ketua") {
-                        return !hasKetua && !isMahasiswa;
+                        return !hasKetua && selectedCandidate?.member_type === "Dosen";
                       }
                       return true;
                     });
@@ -2551,7 +2559,7 @@ export function SharedBoardView({
                   <p className="text-[10px] text-amber-600 font-medium">⚠️ Ketua sudah ditentukan. Hanya bisa diubah, tidak bisa menambah Ketua baru.</p>
                 )}
                 {selectedCandidateId && availableCandidates.find(c => c.user_id === selectedCandidateId)?.member_type === "Mahasiswa" && (
-                  <p className="text-[10px] text-amber-600 font-medium">⚠️ Mahasiswa tidak bisa menjadi Ketua. Ketua wajib Dosen.</p>
+                  <p className="text-[10px] text-emerald-600 font-medium">Mahasiswa bisa memakai peran Mahasiswa Ketua Riset untuk akses kelola board dari backend.</p>
                 )}
               </div>
 
@@ -2590,7 +2598,10 @@ export function SharedBoardView({
                       return (
                         <label
                           key={candidate.user_id}
-                          onClick={() => setSelectedCandidateId(candidate.user_id)}
+                          onClick={() => {
+                            setSelectedCandidateId(candidate.user_id);
+                            setNewMemberPeran(getResearchRoleOptions(candidate.member_type)[0] || "Anggota");
+                          }}
                           className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
                             isSelected
                               ? "border-[#6C47FF] bg-[#F8F5FF]"
@@ -2601,7 +2612,10 @@ export function SharedBoardView({
                             type="radio"
                             name="candidate-selection"
                             checked={isSelected}
-                            onChange={() => setSelectedCandidateId(candidate.user_id)}
+                            onChange={() => {
+                              setSelectedCandidateId(candidate.user_id);
+                              setNewMemberPeran(getResearchRoleOptions(candidate.member_type)[0] || "Anggota");
+                            }}
                             className="accent-[#6C47FF] shrink-0"
                           />
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${

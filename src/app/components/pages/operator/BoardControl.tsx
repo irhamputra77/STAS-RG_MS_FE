@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Kanban, Shield, Users, Check, X, Plus, Trash2, Eye } from "lucide-react";
 import { apiDelete, apiGet, apiPost } from "../../../lib/api";
+import { MAHASISWA_LEADER_ROLE } from "../../../lib/researchRoles";
 
 export default function BoardControl() {
   const [researchList, setResearchList] = useState<Array<any>>([]);
@@ -67,6 +68,7 @@ export default function BoardControl() {
   const riset = researchList.find(r => r.id === selectedRiset);
   const mahasiswaMembers = (membersMap[selectedRiset] || []).filter(m => m.tipe === "Mahasiswa");
   const currentAccess = accessMap[selectedRiset] || [];
+  const canManageBoardMembers = mahasiswaMembers.filter((m) => currentAccess.includes(m.memberId) || m.peran === MAHASISWA_LEADER_ROLE);
   const bc = boardCountsMap[selectedRiset] || { todo: 0, doing: 0, review: 0, done: 0 };
 
   const revokeAccess = async (id: string) => {
@@ -87,7 +89,7 @@ export default function BoardControl() {
     }
   };
 
-  const nonAccessMembers = mahasiswaMembers.filter(m => !currentAccess.includes(m.memberId));
+  const nonAccessMembers = mahasiswaMembers.filter(m => !currentAccess.includes(m.memberId) && m.peran !== MAHASISWA_LEADER_ROLE);
 
   return (
     <OperatorLayout title="Control Progress Board">
@@ -182,26 +184,26 @@ export default function BoardControl() {
             {/* Mahasiswa with edit access */}
             <div className="p-5 border-b border-border">
               <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-3">Mahasiswa dengan Akses Edit Board</p>
-              {currentAccess.length === 0 ? (
+              {canManageBoardMembers.length === 0 ? (
                 <div className="py-6 text-center">
                   <Shield size={28} className="text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm font-bold text-foreground">Belum ada mahasiswa dengan akses edit</p>
                   <p className="text-xs text-muted-foreground mt-1">Klik "Beri Akses Mahasiswa" untuk menambah</p>
                 </div>
-              ) : currentAccess.map(mid => {
-                const m = mahasiswaMembers.find(x => x.memberId === mid);
-                if (!m) return null;
+              ) : canManageBoardMembers.map(m => {
                 return (
-                  <div key={mid} className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-[12px] mb-2">
+                  <div key={m.memberId} className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-[12px] mb-2">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${m.color}`}>{m.initials}</div>
                     <div className="flex-1">
                       <p className="text-sm font-black text-foreground">{m.nama}</p>
                       <p className="text-[10px] text-muted-foreground">{m.peran}</p>
                     </div>
-                    <span className="text-[10px] font-black bg-blue-500 text-white px-2 py-0.5 rounded-full">Edit Access</span>
-                    <button onClick={() => revokeAccess(mid)} className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors">
-                      <Trash2 size={13} />
-                    </button>
+                    <span className="text-[10px] font-black bg-blue-500 text-white px-2 py-0.5 rounded-full">{m.peran === MAHASISWA_LEADER_ROLE ? "Leader Access" : "Edit Access"}</span>
+                    {m.peran !== MAHASISWA_LEADER_ROLE && (
+                      <button onClick={() => revokeAccess(m.memberId)} className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors">
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -211,7 +213,7 @@ export default function BoardControl() {
             <div className="p-5">
               <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-3">Anggota Mahasiswa (Akses Terbatas)</p>
               <div className="flex flex-col gap-2">
-                {mahasiswaMembers.filter(m => !currentAccess.includes(m.memberId)).map(m => (
+                {mahasiswaMembers.filter(m => !currentAccess.includes(m.memberId) && m.peran !== MAHASISWA_LEADER_ROLE).map(m => (
                   <div key={m.memberId} className="flex items-center gap-3 p-3 bg-slate-50 border border-border rounded-[12px]">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${m.color}`}>{m.initials}</div>
                     <div className="flex-1">

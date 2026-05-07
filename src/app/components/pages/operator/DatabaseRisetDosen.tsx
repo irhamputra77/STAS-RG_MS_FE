@@ -2,9 +2,10 @@ import React, { useState, useEffect } from "react";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../../lib/api";
 import { Search, Plus, X, Target, Pencil, LayoutGrid, List, Shield, Trash2, Users, FlaskConical, BookOpen } from "lucide-react";
+import { getResearchRoleOptions, MAHASISWA_LEADER_ROLE, MAHASISWA_RESEARCH_ROLES, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
 
 const STEP_LABELS = ["Info Dasar", "Tim", "Periode & Mitra", "Milestone"];
-const PERAN_OPTIONS = ["Ketua", "Pembimbing", "Anggota Inti", "Backend Dev", "Frontend Dev", "Hardware Dev", "Data Analyst", "Asisten Peneliti", "Fullstack Dev"];
+const PERAN_OPTIONS = MAHASISWA_RESEARCH_ROLES;
 const PERAN_DOSEN = ["Ketua Riset", "Pembimbing", "Co-Investigator", "Anggota Dosen"];
 
 interface ResearchProject {
@@ -150,7 +151,8 @@ export default function DatabaseRisetDosen() {
   const mahasiswaInRiset = selected ? (members[selected.id] || []).filter((m: any) => m.member_type === "Mahasiswa") : [];
   const dosenInRiset    = selected ? (members[selected.id] || []).filter((m: any) => m.member_type === "Dosen") : [];
   const currentAccess   = selected ? (boardAccess[selected.id] || []) : [];
-  const nonAccessMembers = mahasiswaInRiset.filter((m: any) => !currentAccess.includes(m.user_id));
+  const boardManagerMembers = mahasiswaInRiset.filter((m: any) => currentAccess.includes(m.user_id) || m.peran === MAHASISWA_LEADER_ROLE);
+  const nonAccessMembers = mahasiswaInRiset.filter((m: any) => !currentAccess.includes(m.user_id) && m.peran !== MAHASISWA_LEADER_ROLE);
 
   const revokeAccess = async (risetId: string, mid: string) => {
     await apiDelete(`/research/${risetId}/board-access/${mid}`);
@@ -180,6 +182,22 @@ export default function DatabaseRisetDosen() {
     ...lecturers.map((item) => ({ user_id: item.id, name: item.name, initials: item.initials || item.name?.charAt(0), member_type: "Dosen" })),
     ...students.map((item) => ({ user_id: item.id, name: item.name, initials: item.initials || item.name?.charAt(0), member_type: "Mahasiswa" }))
   ].filter((item) => !selectedMemberIdsSet.has(item.user_id));
+  const selectedNewMemberTypes = Array.from(new Set(
+    selectedNewMembers
+      .map((userId) => allAddable.find((item) => item.user_id === userId)?.member_type)
+      .filter(Boolean)
+  ));
+  const addMemberRoleOptions = selectedNewMemberTypes.includes("Dosen") && selectedNewMemberTypes.includes("Mahasiswa")
+    ? ["Anggota"]
+    : selectedNewMemberTypes.includes("Dosen")
+      ? PERAN_DOSEN
+      : PERAN_OPTIONS;
+
+  useEffect(() => {
+    if (!addMemberRoleOptions.includes(selectedPeran)) {
+      setSelectedPeran(addMemberRoleOptions[0] || "Anggota");
+    }
+  }, [addMemberRoleOptions.join("|"), selectedPeran]);
   const dosenData = lecturers;
   const mahasiswaData = selected ? (members[selected.id] || []).filter((item: any) => item.member_type === "Mahasiswa") : [];
 
@@ -193,10 +211,11 @@ export default function DatabaseRisetDosen() {
       setSavingMembers(true);
       for (const userId of selectedNewMembers) {
         const candidate = allAddable.find((item) => item.user_id === userId);
+        const memberType = candidate?.member_type || "Mahasiswa";
         await apiPost(`/research/${selected.id}/members`, {
           userId,
-          memberType: candidate?.member_type || "Mahasiswa",
-          peran: selectedPeran,
+          memberType,
+          peran: normalizeResearchRoleForMemberType(selectedPeran, memberType),
           status: "Aktif"
         });
       }
@@ -211,9 +230,12 @@ export default function DatabaseRisetDosen() {
     }
   };
 
-  const handleUpdateMemberPeran = async (projectId: string, userId: string, peran: string) => {
+  const handleUpdateMemberPeran = async (projectId: string, userId: string, peran: string, memberType?: string) => {
     try {
-      await apiPatch(`/research/${projectId}/members/${userId}`, { peran });
+      await apiPatch(`/research/${projectId}/members/${userId}`, {
+        memberType,
+        peran: normalizeResearchRoleForMemberType(peran, memberType)
+      });
       const memberData = await apiGet<Array<any>>(`/research/${projectId}/members`);
       setMembers((prev) => ({ ...prev, [projectId]: memberData || [] }));
     } catch (err: any) {
@@ -537,7 +559,7 @@ export default function DatabaseRisetDosen() {
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-indigo-600 text-white">{m.initials || m.name?.charAt(0)?.toUpperCase()}</div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-black text-foreground truncate">{m.name}</p>
-                              <select value={m.peran || "Anggota Dosen"} onChange={(e) => handleUpdateMemberPeran(selected.id, m.user_id, e.target.value)} className="text-[9px] font-black text-muted-foreground bg-transparent border-none outline-none cursor-pointer">
+                              <select value={m.peran || "Anggota Dosen"} onChange={(e) => handleUpdateMemberPeran(selected.id, m.user_id, e.target.value, m.member_type)} className="text-[9px] font-black text-muted-foreground bg-transparent border-none outline-none cursor-pointer">
                                 {PERAN_DOSEN.map(p => <option key={p}>{p}</option>)}
                               </select>
                             </div>
@@ -553,8 +575,8 @@ export default function DatabaseRisetDosen() {
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-blue-600 text-white">{m.initials || m.name?.charAt(0)?.toUpperCase()}</div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-black text-foreground truncate">{m.name}</p>
-                              <select value={m.peran || "Anggota Inti"} onChange={(e) => handleUpdateMemberPeran(selected.id, m.user_id, e.target.value)} className="text-[9px] font-black text-muted-foreground bg-transparent border-none outline-none cursor-pointer">
-                                {["Anggota Inti", "Backend Dev", "Frontend Dev", "Hardware Dev", "Data Analyst", "Asisten Peneliti", "Fullstack Dev"].map(p => <option key={p}>{p}</option>)}
+                              <select value={m.peran || "Anggota Inti"} onChange={(e) => handleUpdateMemberPeran(selected.id, m.user_id, e.target.value, m.member_type)} className="text-[9px] font-black text-muted-foreground bg-transparent border-none outline-none cursor-pointer">
+                                {[m.peran, ...getResearchRoleOptions("Mahasiswa")].filter((p, i, arr) => p && arr.indexOf(p) === i).map(p => <option key={p}>{p}</option>)}
                               </select>
                             </div>
                             <button onClick={() => handleRemoveMember(selected.id, m.user_id)} className="w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors"><Trash2 size={11} /></button>
@@ -581,15 +603,15 @@ export default function DatabaseRisetDosen() {
                         <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide">Mahasiswa Edit Access</p>
                         {nonAccessMembers.length > 0 && <button onClick={() => setAddMemberModal(true)} className="text-[10px] font-black text-[#0AB600] hover:bg-green-50 px-2 py-0.5 rounded-[8px] transition-colors flex items-center gap-0.5"><Plus size={9} strokeWidth={3} /> Beri</button>}
                       </div>
-                      {currentAccess.length === 0 ? <p className="text-xs text-muted-foreground italic py-2">Belum ada mahasiswa dengan akses edit.</p>
-                        : currentAccess.map(mid => {
-                          const m = mahasiswaInRiset.find((x: any) => x.user_id === mid);
-                          if (!m) return null;
+                      {boardManagerMembers.length === 0 ? <p className="text-xs text-muted-foreground italic py-2">Belum ada mahasiswa dengan akses edit.</p>
+                        : boardManagerMembers.map((m: any) => {
                           return (
-                            <div key={mid} className="flex items-center gap-2 py-2 bg-green-50 border border-green-100 rounded-[10px] px-3 mb-1.5">
+                            <div key={m.user_id} className="flex items-center gap-2 py-2 bg-green-50 border border-green-100 rounded-[10px] px-3 mb-1.5">
                               <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 bg-blue-600 text-white">{m.initials || m.name?.charAt(0)?.toUpperCase()}</div>
                               <div className="flex-1"><p className="text-xs font-black text-foreground">{m.name}</p></div>
-                              <button onClick={() => revokeAccess(selected.id, mid)} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-100 hover:text-red-500 text-muted-foreground transition-colors"><X size={10} /></button>
+                              {m.peran === MAHASISWA_LEADER_ROLE
+                                ? <span className="text-[9px] font-black text-emerald-700">Leader</span>
+                                : <button onClick={() => revokeAccess(selected.id, m.user_id)} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-100 hover:text-red-500 text-muted-foreground transition-colors"><X size={10} /></button>}
                             </div>
                           );
                         })}
@@ -703,7 +725,10 @@ export default function DatabaseRisetDosen() {
               </div>
               <div className="mt-4">
                 <label className="text-xs font-black text-foreground block mb-1.5">Peran</label>
-                <select value={selectedPeran} onChange={e => setSelectedPeran(e.target.value)} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer">{[...PERAN_DOSEN, ...PERAN_OPTIONS].map(p => <option key={p}>{p}</option>)}</select>
+                <select value={selectedPeran} onChange={e => setSelectedPeran(e.target.value)} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer">{addMemberRoleOptions.map(p => <option key={p}>{p}</option>)}</select>
+                {selectedNewMemberTypes.includes("Dosen") && selectedNewMemberTypes.includes("Mahasiswa") && (
+                  <p className="mt-1 text-[10px] font-semibold text-amber-600">Pilih mahasiswa saja untuk memakai peran Mahasiswa Ketua Riset.</p>
+                )}
               </div>
             </div>
             <div className="px-6 pb-6 flex gap-3">

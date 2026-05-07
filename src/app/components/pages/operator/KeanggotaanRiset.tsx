@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Search, Plus, X, Trash2, Pencil, Users } from "lucide-react";
-import { apiGet } from "../../../lib/api";
+import { apiGet, apiPatch } from "../../../lib/api";
+import { getResearchRoleOptions, MAHASISWA_LEADER_ROLE, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
 
 const PERAN_COLOR: Record<string, string> = {
   "Ketua": "bg-[#F8F5FF] text-[#6C47FF] border border-[#D6CAFF]",
+  [MAHASISWA_LEADER_ROLE]: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   "Anggota Inti": "bg-[#F8F5FF] text-[#6C47FF] border border-[#D6CAFF]",
   "Backend Dev": "bg-blue-50 text-blue-700 border border-blue-200",
   "Frontend Dev": "bg-emerald-50 text-emerald-700 border border-emerald-200",
@@ -24,6 +26,7 @@ export default function KeanggotaanRiset() {
   const [search, setSearch] = useState("");
   const [addModal, setAddModal] = useState(false);
   const [editMember, setEditMember] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState("");
   const [error, setError] = useState("");
 
   React.useEffect(() => {
@@ -85,6 +88,43 @@ export default function KeanggotaanRiset() {
     ...allStudents.map((m, index) => ({ id: m.id, nama: m.name, initials: m.initials || m.name?.slice(0, 2)?.toUpperCase(), color: ["bg-[#8B6FFF] text-white", "bg-emerald-500 text-white", "bg-pink-500 text-white"][index % 3], tipe: "Mahasiswa" as const })),
     ...allLecturers.map((d, index) => ({ id: d.id, nama: d.name, initials: d.initials || d.name?.slice(0, 2)?.toUpperCase(), color: ["bg-blue-500 text-white", "bg-teal-500 text-white"][index % 2], tipe: "Dosen" as const })),
   ].filter(p => !members.some(m => m.memberId === p.id));
+
+  const selectedEditMember = membersMap[selectedRiset]?.find((member) => member.memberId === editMember);
+
+  const openEditMemberRole = (member: any) => {
+    setEditMember(member.memberId);
+    setEditRole(member.peran || getResearchRoleOptions(member.tipe)[0] || "Anggota");
+  };
+
+  const handleSaveMemberRole = async () => {
+    if (!selectedRiset || !selectedEditMember) return;
+
+    try {
+      const nextRole = normalizeResearchRoleForMemberType(editRole, selectedEditMember.tipe);
+      await apiPatch(`/research/${selectedRiset}/members/${selectedEditMember.memberId}`, {
+        memberType: selectedEditMember.tipe,
+        peran: nextRole
+      });
+      const members = await apiGet<Array<any>>(`/research/${selectedRiset}/members`);
+      setMembersMap((prev) => ({
+        ...prev,
+        [selectedRiset]: (members || []).map((member) => ({
+          memberId: member.user_id,
+          nama: member.name,
+          initials: member.initials,
+          color: member.member_type === "Dosen" ? "bg-blue-500 text-white" : "bg-[#8B6FFF] text-white",
+          tipe: member.member_type,
+          peran: member.peran || "Anggota",
+          bergabung: member.bergabung || "-",
+          status: member.status || "Aktif"
+        }))
+      }));
+      setEditMember(null);
+      setEditRole("");
+    } catch (err: any) {
+      setError(err?.message || "Gagal memperbarui peran anggota");
+    }
+  };
 
   return (
     <OperatorLayout title="Keanggotaan Riset">
@@ -184,7 +224,7 @@ export default function KeanggotaanRiset() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => setEditMember(m.memberId)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-amber-50 hover:text-amber-600 transition-colors" title="Edit peran"><Pencil size={13} /></button>
+                        <button onClick={() => openEditMemberRole(m)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-amber-50 hover:text-amber-600 transition-colors" title="Edit peran"><Pencil size={13} /></button>
                         <button className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors" title="Hapus"><Trash2 size={13} /></button>
                       </div>
                     </td>
@@ -246,13 +286,13 @@ export default function KeanggotaanRiset() {
             <h3 className="font-black text-foreground mb-4">Edit Peran Anggota</h3>
             <div>
               <label className="text-xs font-black text-foreground block mb-1.5">Peran Baru</label>
-              <select className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer mb-4">
-                {Object.keys(PERAN_COLOR).map(p => <option key={p}>{p}</option>)}
+              <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer mb-4">
+                {[selectedEditMember?.peran, ...getResearchRoleOptions(selectedEditMember?.tipe)].filter((p, i, arr) => p && arr.indexOf(p) === i).map(p => <option key={p}>{p}</option>)}
               </select>
             </div>
             <div className="flex gap-3">
               <button onClick={() => setEditMember(null)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
-              <button onClick={() => setEditMember(null)} className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors">Simpan</button>
+              <button onClick={handleSaveMemberRole} className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors">Simpan</button>
             </div>
           </div>
         </div>

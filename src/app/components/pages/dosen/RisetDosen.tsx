@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { DosenLayout } from "../../templates/DosenLayout";
 import { Pencil, Users, Target, X, Kanban, FileText, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { apiGet, apiPost, apiDelete, getStoredUser } from "../../../lib/api";
+import { getResearchRoleOptions, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
 
 export default function RisetDosen() {
   const user = getStoredUser();
@@ -85,7 +86,7 @@ export default function RisetDosen() {
         memberId: `TM${Date.now()}`,
         name: newMemberName,
         memberType: newMemberType,
-        peran: newMemberRole
+        peran: normalizeResearchRoleForMemberType(newMemberRole, newMemberType)
       });
 
       const updatedMembers = await apiGet<Array<any>>(`/research/${teamManageModal.id}/members`);
@@ -333,15 +334,22 @@ export default function RisetDosen() {
                 <div className="space-y-2.5">
                   <input type="text" placeholder="Nama anggota..." value={newMemberName} onChange={e => setNewMemberName(e.target.value)} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
                   <div className="grid grid-cols-2 gap-2">
-                    <select value={newMemberType} onChange={e => setNewMemberType(e.target.value as any)} className="h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all">
+                    <select
+                      value={newMemberType}
+                      onChange={e => {
+                        const nextType = e.target.value as "Dosen" | "Mahasiswa";
+                        setNewMemberType(nextType);
+                        setNewMemberRole(getResearchRoleOptions(nextType)[0] || "Anggota");
+                      }}
+                      className="h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
+                    >
                       <option>Mahasiswa</option>
                       <option>Dosen</option>
                     </select>
                     <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value)} className="h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all">
-                      <option>Anggota</option>
-                      <option>Ketua</option>
-                      <option>Asisten</option>
-                      <option>Analis Data</option>
+                      {getResearchRoleOptions(newMemberType).map((role) => (
+                        <option key={role}>{role}</option>
+                      ))}
                     </select>
                   </div>
                   <button onClick={handleAddTeamMember} disabled={!newMemberName.trim()} className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-1">
