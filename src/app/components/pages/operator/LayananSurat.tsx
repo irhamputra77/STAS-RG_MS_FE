@@ -23,6 +23,7 @@ type ArchiveMode = "create" | "edit";
 type LetterCategory = {
   id: string;
   name: string;
+  kode?: string | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -68,6 +69,8 @@ export default function LayananSurat() {
   const [error, setError] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadedFileDataUrl, setUploadedFileDataUrl] = useState("");
+  const [uploadCategoryId, setUploadCategoryId] = useState("");
+  const [generatingNomor, setGeneratingNomor] = useState(false);
 
   React.useEffect(() => {
     const loadLetters = async () => {
@@ -102,7 +105,8 @@ export default function LayananSurat() {
       const rows = await apiGet<Array<any>>("/letter-categories");
       setLetterCategories((rows || []).map((item) => ({
         id: String(item.id),
-        name: String(item.name || "").trim()
+        name: String(item.name || "").trim(),
+        kode: item.kode || null
       })).filter((item) => item.id && item.name));
     } catch (err: any) {
       setError(err?.message || "Gagal memuat kategori surat.");
@@ -239,6 +243,7 @@ export default function LayananSurat() {
       setTanggalTerbit("");
       setUploadedFileDataUrl("");
       setUploadedFileName("");
+      setUploadCategoryId("");
       showToast("Dokumen surat berhasil diupload dan siap diunduh mahasiswa.");
     } catch (err: any) {
       setError(err?.message || "Gagal menyimpan status surat.");
@@ -396,6 +401,22 @@ export default function LayananSurat() {
     }
   };
 
+  const handleUploadCategoryChange = async (categoryId: string) => {
+    setUploadCategoryId(categoryId);
+    if (!categoryId) return;
+    const cat = letterCategories.find((c) => c.id === categoryId);
+    if (!cat?.kode) return;
+    setGeneratingNomor(true);
+    try {
+      const result = await apiGet<{ nomor: string | null }>(`/letter-categories/${categoryId}/next-nomor`);
+      if (result.nomor) setNomorSurat(result.nomor);
+    } catch {
+      // biarkan operator isi manual jika gagal
+    } finally {
+      setGeneratingNomor(false);
+    }
+  };
+
   const handleDeleteCategory = async (category: LetterCategory) => {
     const categoryName = category.name;
 
@@ -497,7 +518,7 @@ export default function LayananSurat() {
                           </button>
                         )}
                         {l.status === "Diproses" && (
-                          <button onClick={() => { setUploadModal(l); setNomorSurat(l.nomorSurat || ""); setUploadedFileDataUrl(""); setUploadedFileName(""); }} className="h-7 px-2 rounded-[8px] text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1">
+                          <button onClick={() => { setUploadModal(l); setNomorSurat(l.nomorSurat || ""); setUploadedFileDataUrl(""); setUploadedFileName(""); setUploadCategoryId(""); }} className="h-7 px-2 rounded-[8px] text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1">
                             <Upload size={11} /> Upload
                           </button>
                         )}
@@ -616,7 +637,7 @@ export default function LayananSurat() {
                 </a>
               )}
               {detail.status === "Menunggu" && <button onClick={() => { handleProses(detail.id); setDetail(null); }} className="h-10 bg-blue-500 hover:bg-blue-600 text-white font-black text-sm rounded-[10px] transition-colors">Proses Sekarang</button>}
-              {detail.status === "Diproses" && <button onClick={() => { setUploadModal(detail); setNomorSurat(detail.nomorSurat || ""); setUploadedFileDataUrl(""); setUploadedFileName(""); setDetail(null); }} className="flex items-center justify-center gap-2 h-10 bg-amber-500 hover:bg-amber-600 text-white font-black text-sm rounded-[10px] transition-colors"><Upload size={15} /> Upload Dokumen</button>}
+              {detail.status === "Diproses" && <button onClick={() => { setUploadModal(detail); setNomorSurat(detail.nomorSurat || ""); setUploadedFileDataUrl(""); setUploadedFileName(""); setUploadCategoryId(""); setDetail(null); }} className="flex items-center justify-center gap-2 h-10 bg-amber-500 hover:bg-amber-600 text-white font-black text-sm rounded-[10px] transition-colors"><Upload size={15} /> Upload Dokumen</button>}
               <button onClick={() => handleDelete(detail)} disabled={deletingId === detail.id} className="flex items-center justify-center gap-2 h-10 bg-slate-100 hover:bg-red-50 disabled:opacity-60 text-slate-600 hover:text-red-600 font-black text-sm rounded-[10px] border border-slate-200 transition-colors">
                 <Trash2 size={15} /> {deletingId === detail.id ? "Menghapus..." : "Hapus Pengajuan"}
               </button>
@@ -634,8 +655,24 @@ export default function LayananSurat() {
             </div>
             <div className="p-6 flex flex-col gap-4">
               <div>
-                <label className="text-xs font-black text-foreground block mb-1.5">Nomor Surat</label>
-                <input value={nomorSurat} onChange={(e) => setNomorSurat(e.target.value)} placeholder="SK/2026/03/xxxx" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all" />
+                <label className="text-xs font-black text-foreground block mb-1.5">Kategori Surat</label>
+                <select
+                  value={uploadCategoryId}
+                  onChange={(e) => handleUploadCategoryChange(e.target.value)}
+                  className="w-full h-10 px-3 rounded-[10px] border border-border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all"
+                >
+                  <option value="">-- Pilih kategori (opsional) --</option>
+                  {letterCategories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.kode ? `${c.kode}. ` : ""}{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">
+                  Nomor Surat
+                  {generatingNomor && <span className="ml-2 text-[10px] font-normal text-amber-500 animate-pulse">Membuat nomor...</span>}
+                </label>
+                <input value={nomorSurat} onChange={(e) => setNomorSurat(e.target.value)} placeholder="09.001/STASRG/V/2026" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all" />
               </div>
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Terbit</label>
@@ -650,7 +687,7 @@ export default function LayananSurat() {
               </label>
             </div>
             <div className="px-6 pb-6 flex gap-3">
-              <button onClick={() => setUploadModal(null)} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
+              <button onClick={() => { setUploadModal(null); setUploadCategoryId(""); }} className="flex-1 h-10 border border-border rounded-[10px] text-sm font-bold text-muted-foreground hover:bg-slate-50 transition-colors">Batal</button>
               <button onClick={handleUpload} className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2"><Upload size={14} /> Submit & Selesai</button>
             </div>
           </div>
