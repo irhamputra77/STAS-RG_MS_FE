@@ -1,9 +1,10 @@
-const envApiBaseUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+const env = (import.meta as any).env || {};
+const envApiBaseUrl = env.VITE_API_URL || env.VITE_API_BASE_URL;
 
 export const API_BASE_URL =
   typeof envApiBaseUrl === "string" && envApiBaseUrl.trim()
     ? envApiBaseUrl.trim().replace(/\/+$/, "")
-    : (import.meta as any).env?.DEV
+    : env.DEV
       ? "/api/v1"
       : "https://ms-api.stas-rg.com/api/v1";
 const API_ORIGIN = API_BASE_URL.replace(/\/api(?:\/v\d+)?\/?$/, "");

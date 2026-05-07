@@ -3,7 +3,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../../context/AuthContext";
 import type { UserRole } from "../../context/AuthContext";
-import { apiPost } from "../../lib/api";
+import { apiGet, apiPost } from "../../lib/api";
 import { useSystemBranding } from "../../lib/useSystemBranding";
 
 const ROLE_DESTINATION: Record<UserRole, string> = {
@@ -38,14 +38,19 @@ export default function Login() {
         password
       });
 
-      const role = result.user.role;
+      const verifiedSession = await apiGet<{ user: { id: string; name: string; initials: string; role: UserRole; prodi?: string; tipe?: string } }>("/auth/me")
+        .catch(() => {
+          throw new Error("Login berhasil, tetapi sesi belum tersimpan di browser. Pastikan cookie accessToken dari API diizinkan.");
+        });
+      const sessionUser = verifiedSession.user || result.user;
+      const role = sessionUser.role;
       login({
-        id: result.user.id,
-        name: result.user.name,
-        initials: result.user.initials,
+        id: sessionUser.id,
+        name: sessionUser.name,
+        initials: sessionUser.initials,
         role,
-        prodi: result.user.prodi,
-        tipe: result.user.tipe
+        prodi: sessionUser.prodi,
+        tipe: sessionUser.tipe
       });
       navigate(ROLE_DESTINATION[role] || "/dashboard");
     } catch (err: any) {

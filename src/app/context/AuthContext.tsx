@@ -1,5 +1,6 @@
 import React, { createContext, ReactNode, useContext, useState } from "react";
 import { apiGet, apiPost, setStoredUser } from "../lib/api";
+import { resetUserUiStateCache } from "../lib/userUiState";
 
 export type UserRole = "mahasiswa" | "operator" | "dosen";
 
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setStoredUser(null);
+    resetUserUiStateCache();
   }, []);
 
   const logout = () => {

@@ -1,4 +1,4 @@
-import { apiGet, apiPatch } from "./api";
+import { apiGet, apiPatch, getStoredUser } from "./api";
 
 export type ReadAttendanceWarningGroup = {
   date: string;
@@ -65,7 +65,18 @@ export function getCachedUserUiState() {
   return cachedUiState || emptyUiState;
 }
 
+export function resetUserUiStateCache() {
+  cachedUiState = null;
+  uiStateRequest = null;
+  dispatchUiStateUpdated();
+}
+
 export async function getUserUiState({ force = false }: { force?: boolean } = {}) {
+  if (!getStoredUser()) {
+    cachedUiState = null;
+    return emptyUiState;
+  }
+
   if (cachedUiState && !force) return cachedUiState;
   if (uiStateRequest && !force) return uiStateRequest;
 
@@ -87,6 +98,10 @@ export async function getUserUiState({ force = false }: { force?: boolean } = {}
 }
 
 export async function patchUserUiState(patch: UserUiStatePatch) {
+  if (!getStoredUser()) {
+    return emptyUiState;
+  }
+
   cachedUiState = normalizeUiState({
     ...getCachedUserUiState(),
     ...patch,
