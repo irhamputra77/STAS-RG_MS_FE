@@ -111,7 +111,8 @@ export default function DatabaseMahasiswa() {
     phone: "",
     prodi: "",
     fakultas: "",
-    pembimbing: "",
+    pembimbing_lapangan: "",
+    pembimbing_akademik: "",
     bergabung: "",
     wfhQuota: "",
     status: "Aktif" as MahasiswaRecord["status"],
@@ -168,7 +169,8 @@ export default function DatabaseMahasiswa() {
           tipe: item.tipe,
           riset: Array.isArray(item.research_projects) ? item.research_projects : [],
           bergabung: formatDateOnly(item.bergabung),
-          pembimbing: item.pembimbing || "-",
+          pembimbing_lapangan: item.pembimbing_lapangan || "-",
+          pembimbing_akademik: item.pembimbing_akademik || "-",
           wfhFallbackQuota: getFallbackWfhQuota(item),
           ...wfh,
           kehadiran: Number(item.kehadiran) || 0,
@@ -222,7 +224,8 @@ export default function DatabaseMahasiswa() {
           tipe: detail?.tipe || selected.tipe,
           riset: Array.isArray(detail?.research_projects) ? detail.research_projects : selected.riset,
           bergabung: formatDateOnly(detail?.bergabung || selected.bergabung),
-          pembimbing: detail?.pembimbing || selected.pembimbing,
+          pembimbing_lapangan: detail?.pembimbing_lapangan || selected.pembimbing_lapangan,
+          pembimbing_akademik: detail?.pembimbing_akademik || selected.pembimbing_akademik,
           wfhFallbackQuota: getFallbackWfhQuota(detail, selected),
           ...wfh,
           kehadiran: Number(detail?.kehadiran) || selected.kehadiran || 0,
@@ -321,7 +324,8 @@ export default function DatabaseMahasiswa() {
         phone: detail?.phone || m.phone,
         prodi: detail?.prodi || m.prodi,
         fakultas: detailFakultas !== "-" ? detailFakultas : m.fakultas || "",
-        pembimbing: detail?.pembimbing || m.pembimbing,
+        pembimbing_lapangan: detail?.pembimbing_lapangan || m.pembimbing_lapangan,
+        pembimbing_akademik: detail?.pembimbing_akademik || m.pembimbing_akademik,
         bergabung: formatDateOnly(detail?.bergabung || m.bergabung),
         wfhFallbackQuota: getFallbackWfhQuota(detail, m),
         ...wfh,
@@ -343,7 +347,8 @@ export default function DatabaseMahasiswa() {
       phone: target.phone === "-" ? "" : target.phone,
       prodi: target.prodi === "-" ? "" : target.prodi,
       fakultas: target.fakultas === "-" ? "" : target.fakultas || "",
-      pembimbing: target.pembimbing === "-" ? "" : target.pembimbing,
+      pembimbing_lapangan: target.pembimbing_lapangan === "-" ? "" : target.pembimbing_lapangan,
+      pembimbing_akademik: target.pembimbing_akademik === "-" ? "" : target.pembimbing_akademik,
       bergabung: target.bergabung === "-" ? "" : target.bergabung,
       wfhQuota: String(target.wfhFallbackQuota ?? 0),
       status: target.status,
@@ -381,7 +386,8 @@ export default function DatabaseMahasiswa() {
         phone: form.phone.trim(),
         status: form.status,
         tipe: form.tipe,
-        pembimbing: form.pembimbing.trim(),
+        pembimbing_lapangan: form.pembimbing_lapangan.trim(),
+        pembimbing_akademik: form.pembimbing_akademik.trim(),
         bergabung: form.bergabung || null,
         wfhQuota: form.wfhQuota === "" ? 0 : Number(form.wfhQuota) || 0,
         riset: form.riset,
@@ -539,7 +545,8 @@ export default function DatabaseMahasiswa() {
                   phone: "",
                   prodi: "",
                   fakultas: "",
-                  pembimbing: "",
+                  pembimbing_lapangan: "",
+                  pembimbing_akademik: "",
                   bergabung: "",
                   wfhQuota: "0",
                   status: "Aktif",
@@ -612,7 +619,7 @@ export default function DatabaseMahasiswa() {
 
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{m.prodi}</td>
                       <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.fakultas || "-"}</td>
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.pembimbing || "-"}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.pembimbing_akademik || "-"}</td>
 
                       <td className="px-5 py-3.5 hidden xl:table-cell">
                         <div className="flex flex-col gap-1">
@@ -747,7 +754,8 @@ export default function DatabaseMahasiswa() {
                       { label: "Tipe Mahasiswa", value: activeStudent.tipe || "-" },
                       { label: "Email", value: activeStudent.email },
                       { label: "Telepon", value: activeStudent.phone },
-                      { label: "Pembimbing", value: activeStudent.pembimbing },
+                      { label: "Pembimbing Lapangan", value: activeStudent.pembimbing_lapangan },
+                      { label: "Pembimbing Akademik", value: activeStudent.pembimbing_akademik },
                       { label: "Bergabung", value: activeStudent.bergabung },
                       { label: "Jatah WFH", value: formatWfhDays(activeStudent.wfhQuota) },
                       { label: "WFH Terpakai", value: formatWfhDays(activeStudent.wfhUsed) },
@@ -988,17 +996,24 @@ export default function DatabaseMahasiswa() {
                 </p>
               </div>
 
-              <div className="col-span-2">
-                <label className="text-xs font-black text-foreground block mb-1.5">Pembimbing</label>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Pembimbing Lapangan</label>
                 <input
-                  value={form.pembimbing}
-                  onChange={(event) => setForm((prev) => ({ ...prev, pembimbing: event.target.value }))}
-                  placeholder="Nama dosen pembimbing"
+                  value={form.pembimbing_lapangan}
+                  onChange={(event) => setForm((prev) => ({ ...prev, pembimbing_lapangan: event.target.value }))}
+                  placeholder="Nama supervisor lapangan / industri"
                   className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all"
                 />
-                <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
-                  Field ini dipakai backend untuk memetakan jatah WFH mentor/pembimbing.
-                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Pembimbing Akademik</label>
+                <input
+                  value={form.pembimbing_akademik}
+                  onChange={(event) => setForm((prev) => ({ ...prev, pembimbing_akademik: event.target.value }))}
+                  placeholder="Nama dosen pembimbing universitas"
+                  className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all"
+                />
               </div>
 
               <div className="col-span-2">

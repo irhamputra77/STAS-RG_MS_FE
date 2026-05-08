@@ -473,7 +473,8 @@ function TabAkunDynamic() {
         <InfoRow label="Status Mahasiswa" value={status} badge={{ text: status, color: statusColor }} />
         <InfoRow label="Email Institusi" value={profile?.email || "-"} />
         <InfoRow label="Perguruan Tinggi" value="-" />
-        <InfoRow label="Dosen Pembimbing" value={profile?.pembimbing || "-"} />
+        <InfoRow label="Pembimbing Lapangan" value={profile?.pembimbing_lapangan || "-"} />
+        <InfoRow label="Pembimbing Akademik" value={profile?.pembimbing_akademik || "-"} />
         <InfoRow label="Bergabung Sejak" value={joinedDate} />
 
         {shouldShowWfhInfo && (
@@ -938,8 +939,8 @@ function TabPengunduran() {
           setStudentRecordId(resolvedStudentId);
         }
 
-        if (profile?.pembimbing) {
-          setAdvisorName(profile.pembimbing);
+        if (profile?.pembimbing_akademik) {
+          setAdvisorName(profile.pembimbing_akademik);
         }
       } catch {
         // Ignore advisor load error.
