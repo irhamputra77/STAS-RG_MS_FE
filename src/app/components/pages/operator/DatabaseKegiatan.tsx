@@ -38,8 +38,12 @@ type ActivityRecord = {
   notulensi_name: string;
   surat_url: string;
   surat_name: string;
+  daftar_hadir_url: string;
+  daftar_hadir_name: string;
   pic_name: string;
+  research_project_id: string;
 };
+
 
 type ActivityTypeFilter = "Semua" | ActivityRecord["activity_type"];
 
@@ -58,6 +62,7 @@ type ActivityFormState = {
   output: string;
   folderBergkasUrl: string;
   picName: string;
+  researchProjectId: string;
 };
 
 const EMPTY_FORM: ActivityFormState = {
@@ -74,7 +79,8 @@ const EMPTY_FORM: ActivityFormState = {
   participantsList: "",
   output: "",
   folderBergkasUrl: "",
-  picName: ""
+  picName: "",
+  researchProjectId: ""
 };
 
 const TYPE_LABELS_SHORT: Record<ActivityRecord["activity_type"], string> = {
@@ -141,7 +147,10 @@ function mapActivityRow(item: any): ActivityRecord {
     notulensi_name: item?.notulensi_name || "",
     surat_url: item?.surat_url || "",
     surat_name: item?.surat_name || "",
-    pic_name: item?.pic_name || ""
+    daftar_hadir_url: item?.daftar_hadir_url || "",
+    daftar_hadir_name: item?.daftar_hadir_name || "",
+    pic_name: item?.pic_name || "",
+    research_project_id: item?.research_project_id || ""
   };
 }
 
@@ -244,6 +253,9 @@ function DetailPanel({ activity, onClose, onEdit, onDelete, deleting }: {
   }
   if (activity.surat_url) {
     docs.push({ label: activity.surat_name || "Berkas Surat", url: resolveApiAssetUrl(activity.surat_url) || activity.surat_url, color: "text-violet-600" });
+  }
+  if (activity.daftar_hadir_url) {
+    docs.push({ label: activity.daftar_hadir_name || "Daftar Hadir", url: resolveApiAssetUrl(activity.daftar_hadir_url) || activity.daftar_hadir_url, color: "text-orange-600" });
   }
   if (activity.photo_url) {
     docs.push({ label: "Foto Dokumentasi", url: resolveApiAssetUrl(activity.photo_url) || activity.photo_url, color: "text-rose-600" });
@@ -398,13 +410,20 @@ export default function DatabaseKegiatan() {
   const [photoAttachment, setPhotoAttachment] = useState<FileAttachment | null>(null);
   const [notulensiAttachment, setNotulensiAttachment] = useState<FileAttachment | null>(null);
   const [suratAttachment, setSuratAttachment] = useState<FileAttachment | null>(null);
+  const [daftarHadirAttachment, setDaftarHadirAttachment] = useState<FileAttachment | null>(null);
+  const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
+  const [filterProject, setFilterProject] = useState("");
 
   const loadActivities = async () => {
     setLoading(true);
     setError("");
     try {
-      const rows = await apiGet<any[]>("/activities");
+      const [rows, projs] = await Promise.all([
+        apiGet<any[]>("/activities"),
+        apiGet<any[]>("/activities/projects").catch(() => [])
+      ]);
       setActivities((rows || []).map(mapActivityRow));
+      setProjects((projs || []).map((p: any) => ({ id: String(p.id), title: String(p.title) })));
     } catch (err: any) {
       setError(err?.message || "Gagal memuat database kegiatan.");
     } finally {
@@ -422,6 +441,7 @@ export default function DatabaseKegiatan() {
       const matchesType = filterType === "Semua" || item.activity_type === filterType;
       const matchesDateFrom = !filterDateFrom || item.activity_date >= filterDateFrom;
       const matchesDateTo = !filterDateTo || item.activity_date <= filterDateTo;
+      const matchesProject = !filterProject || item.research_project_id === filterProject;
       const matchesSearch =
         !q ||
         [
@@ -436,9 +456,9 @@ export default function DatabaseKegiatan() {
         ]
           .filter(Boolean)
           .some((value) => safeText(value).toLowerCase().includes(q));
-      return matchesType && matchesDateFrom && matchesDateTo && matchesSearch;
+      return matchesType && matchesDateFrom && matchesDateTo && matchesProject && matchesSearch;
     });
-  }, [activities, filterDateFrom, filterDateTo, filterType, search]);
+  }, [activities, filterDateFrom, filterDateTo, filterType, filterProject, search]);
 
   const stats = useMemo(() => ({
     total: activities.length,
@@ -481,6 +501,7 @@ export default function DatabaseKegiatan() {
     setPhotoAttachment(null);
     setNotulensiAttachment(null);
     setSuratAttachment(null);
+    setDaftarHadirAttachment(null);
     setModalOpen(true);
   };
 
@@ -500,11 +521,13 @@ export default function DatabaseKegiatan() {
       participantsList: activity.participants_list,
       output: activity.output,
       folderBergkasUrl: activity.folder_bergkas_url,
-      picName: activity.pic_name
+      picName: activity.pic_name,
+      researchProjectId: activity.research_project_id || ""
     });
     setPhotoAttachment(null);
     setNotulensiAttachment(null);
     setSuratAttachment(null);
+    setDaftarHadirAttachment(null);
     setModalOpen(true);
   };
 
@@ -516,6 +539,7 @@ export default function DatabaseKegiatan() {
     setPhotoAttachment(null);
     setNotulensiAttachment(null);
     setSuratAttachment(null);
+    setDaftarHadirAttachment(null);
   };
 
   const saveActivity = async () => {
@@ -547,7 +571,10 @@ export default function DatabaseKegiatan() {
       notulensiDataUrl: notulensiAttachment?.dataUrl || null,
       notulensiFileName: notulensiAttachment?.fileName || null,
       suratDataUrl: suratAttachment?.dataUrl || null,
-      suratFileName: suratAttachment?.fileName || null
+      suratFileName: suratAttachment?.fileName || null,
+      daftarHadirDataUrl: daftarHadirAttachment?.dataUrl || null,
+      daftarHadirFileName: daftarHadirAttachment?.fileName || null,
+      researchProjectId: form.researchProjectId || null
     };
 
     setSaving(true);
@@ -644,7 +671,7 @@ export default function DatabaseKegiatan() {
             </button>
           </div>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
+          <div className="mt-5 grid gap-3 lg:grid-cols-[1.5fr_1fr_1.5fr_1fr_1fr]">
             <label className="flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-3 py-2.5">
               <Search size={16} className="text-muted-foreground" />
               <input
@@ -665,6 +692,19 @@ export default function DatabaseKegiatan() {
                 <option value="riset">Riset</option>
                 <option value="abdimas">Abdimas</option>
                 <option value="internal">Internal</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-3 py-2.5">
+              <Filter size={16} className="text-muted-foreground" />
+              <select
+                value={filterProject}
+                onChange={(e) => setFilterProject(e.target.value)}
+                className="w-full bg-transparent text-sm font-medium outline-none"
+              >
+                <option value="">Semua riset</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
               </select>
             </label>
             <label className="flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-3 py-2.5">
@@ -721,7 +761,7 @@ export default function DatabaseKegiatan() {
                   filteredActivities.map((activity) => {
                     const hasDocs = Boolean(
                       activity.folder_bergkas_url || activity.notulensi_url ||
-                      activity.surat_url || activity.photo_url
+                      activity.surat_url || activity.photo_url || activity.daftar_hadir_url
                     );
                     return (
                       <tr
@@ -777,6 +817,7 @@ export default function DatabaseKegiatan() {
                               {[
                                 activity.notulensi_url && "Notulensi",
                                 activity.surat_url && "Surat",
+                                activity.daftar_hadir_url && "Daftar Hadir",
                                 activity.photo_url && "Foto",
                                 activity.folder_bergkas_url && "Folder"
                               ].filter(Boolean).join(", ")}
@@ -899,12 +940,24 @@ export default function DatabaseKegiatan() {
                   </div>
 
                   <label className="block space-y-1.5 text-sm font-bold text-foreground">
-                    <span>Judul Kegiatan</span>
+                    <span>Tujuan Kegiatan</span>
                     <textarea value={form.goal}
                       onChange={(e) => setForm((p) => ({ ...p, goal: e.target.value }))}
                       rows={2}
                       className="w-full rounded-xl border border-border px-3 py-2.5 text-sm font-medium outline-none focus:border-[#0AB600]"
-                      placeholder="Judul Kegiatan" />
+                      placeholder="Tujuan kegiatan ini dilaksanakan" />
+                  </label>
+
+                  <label className="block space-y-1.5 text-sm font-bold text-foreground">
+                    <span>Riset / Proyek Terkait</span>
+                    <select value={form.researchProjectId}
+                      onChange={(e) => setForm((p) => ({ ...p, researchProjectId: e.target.value }))}
+                      className="w-full rounded-xl border border-border px-3 py-2.5 text-sm font-medium outline-none focus:border-[#0AB600]">
+                      <option value="">— Tidak terkait riset —</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>{p.title}</option>
+                      ))}
+                    </select>
                   </label>
 
                   <label className="block space-y-1.5 text-sm font-bold text-foreground">
@@ -1019,6 +1072,18 @@ export default function DatabaseKegiatan() {
                       existingName={editingActivity?.surat_name || ""}
                       onPick={(file) => void handlePickFile(file, 10, setSuratAttachment)}
                       onClear={() => setSuratAttachment(null)}
+                    />
+
+                    {/* Daftar Hadir */}
+                    <FileUploadZone
+                      label="Daftar Hadir"
+                      hint="PDF / DOC / DOCX / Gambar — maks. 10 MB"
+                      accept={ALLOWED_DOC_TYPES}
+                      attachment={daftarHadirAttachment}
+                      existingUrl={editingActivity?.daftar_hadir_url || ""}
+                      existingName={editingActivity?.daftar_hadir_name || ""}
+                      onPick={(file) => void handlePickFile(file, 10, setDaftarHadirAttachment)}
+                      onClear={() => setDaftarHadirAttachment(null)}
                     />
 
                     <div className="rounded-[14px] border border-slate-200 bg-white p-3 text-xs font-medium leading-5 text-slate-600">
