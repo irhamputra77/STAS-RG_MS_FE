@@ -68,7 +68,7 @@ function DraggableCard({ card, constraintsRef, onOpen }: {
   onOpen: (video: string) => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
-  const [zIndex, setZIndex] = useState(card.id);
+  const [zIndex, setZIndex] = useState(30 + card.id);
   const dragDistance = React.useRef(0);
 
   const x = useMotionValue(0);
@@ -85,10 +85,10 @@ function DraggableCard({ card, constraintsRef, onOpen }: {
       dragConstraints={constraintsRef}
       dragElastic={0.15}
       dragTransition={{ bounceStiffness: 180, bounceDamping: 18 }}
-      onPointerDown={() => setZIndex(100)}
+      onPointerDown={() => setZIndex(200)}
       onDragStart={() => { setIsDragging(true); dragDistance.current = 0; }}
       onDrag={(_, info) => { dragDistance.current = Math.sqrt(info.offset.x ** 2 + info.offset.y ** 2); }}
-      onDragEnd={() => { setIsDragging(false); setZIndex(card.id); }}
+      onDragEnd={() => { setIsDragging(false); setZIndex(30 + card.id); }}
       whileDrag={{ scale: 1.1 }}
       animate={{
         rotate: isDragging ? 0 : [card.rotate, card.rotate + 3, card.rotate - 2, card.rotate],
@@ -180,7 +180,7 @@ function CardPanel({ branding }: { branding: any }) {
           />
         ))}
 
-        <div className="relative z-20 flex flex-col justify-between p-14 text-white w-full pointer-events-none">
+        <div className="relative z-[25] flex flex-col justify-between p-14 text-white w-full pointer-events-none">
           <div className="flex items-center gap-4">
             {branding.logoDataUrl ? (
               <img src={branding.logoDataUrl} alt="Logo" className="w-14 h-14 rounded-[18px] object-contain bg-white shadow-lg p-1" />
