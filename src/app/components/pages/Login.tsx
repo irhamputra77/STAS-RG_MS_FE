@@ -13,15 +13,16 @@ const ROLE_DESTINATION: Record<UserRole, string> = {
   dosen: "/dosen/dashboard"
 };
 
+// Posisi pakai % agar responsif di semua tinggi layar
 const FLOATING_CARDS = [
-  { id: 1, x: 20,  y: 20,  rotate: -12, video: "/videos/v1.mp4" },
-  { id: 2, x: 200, y: 10,  rotate: 14,  video: "/videos/v2.mp4" },
-  { id: 3, x: 110, y: 100, rotate: -8,  video: "/videos/v3.mp4" },
-  { id: 4, x: 20,  y: 220, rotate: 18,  video: "/videos/v4.mp4" },
-  { id: 5, x: 210, y: 190, rotate: -18, video: "/videos/v5.mp4" },
-  { id: 6, x: 110, y: 350, rotate: 10,  video: "/videos/v2.mp4" },
-  { id: 7, x: 220, y: 380, rotate: -14, video: "/videos/v4.mp4" },
-  { id: 8, x: 15,  y: 430, rotate: 16,  video: "/videos/v1.mp4" },
+  { id: 1, x: "5%",  y: "3%",  rotate: -12, video: "/videos/v1.mp4" },
+  { id: 2, x: "52%", y: "2%",  rotate: 14,  video: "/videos/v2.mp4" },
+  { id: 3, x: "28%", y: "22%", rotate: -8,  video: "/videos/v3.mp4" },
+  { id: 4, x: "5%",  y: "42%", rotate: 18,  video: "/videos/v4.mp4" },
+  { id: 5, x: "52%", y: "38%", rotate: -18, video: "/videos/v5.mp4" },
+  { id: 6, x: "28%", y: "60%", rotate: 10,  video: "/videos/v2.mp4" },
+  { id: 7, x: "5%",  y: "68%", rotate: -14, video: "/videos/v4.mp4" },
+  { id: 8, x: "55%", y: "65%", rotate: 16,  video: "/videos/v1.mp4" },
 ];
 
 function VideoModal({ src, onClose }: { src: string; onClose: () => void }) {
@@ -180,7 +181,7 @@ function CardPanel({ branding }: { branding: any }) {
           />
         ))}
 
-        <div className="relative z-[25] flex flex-col justify-between p-14 text-white w-full pointer-events-none">
+        <div className="absolute inset-0 z-[50] pointer-events-none flex flex-col justify-between p-10 text-white">
           <div className="flex items-center gap-4">
             {branding.logoDataUrl ? (
               <img src={branding.logoDataUrl} alt="Logo" className="w-14 h-14 rounded-[18px] object-contain bg-white shadow-lg p-1" />
