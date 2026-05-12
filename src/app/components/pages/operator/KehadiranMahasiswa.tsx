@@ -47,6 +47,7 @@ type AttendanceMonitorToday = {
   risetWeeklyHoursLockWindowOpen?: boolean;
   risetWeeklyUnderHoursIds?: string[];
   risetWeeklyUnderHoursLockIds?: string[];
+  weeklyHadirByStudentId?: Record<string, number>;
   holidayToday?: string | HolidayItem | null;
   isHoliday?: boolean;
   holidays?: HolidayItem[];
@@ -816,8 +817,11 @@ export default function KehadiranMahasiswa() {
                         <p className="truncate text-[11px] text-muted-foreground">
                           {student.nim} · {student.prodi}{student.tipe ? ` · ${student.tipe}` : ""}
                         </p>
+                        <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                          {monitor?.weeklyHadirByStudentId?.[student.id] ?? 0}× minggu ini
+                        </p>
                         {isRisetStudent(student) && risetWeeklyUnderHoursSet.has(student.id) && (
-                          <p className="mt-1 text-[10px] font-black text-orange-600">
+                          <p className="mt-0.5 text-[10px] font-black text-orange-600">
                             Jam Riset mingguan kurang{risetWeeklyUnderHoursLockSet.has(student.id) ? " - akses terkunci" : ""}
                           </p>
                         )}
