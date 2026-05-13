@@ -1,12 +1,21 @@
 const env = (import.meta as any).env || {};
 const envApiBaseUrl = env.VITE_API_URL || env.VITE_API_BASE_URL;
+const PROD_API_BASE_URL = "https://ms-api.stas-rg.com/api/v1";
+
+function normalizeApiBaseUrl(value: string) {
+  return value.trim().replace(/\/+$/, "");
+}
+
+function isLocalhostApiUrl(value: string) {
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(value.trim());
+}
 
 export const API_BASE_URL =
-  typeof envApiBaseUrl === "string" && envApiBaseUrl.trim()
-    ? envApiBaseUrl.trim().replace(/\/+$/, "")
+  typeof envApiBaseUrl === "string" && envApiBaseUrl.trim() && !(env.PROD && isLocalhostApiUrl(envApiBaseUrl))
+    ? normalizeApiBaseUrl(envApiBaseUrl)
     : env.DEV
       ? "/api/v1"
-      : "https://ms-api.stas-rg.com/api/v1";
+      : PROD_API_BASE_URL;
 const API_ORIGIN = API_BASE_URL.replace(/\/api(?:\/v\d+)?\/?$/, "");
 
 export type BlobResponse = {
@@ -31,9 +40,16 @@ export class ApiError extends Error {
 // Backend mengandalkan JWT di httpOnly cookie sebagai satu-satunya
 // sumber kebenaran identitas user (aman dari manipulasi via DevTools).
 function getRequestHeaders(options?: RequestInit) {
-  return {
-    "Content-Type": "application/json",
+  const headers: Record<string, string> = {
     ...(options?.headers || {})
+  };
+
+  if (options?.body && !Object.keys(headers).some((key) => key.toLowerCase() === "content-type")) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return {
+    ...headers
   };
 }
 
