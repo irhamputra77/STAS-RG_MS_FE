@@ -60,6 +60,10 @@ type AttendanceMonitorToday = {
   absentIds?: string[];
   reportedAbsentIds?: string[];
   noInformationIds?: string[];
+  isHoliday?: boolean;
+  holidayToday?: string | { name?: string; date?: string; active?: boolean } | null;
+  holidays?: Array<any>;
+  excludeHolidaysFromWorkdays?: boolean;
   magangUnderHoursIds?: string[];
   magangMissingCheckoutIds?: string[];
   magangLockedIds?: string[];
@@ -195,6 +199,7 @@ const ACCESS_LOCK_REASON_LABELS: Record<string, string> = {
   WORK_HOURS_UNDER_8: "Jam Kerja Magang Kurang dari 8 Jam",
   CHECKOUT_MISSING_22: "Belum Checkout Sampai 22.00 WIB",
   RISET_WEEKLY_HOURS_UNDER_TARGET: "Jam Kerja Riset Mingguan Tidak Terpenuhi",
+  PICKET_SUBMISSION_INVALID: "Piket Tidak Sesuai",
 };
 
 const ACCESS_LOCK_REASON_MESSAGES: Record<string, string> = {
@@ -202,6 +207,7 @@ const ACCESS_LOCK_REASON_MESSAGES: Record<string, string> = {
   WORK_HOURS_UNDER_8: "Durasi kerja Magang hari ini kurang dari 8 jam.",
   CHECKOUT_MISSING_22: "Mahasiswa Magang belum checkout sampai pukul 22.00 WIB.",
   RISET_WEEKLY_HOURS_UNDER_TARGET: "Akses dikunci karena jam kerja Riset mingguan belum memenuhi target.",
+  PICKET_SUBMISSION_INVALID: "Anda telah melakukan kegiatan piket yang tidak sesuai dengan tugas anda, mohon hubungi admin untuk melepas block.",
 };
 
 function getLockReasonLabel(reason?: string | null, reasonLabel?: string | null) {
@@ -690,6 +696,12 @@ export default function OperatorDashboard() {
   const hasPassedAttendanceCutoff = Boolean(attendanceMonitor?.lockWindowOpen);
   const risetWeeklyHoursLockAfter = attendanceMonitor?.risetWeeklyHoursLockAfter || "-";
   const hasPassedRisetWeeklyHoursLock = Boolean(attendanceMonitor?.risetWeeklyHoursLockWindowOpen);
+  const isHolidayAttendanceDay = Boolean(
+    attendanceMonitor?.isHoliday && attendanceMonitor?.excludeHolidaysFromWorkdays !== false
+  );
+  const holidayTodayName = typeof attendanceMonitor?.holidayToday === "string"
+    ? attendanceMonitor.holidayToday
+    : attendanceMonitor?.holidayToday?.name || "Hari Libur";
   const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
   const presentIdSet = new Set((attendanceMonitor?.presentIds || []).map(String));
@@ -697,7 +709,7 @@ export default function OperatorDashboard() {
   const getStudentById = (studentId: string) =>
     students.find((item) => String(item.id) === String(studentId));
   const getAccessLockForStudent = (studentId: string) =>
-    accessLocks.find((item) => String(item.studentId) === String(studentId));
+    visibleAccessLocks.find((item) => String(item.studentId) === String(studentId));
   const getStudentTypeLabel = (studentId: string, fallbackType?: string | null) =>
     getStudentById(studentId)?.tipe || fallbackType || getAccessLockForStudent(studentId)?.studentType || "Mahasiswa";
   const isMagangStudent = (studentId: string, fallbackType?: string | null) =>
@@ -708,7 +720,10 @@ export default function OperatorDashboard() {
     String(lock?.reason || "") === "ATTENDANCE_ABSENT";
   const isRisetWeeklyHoursLock = (lock?: StudentAccessLock | null) =>
     String(lock?.reason || "") === "RISET_WEEKLY_HOURS_UNDER_TARGET";
-  const lockedAbsentMhs: AttendanceAbsentItem[] = accessLocks
+  const visibleAccessLocks = isHolidayAttendanceDay
+    ? accessLocks.filter((lock) => !isDailyAttendanceLock(lock))
+    : accessLocks;
+  const lockedAbsentMhs: AttendanceAbsentItem[] = visibleAccessLocks
     .filter((lock) => isDailyAttendanceLock(lock) && !isRisetStudent(lock.studentId, lock.studentType))
     .map((lock) => ({
       id: lock.id || `lock-${lock.studentId}`,
@@ -723,10 +738,12 @@ export default function OperatorDashboard() {
       attendanceStatus: "Tidak Hadir",
       accessLock: lock,
     }));
-  const warningAbsentMhs: AttendanceAbsentItem[] = warnings.attendanceAbsent
-    .filter((item) => !isRisetStudent(item.studentId))
-    .filter((item) => item.attendanceStatus !== "Cuti")
-    .map((item) => ({ ...item, accessLock: getAccessLockForStudent(item.studentId) }));
+  const warningAbsentMhs: AttendanceAbsentItem[] = isHolidayAttendanceDay
+    ? []
+    : warnings.attendanceAbsent
+      .filter((item) => !isRisetStudent(item.studentId))
+      .filter((item) => item.attendanceStatus !== "Cuti")
+      .map((item) => ({ ...item, accessLock: getAccessLockForStudent(item.studentId) }));
   const tidakHadirMhs = hasPassedAttendanceCutoff
     ? [
       ...warningAbsentMhs,
@@ -774,7 +791,7 @@ export default function OperatorDashboard() {
   const unreadEarlyCheckoutAlerts = earlyCheckoutAlerts.filter((item) => !item.read);
   const earlyCheckoutDisplay = unreadEarlyCheckoutAlerts.length > 0 ? unreadEarlyCheckoutAlerts : earlyCheckoutAlerts;
   const jamTidakTerpenuhiCount = risetLowHours.length + unreadEarlyCheckoutAlerts.length;
-  const filteredAccessLocks = accessLocks.filter((lock) =>
+  const filteredAccessLocks = visibleAccessLocks.filter((lock) =>
     matchesSearchQuery(
       [
         lock.studentName,
@@ -871,6 +888,11 @@ export default function OperatorDashboard() {
             {error}
           </div>
         )}
+        {isHolidayAttendanceDay && (
+          <div className="px-4 py-3 rounded-xl border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700">
+            Hari Libur: {holidayTodayName}. Warning tidak hadir dan lock absensi harian dinonaktifkan untuk hari ini.
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -929,7 +951,12 @@ export default function OperatorDashboard() {
             <div className="px-4 py-3 border-b border-red-100 bg-red-50/50 flex items-center justify-between gap-3">
               <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><UserX size={13} className="text-red-500 shrink-0" /> Tidak Hadir Hari Ini<span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{absentSearch.trim() ? `${filteredTidakHadirMhs.length}/${tidakHadirMhs.length}` : tidakHadirMhs.length}</span></h3>
             </div>
-            {!hasPassedAttendanceCutoff ? (
+            {isHolidayAttendanceDay ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Hari ini libur</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Absensi tidak wajib, sehingga mahasiswa tidak ditandai tidak hadir.</p>
+              </div>
+            ) : !hasPassedAttendanceCutoff ? (
               <div className="px-4 py-8 text-center">
                 <p className="text-xs font-black text-foreground">Daftar belum ditampilkan</p>
                 <p className="text-[10px] text-muted-foreground mt-1">Mahasiswa akan masuk ke section ini jika sampai lewat pukul {lockVisibleAfter} WIB belum memiliki informasi absensi.</p>
@@ -1058,10 +1085,10 @@ export default function OperatorDashboard() {
             <div className="px-4 py-3 border-b border-rose-200 bg-rose-50/60 flex items-center justify-between gap-3">
               <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2">
                 <Lock size={13} className="text-rose-700 shrink-0" /> Akses Ditangguhkan
-                <span className="bg-rose-700 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{accessLockSearch.trim() ? `${filteredAccessLocks.length}/${accessLocks.length}` : accessLocks.length}</span>
+                <span className="bg-rose-700 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{accessLockSearch.trim() ? `${filteredAccessLocks.length}/${visibleAccessLocks.length}` : visibleAccessLocks.length}</span>
               </h3>
             </div>
-            {accessLocks.length === 0 ? (
+            {visibleAccessLocks.length === 0 ? (
               <div className="px-4 py-8 text-center">
                 <p className="text-xs font-black text-foreground">Tidak ada akses ditangguhkan</p>
                 <p className="text-[10px] text-muted-foreground mt-1">Semua mahasiswa memiliki akses sistem yang aktif.</p>

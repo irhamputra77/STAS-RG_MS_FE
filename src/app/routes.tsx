@@ -12,6 +12,7 @@ import Documents from "./components/pages/mahasiswa/Documents";
 import DraftReport from "./components/pages/mahasiswa/DraftReport";
 import MyResearch from "./components/pages/mahasiswa/MyResearch";
 import ScrumBoard from "./components/pages/mahasiswa/ScrumBoard";
+import Piket from "./components/pages/mahasiswa/Piket";
 import Settings from "./components/pages/Settings";
 import OperatorDashboard from "./components/pages/operator/OperatorDashboard";
 import DatabaseMahasiswa from "./components/pages/operator/DatabaseMahasiswa";
@@ -31,6 +32,7 @@ import ProgressBoard from "./components/pages/operator/ProgressBoard";
 import SertifikatOperator from "./components/pages/operator/SertifikatOperator";
 import ReviewDraftOperator from "./components/pages/operator/ReviewDraftOperator";
 import PengunduranDiriOperator from "./components/pages/operator/PengunduranDiriOperator";
+import PiketOperator from "./components/pages/operator/PiketOperator";
 import DashboardDosen from "./components/pages/dosen/DashboardDosen";
 import RisetDosen from "./components/pages/dosen/RisetDosen";
 import ReviewLogbook from "./components/pages/dosen/ReviewLogbook";
@@ -108,6 +110,8 @@ export const router = createBrowserRouter([
                   { path: "documents", element: <Documents /> },
                   { path: "draft", element: <DraftReport /> },
                   { path: "research", element: <MyResearch /> },
+                  { path: "picket", element: <Piket /> },
+                  { path: "picket/manage", element: <PiketOperator /> },
                   { path: "scrum-board", element: <Navigate to="/research" replace /> },
                   { path: "scrum-board/:researchId", element: <ScrumBoard /> },
                   { path: "board", element: <Navigate to="/research" replace /> },
@@ -129,6 +133,7 @@ export const router = createBrowserRouter([
               { path: "kegiatan", element: <DatabaseKegiatan /> },
               { path: "logbook", element: <LogbookMonitor /> },
               { path: "kehadiran", element: <KehadiranMahasiswa /> },
+              { path: "piket", element: <PiketOperator /> },
               { path: "cuti", element: <PersetujuanCuti /> },
               { path: "pengunduran", element: <PengunduranDiriOperator /> },
               { path: "surat", element: <LayananSurat /> },

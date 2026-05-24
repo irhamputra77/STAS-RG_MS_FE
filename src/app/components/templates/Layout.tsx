@@ -12,6 +12,7 @@ import {
   Award,
   ScrollText,
   FlaskConical,
+  ClipboardCheck,
   X,
   CheckCheck,
   BookMarked,
@@ -30,6 +31,8 @@ import { AppNotification, NotificationType, useNotifications } from "../../hooks
 import { apiGet } from "../../lib/api";
 import { ProfileAvatar } from "../molecules/ProfileAvatar";
 import { useSyncedStoredUser } from "../../lib/userProfileSync";
+import { normalizeHolidays } from "../../lib/holidays";
+import { shouldSuppressHolidayAttendanceLock } from "../../lib/accessLocks";
 
 type StudentAccessLock = {
   id?: string;
@@ -53,12 +56,16 @@ function isActiveAccessLock(lock: StudentAccessLock | null) {
 function getAccessLockReasonLabel(reason?: string | null) {
   if (reason === "ATTENDANCE_ABSENT") return "Tidak Hadir";
   if (reason === "RISET_WEEKLY_HOURS_UNDER_TARGET") return "Jam Kerja Riset Mingguan Tidak Terpenuhi";
+  if (reason === "PICKET_SUBMISSION_INVALID") return "Piket Tidak Sesuai";
   return reason || "-";
 }
 
 function getAccessLockDefaultMessage(reason?: string | null, date?: string | null) {
   if (reason === "RISET_WEEKLY_HOURS_UNDER_TARGET") {
     return "Akses dikunci karena jam kerja Riset mingguan belum memenuhi target.";
+  }
+  if (reason === "PICKET_SUBMISSION_INVALID") {
+    return "Anda telah melakukan kegiatan piket yang tidak sesuai dengan tugas anda, mohon hubungi ke admin untuk melepas block.";
   }
 
   return `Akun Anda dikunci karena terdeteksi tidak hadir pada ${
@@ -264,6 +271,10 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   const [checkingAccessLock, setCheckingAccessLock] = useState(false);
   const [headerPhotoUrl, setHeaderPhotoUrl] = useState(user?.photoUrl || user?.photo_url || "");
   const bellRef = useRef<HTMLDivElement>(null);
+  const holidayLockRulesRef = useRef({
+    excludeHolidaysFromWorkdays: true,
+    holidays: [] as unknown,
+  });
 
   const fallbackNotifs = React.useMemo<AppNotification[]>(() => [], []);
 
@@ -274,6 +285,20 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
 
   const [warningPopup, setWarningPopup] = useState<{ title: string; body: string } | null>(null);
 
+  const applyHolidayLockSettings = React.useCallback((settings: any) => {
+    holidayLockRulesRef.current = {
+      excludeHolidaysFromWorkdays: Boolean(settings?.attendanceRules?.excludeHolidaysFromWorkdays ?? true),
+      holidays: normalizeHolidays(settings?.attendanceRules?.holidays || settings?.holidays),
+    };
+  }, []);
+
+  const shouldHideHolidayAttendanceLock = React.useCallback((lock: StudentAccessLock | null) => {
+    const rules = holidayLockRulesRef.current;
+    return shouldSuppressHolidayAttendanceLock(lock, rules.holidays, {
+      excludeHolidaysFromWorkdays: rules.excludeHolidaysFromWorkdays,
+    });
+  }, []);
+
   const refreshAccessLock = React.useCallback(async () => {
     if (user?.role !== "mahasiswa") {
       setAccessLock(null);
@@ -282,14 +307,25 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
 
     try {
       setCheckingAccessLock(true);
-      const data = await apiGet<StudentAccessLock>("/student-access-locks/me");
-      setAccessLock(isActiveAccessLock(data) ? data : null);
+      const [lockResult, settingsResult] = await Promise.allSettled([
+        apiGet<StudentAccessLock>("/student-access-locks/me"),
+        apiGet<any>("/system-settings"),
+      ]);
+
+      if (settingsResult.status === "fulfilled") {
+        applyHolidayLockSettings(settingsResult.value);
+      }
+
+      if (lockResult.status === "fulfilled") {
+        const data = lockResult.value;
+        setAccessLock(isActiveAccessLock(data) && !shouldHideHolidayAttendanceLock(data) ? data : null);
+      }
     } catch {
       // Keep previous lock state.
     } finally {
       setCheckingAccessLock(false);
     }
-  }, [user?.role]);
+  }, [applyHolidayLockSettings, shouldHideHolidayAttendanceLock, user?.role]);
 
   useEffect(() => {
     const loadHeaderProfile = async () => {
@@ -356,7 +392,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
 
       const detail = (event as CustomEvent).detail || {};
 
-      setAccessLock({
+      const nextLock: StudentAccessLock = {
         id: detail.id || undefined,
         locked: true,
         active: true,
@@ -364,13 +400,15 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
         reason: detail.reason || "ATTENDANCE_ABSENT",
         date: detail.date || null,
         message: detail.message || getAccessLockDefaultMessage(detail.reason || "ATTENDANCE_ABSENT", detail.date || null),
-      });
+      };
+
+      setAccessLock(shouldHideHolidayAttendanceLock(nextLock) ? null : nextLock);
     };
 
     window.addEventListener("stas:access-locked", onAccessLocked);
 
     return () => window.removeEventListener("stas:access-locked", onAccessLocked);
-  }, [user?.role]);
+  }, [shouldHideHolidayAttendanceLock, user?.role]);
 
   // Auto-logout mahasiswa tepat pukul 22:00 WIB agar session tidak bisa digunakan untuk check-in
   useEffect(() => {
@@ -433,6 +471,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Kehadiran (GPS)", path: "/attendance", icon: MapPin },
     { name: "Logbook", path: "/logbook", icon: BookOpen },
+    { name: "Piket", path: "/picket", icon: ClipboardCheck },
     { name: "Riset Saya", path: "/research", icon: FlaskConical },
     { name: "Pengajuan", path: "/leave", icon: FileText },
     { name: "Dokumen & Sertifikat", path: "/documents", icon: Award },

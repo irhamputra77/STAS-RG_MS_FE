@@ -5,6 +5,12 @@ import { AlertTriangle, MapPin, Clock, LogIn, LogOut, Search } from "lucide-reac
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { ApiError, apiGet, apiPost, getStoredUser } from "../../../lib/api";
 import { HolidayItem, findHolidayForDate, normalizeHolidays } from "../../../lib/holidays";
+import {
+  PicketAssignment,
+  fileToDataUrl,
+  mapPicketAssignment,
+  validatePicketPhoto,
+} from "../../../lib/picket";
 
 type GpsInfo = {
   latitude: number;
@@ -189,6 +195,10 @@ export default function Attendance() {
     elapsedHours: number;
     requiredHours: number;
   } | null>(null);
+  const [todayPicket, setTodayPicket] = useState<PicketAssignment | null>(null);
+  const [picketPhotoFile, setPicketPhotoFile] = useState<File | null>(null);
+  const [picketPhotoPreview, setPicketPhotoPreview] = useState("");
+  const [picketModalOpen, setPicketModalOpen] = useState(false);
   const [logbookRequiredOpen, setLogbookRequiredOpen] = useState(false);
   const [logbookRequiredMessage, setLogbookRequiredMessage] = useState("Isi logbook hari ini terlebih dahulu sebelum check-out.");
   const [checkingLogbook, setCheckingLogbook] = useState(false);
@@ -216,12 +226,19 @@ export default function Attendance() {
       if (data?.student?.tipe || data?.studentType) {
         setStudentType(String(data?.student?.tipe || data?.studentType));
       }
+      const rawPicket = data?.picketToday || data?.todayPicket || data?.picketAssignment || data?.picket?.assignment;
+      if (rawPicket?.id || rawPicket?.assignment_id || rawPicket?.task_name || rawPicket?.taskName) {
+        setTodayPicket(mapPicketAssignment(rawPicket));
+      } else if (rawPicket !== undefined) {
+        setTodayPicket(null);
+      }
       if (data?.attendanceRules) {
         const holidays = normalizeHolidays(data.attendanceRules.holidays || data.holidays);
         const holidayFromResponse =
           typeof data.todayHoliday === "string"
             ? { date: getJakartaDateKey(), name: data.todayHoliday, type: "system", active: true }
-            : normalizeHolidays(data.todayHoliday ? [data.todayHoliday] : [])[0] || null;
+            : normalizeHolidays(data.todayHoliday ? [data.todayHoliday] : [])
+              .find((holiday) => holiday.active !== false) || null;
         setAttendanceRules({
           magangMinCheckoutHours: Number(data.attendanceRules.magangMinCheckoutHours) || 8,
           earlyCheckoutWarning: Boolean(data.attendanceRules.earlyCheckoutWarning ?? true),
@@ -314,6 +331,33 @@ export default function Attendance() {
       active = false;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+
+    const loadPicketToday = async () => {
+      try {
+        const response = await apiGet<any>(`/picket/today?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`);
+        if (!active) return;
+        const raw = response?.assignment || response?.todayAssignment || response;
+        setTodayPicket(raw?.id || raw?.assignment_id || raw?.task_name || raw?.taskName ? mapPicketAssignment(raw) : null);
+      } catch {
+        if (active) setTodayPicket(null);
+      }
+    };
+
+    void loadPicketToday();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (picketPhotoPreview) URL.revokeObjectURL(picketPhotoPreview);
+    };
+  }, [picketPhotoPreview]);
 
   const getCurrentPosition = (policy = gpsPolicy) =>
     new Promise<GeolocationPosition>((resolve, reject) => {
@@ -482,6 +526,52 @@ export default function Attendance() {
     navigate(`/logbook/new?date=${encodeURIComponent(todayKey)}&fromCheckout=1`);
   };
 
+  const pickPicketPhoto = (file?: File | null) => {
+    if (!file) return;
+    const validation = validatePicketPhoto(file);
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    if (picketPhotoPreview) URL.revokeObjectURL(picketPhotoPreview);
+    setPicketPhotoFile(file);
+    setPicketPhotoPreview(URL.createObjectURL(file));
+    setError("");
+  };
+
+  const shouldRequirePicketPhotoBeforeCheckout = () => {
+    if (todayData.status !== "Berlangsung") return false;
+    if (!todayPicket) return false;
+    if (String(todayPicket.leaveStatus || "").toLowerCase() === "disetujui") return false;
+    return !todayPicket.submitted && !todayPicket.submissionId;
+  };
+
+  const submitPicketPhotoIfNeeded = async () => {
+    if (!shouldRequirePicketPhotoBeforeCheckout()) return;
+    if (!todayPicket || !picketPhotoFile) {
+      setPicketModalOpen(true);
+      throw new Error("Foto piket wajib diunggah sebelum check-out.");
+    }
+
+    const result = await apiPost<any>("/picket/submissions", {
+      assignmentId: todayPicket.id,
+      studentId: user?.id,
+      date: todayPicket.date,
+      taskId: todayPicket.taskId,
+      photoFileName: picketPhotoFile.name,
+      photoDataUrl: await fileToDataUrl(picketPhotoFile),
+      source: "upload",
+    });
+
+    setTodayPicket((prev) => prev ? {
+      ...prev,
+      submitted: true,
+      submissionId: result?.id || result?.submissionId || prev.submissionId,
+      photoUrl: result?.photoUrl || result?.photo_url || prev.photoUrl,
+    } : prev);
+    setPicketModalOpen(false);
+  };
+
   const handleAttendanceAction = async (forceEarlyCheckout = false) => {
     if (!user?.id || submitting || checkingLogbook) return;
     const holidayToday = attendanceRules.excludeHolidaysFromWorkdays
@@ -517,6 +607,11 @@ export default function Attendance() {
       } finally {
         setCheckingLogbook(false);
       }
+    }
+    if (shouldRequirePicketPhotoBeforeCheckout() && !picketPhotoFile) {
+      setPicketModalOpen(true);
+      setError("");
+      return;
     }
     const earlyWarning = shouldWarnEarlyCheckout();
     if (earlyWarning && !forceEarlyCheckout) {
@@ -568,6 +663,7 @@ export default function Attendance() {
       };
 
       if (isCheckout) {
+        await submitPicketPhotoIfNeeded();
         const result = await apiPost<any>("/attendance/check-out", payload);
         setLastGpsResult({
           accuracyMeters: normalizeNumber(result?.accuracyMeters, accuracy),
@@ -600,6 +696,16 @@ export default function Attendance() {
           elapsedHours: Number(errorBody.durationHours) || 0,
           requiredHours: Number(errorBody.requiredHours) || attendanceRules.magangMinCheckoutHours
         });
+        setError("");
+        return;
+      }
+
+      if (errorBody?.picketRequired) {
+        const rawPicket = errorBody.assignment || errorBody.picketAssignment || null;
+        if (rawPicket) {
+          setTodayPicket(mapPicketAssignment(rawPicket));
+        }
+        setPicketModalOpen(true);
         setError("");
         return;
       }
@@ -727,6 +833,57 @@ export default function Attendance() {
             </div>
           </div>
         )}
+        {picketModalOpen && todayPicket && (
+          <div className="fixed inset-0 z-[510] flex items-center justify-center bg-black/50 px-4">
+            <div className="w-full max-w-[460px] rounded-[16px] border border-emerald-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4">
+                <h3 className="text-base font-black text-foreground">Foto Piket Diperlukan</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  Anda dijadwalkan piket hari ini: <span className="font-black text-foreground">{todayPicket.taskName}</span>. Unggah foto bukti piket sebelum check-out.
+                </p>
+              </div>
+              <label className="block cursor-pointer rounded-[14px] border border-dashed border-emerald-300 bg-emerald-50 p-4 text-center hover:bg-emerald-100">
+                {picketPhotoPreview ? (
+                  <img src={picketPhotoPreview} alt="Preview foto piket" className="mx-auto h-48 w-full rounded-[12px] object-cover" />
+                ) : (
+                  <div className="py-8">
+                    <p className="text-sm font-black text-emerald-700">Pilih foto piket</p>
+                    <p className="mt-1 text-xs text-emerald-700/80">JPG, PNG, atau WEBP maksimal 5 MB.</p>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    pickPicketPhoto(event.target.files?.[0] || null);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              {picketPhotoFile && (
+                <p className="mt-2 text-xs font-semibold text-emerald-700">Foto dipilih: {picketPhotoFile.name}</p>
+              )}
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPicketModalOpen(false)}
+                  className="h-10 rounded-[10px] border border-border px-4 text-sm font-bold text-muted-foreground hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={!picketPhotoFile}
+                  onClick={() => handleAttendanceAction()}
+                  className="h-10 rounded-[10px] bg-[#0AB600] px-4 text-sm font-black text-white hover:bg-[#099800] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Lanjut Check-out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {logbookRequiredOpen && (
           <div className="fixed inset-0 z-[520] flex items-center justify-center bg-black/50 px-4">
             <div className="w-full max-w-[430px] rounded-[16px] border border-indigo-200 bg-white p-5 shadow-2xl">
@@ -775,6 +932,11 @@ export default function Attendance() {
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
             Hari ini tanggal merah: {currentHoliday.name}. Hari ini tidak dihitung sebagai kewajiban hadir.
             {todayData.status === "Berlangsung" ? " Anda tetap bisa check-out untuk menutup sesi yang sudah berjalan." : ""}
+          </div>
+        )}
+        {todayPicket && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            Jadwal piket hari ini: {todayPicket.taskName}. {todayPicket.submitted ? "Foto piket sudah dikirim." : "Foto bukti piket akan diminta sebelum check-out."}
           </div>
         )}
 

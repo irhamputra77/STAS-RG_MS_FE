@@ -51,6 +51,7 @@ type AttendanceMonitorToday = {
   holidayToday?: string | HolidayItem | null;
   isHoliday?: boolean;
   holidays?: HolidayItem[];
+  excludeHolidaysFromWorkdays?: boolean;
   presentIds?: string[];
   leaveIds?: string[];
   leaveTypesByStudentId?: Record<string, LeaveRequestType>;
@@ -326,6 +327,7 @@ export default function KehadiranMahasiswa() {
   const [editorExistingRecordId, setEditorExistingRecordId] = React.useState<string | null>(null);
   const [editor, setEditor] = React.useState<AttendanceEditorState | null>(null);
   const [holidayToday, setHolidayToday] = React.useState<HolidayItem | null>(null);
+  const [isHolidayToday, setIsHolidayToday] = React.useState(false);
 
   const loadOverview = React.useCallback(async () => {
     setOverviewLoading(true);
@@ -339,12 +341,23 @@ export default function KehadiranMahasiswa() {
         apiGet<AttendanceMonitorToday>(`/attendance/monitor/today?_=${cacheKey}`),
         apiGet<any>("/system-settings").catch(() => null),
       ]);
-      const settingHolidays = normalizeHolidays(settings?.attendanceRules?.holidays || settings?.holidays);
+      const excludeHolidaysFromWorkdays = Boolean(
+        monitorRows?.excludeHolidaysFromWorkdays ?? settings?.attendanceRules?.excludeHolidaysFromWorkdays ?? true
+      );
+      const settingHolidays = normalizeHolidays(
+        monitorRows?.holidays || settings?.attendanceRules?.holidays || settings?.holidays
+      );
+      const normalizedMonitorHoliday = normalizeHolidays(monitorRows?.holidayToday ? [monitorRows.holidayToday] : [])
+        .find((holiday) => holiday.active !== false) || null;
       const monitorHoliday =
         typeof monitorRows?.holidayToday === "string"
           ? { date: monitorRows.date || "", name: monitorRows.holidayToday, type: "system", active: true }
-          : normalizeHolidays(monitorRows?.holidayToday ? [monitorRows.holidayToday] : [])[0] || null;
-      const nextHoliday = monitorHoliday || (monitorRows?.isHoliday ? findHolidayForDate(settingHolidays, monitorRows.date) : null) || findHolidayForDate(settingHolidays, monitorRows?.date);
+          : normalizedMonitorHoliday;
+      const nextHoliday =
+        monitorHoliday ||
+        (monitorRows?.isHoliday ? findHolidayForDate(settingHolidays, monitorRows.date) : null) ||
+        findHolidayForDate(settingHolidays, monitorRows?.date);
+      const nextIsHoliday = Boolean(excludeHolidaysFromWorkdays && (monitorRows?.isHoliday || nextHoliday));
 
       const mappedStudents = (studentRows || []).map((item: any, index: number) => ({
         id: String(item?.id || ""),
@@ -370,6 +383,7 @@ export default function KehadiranMahasiswa() {
       setStudents(mappedStudents);
       setMonitor(monitorRows || null);
       setHolidayToday(nextHoliday || null);
+      setIsHolidayToday(nextIsHoliday);
       setSelectedStudentId((current) => {
         if (current && mappedStudents.some((student) => student.id === current)) {
           return current;
@@ -386,6 +400,20 @@ export default function KehadiranMahasiswa() {
 
   React.useEffect(() => {
     void loadOverview();
+  }, [loadOverview]);
+
+  React.useEffect(() => {
+    const reloadOnHolidaySettingsChange = () => {
+      void loadOverview();
+    };
+
+    window.addEventListener("stas:settings-updated", reloadOnHolidaySettingsChange);
+    window.addEventListener("stas:attendance-monitor-updated", reloadOnHolidaySettingsChange);
+
+    return () => {
+      window.removeEventListener("stas:settings-updated", reloadOnHolidaySettingsChange);
+      window.removeEventListener("stas:attendance-monitor-updated", reloadOnHolidaySettingsChange);
+    };
   }, [loadOverview]);
 
   const loadDetail = React.useCallback(async () => {
@@ -437,7 +465,7 @@ export default function KehadiranMahasiswa() {
         todayStatus = "Hadir";
       } else if (leaveSet.has(student.id)) {
         todayStatus = getLeaveAttendanceStatus(monitor?.leaveTypesByStudentId?.[student.id]);
-      } else if (holidayToday) {
+      } else if (isHolidayToday) {
         todayStatus = "Libur";
       } else if (!isRisetStudent(student) && (lockedAbsentSet.has(student.id) || reportedAbsentSet.has(student.id))) {
         todayStatus = "Tidak Hadir";
@@ -459,7 +487,7 @@ export default function KehadiranMahasiswa() {
     presentSet,
     reportedAbsentSet,
     students,
-    holidayToday,
+    isHolidayToday,
     isRisetStudent,
   ]);
 
@@ -480,6 +508,12 @@ export default function KehadiranMahasiswa() {
 
   const selectedStudent =
     studentsWithStatus.find((student) => student.id === selectedStudentId) || filteredStudents[0] || null;
+
+  React.useEffect(() => {
+    if (isHolidayToday && (statusFilter === "Tidak Hadir" || statusFilter === "Belum Ada Info")) {
+      setStatusFilter("Semua");
+    }
+  }, [isHolidayToday, statusFilter]);
 
   React.useEffect(() => {
     if (!selectedStudent && filteredStudents.length > 0) {
@@ -674,9 +708,9 @@ export default function KehadiranMahasiswa() {
             {error}
           </div>
         )}
-        {holidayToday && (
+        {isHolidayToday && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
-            Hari ini tanggal merah: {holidayToday.name}. Mahasiswa yang tidak check-in tidak dihitung tidak hadir.
+            Hari Libur{holidayToday?.name ? `: ${holidayToday.name}` : ""}. Mahasiswa yang tidak check-in tidak dihitung tidak hadir.
           </div>
         )}
 
@@ -766,7 +800,10 @@ export default function KehadiranMahasiswa() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {(["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Libur", "Tidak Hadir", "Belum Ada Info"] as const).map(
+                {(isHolidayToday
+                  ? (["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Libur"] as const)
+                  : (["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Libur", "Tidak Hadir", "Belum Ada Info"] as const)
+                ).map(
                   (item) => (
                     <button
                       key={item}

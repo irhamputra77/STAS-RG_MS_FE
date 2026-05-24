@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { apiGet, getStoredUser } from "../../../lib/api";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
+import { PicketAssignment, mapPicketAssignment } from "../../../lib/picket";
 
 function getActiveMilestone(project: any) {
   const milestones = project?.milestones || [];
@@ -144,13 +145,22 @@ export default function Dashboard() {
   const [dashboardData, setDashboardData] = React.useState<any>(null);
   const [boardProjectsData, setBoardProjectsData] = React.useState<any[]>([]);
   const [boardSprintTasks, setBoardSprintTasks] = React.useState<any[]>([]);
+  const [todayPicket, setTodayPicket] = React.useState<PicketAssignment | null>(null);
 
   React.useEffect(() => {
     const loadDashboard = async () => {
       if (!user?.id) return;
       try {
-        const data = await apiGet<any>(`/dashboard/student?userId=${encodeURIComponent(user.id)}`);
+        const [data, picket] = await Promise.all([
+          apiGet<any>(`/dashboard/student?userId=${encodeURIComponent(user.id)}`),
+          apiGet<any>(`/picket/today?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`).catch(() => null),
+        ]);
         setDashboardData(data);
+        const rawPicket = picket?.assignment || picket?.todayAssignment || picket;
+        setTodayPicket(rawPicket?.id || rawPicket?.assignment_id || rawPicket?.task_name || rawPicket?.taskName
+          ? mapPicketAssignment(rawPicket)
+          : null
+        );
       } catch {
       }
     };
@@ -294,6 +304,7 @@ export default function Dashboard() {
   // Quick links
   const quickLinks = [
     { label: "Logbook", icon: <BookOpen size={18} />, href: "/logbook", color: "bg-indigo-50 text-indigo-600 border-indigo-100" },
+    { label: "Piket", icon: <ClipboardCheck size={18} />, href: "/picket", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
     { label: "Riset & Board", icon: <FlaskConical size={18} />, href: "/research", color: "bg-[#F0FFF0] text-[#0AB600] border-green-200" },
     { label: isRisetStudent ? "Izin / Sakit / WFH" : "Cuti / Izin / WFH", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
     { label: "Dokumen & Sertifikat", icon: <Award size={18} />, href: "/documents", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
@@ -424,6 +435,29 @@ export default function Dashboard() {
         </Link>
 
         {/* ── Main Grid 8-4 ── */}
+        {todayPicket && (
+          <Link
+            to="/picket"
+            className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm transition-colors hover:bg-emerald-100"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-emerald-500 text-white">
+                  <ClipboardCheck size={22} />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Jadwal Piket Hari Ini</p>
+                  <h2 className="mt-1 text-base font-black text-foreground">{todayPicket.taskName}</h2>
+                  <p className="mt-1 text-xs font-semibold text-emerald-700">
+                    {todayPicket.submitted ? "Foto piket sudah dikirim." : "Foto piket akan diminta sebelum checkout."}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-black text-emerald-700">Lihat detail</span>
+            </div>
+          </Link>
+        )}
+
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 md:gap-6 items-start">
 
           {/* ─── LEFT (8 cols) ─── */}

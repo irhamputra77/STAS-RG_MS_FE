@@ -431,6 +431,10 @@ export default function PengaturanSistem() {
   const saveSystemSettings = async () => {
     setError("");
     try {
+      const normalizedAttendanceRules = {
+        ...attendanceRules,
+        holidays: normalizeHolidays(attendanceRules.holidays),
+      };
       const result = await apiPatch<any>("/system-settings", {
         umum,
         gps,
@@ -439,10 +443,17 @@ export default function PengaturanSistem() {
           events,
           reminder: notifReminder
         },
-        attendanceRules
+        attendanceRules: normalizedAttendanceRules,
+        holidays: normalizedAttendanceRules.holidays
       });
 
-      const latest = result?.settings;
+      const [settingsRefresh, monitorRefresh] = await Promise.allSettled([
+        apiGet<any>("/system-settings"),
+        apiGet<any>("/attendance/monitor/today"),
+      ]);
+      const latest = settingsRefresh.status === "fulfilled"
+        ? settingsRefresh.value
+        : result?.settings;
       if (latest) {
         setUmum({
           appName: latest?.umum?.appName || umum.appName,
@@ -475,10 +486,19 @@ export default function PengaturanSistem() {
           autoCheckoutEnabled: Boolean(latest?.attendanceRules?.autoCheckoutEnabled ?? attendanceRules.autoCheckoutEnabled),
           autoCheckoutTime: String(latest?.attendanceRules?.autoCheckoutTime || attendanceRules.autoCheckoutTime),
           excludeHolidaysFromWorkdays: Boolean(latest?.attendanceRules?.excludeHolidaysFromWorkdays ?? attendanceRules.excludeHolidaysFromWorkdays),
-          holidays: normalizeHolidays(latest?.attendanceRules?.holidays || attendanceRules.holidays)
+          holidays: normalizeHolidays(latest?.attendanceRules?.holidays || latest?.holidays || attendanceRules.holidays)
         });
-        setWarning("");
+        const deactivatedLockIds = Array.isArray(result?.deactivatedAttendanceAbsentLockIds)
+          ? result.deactivatedAttendanceAbsentLockIds
+          : [];
+        setWarning(deactivatedLockIds.length > 0
+          ? `${deactivatedLockIds.length} lock absensi pada hari libur dinonaktifkan oleh backend.`
+          : ""
+        );
         window.dispatchEvent(new CustomEvent("stas:settings-updated", { detail: latest }));
+        if (monitorRefresh.status === "fulfilled") {
+          window.dispatchEvent(new CustomEvent("stas:attendance-monitor-updated", { detail: monitorRefresh.value }));
+        }
       }
     } catch (err: any) {
       const message = err?.message || "Gagal menyimpan pengaturan sistem";
