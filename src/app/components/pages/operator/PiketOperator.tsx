@@ -107,6 +107,14 @@ function Badge({ status }: { status?: string | null }) {
   );
 }
 
+function getPicketScheduleErrorMessage(err: any, fallback: string) {
+  const message = String(err?.body?.message || err?.message || "").trim();
+  if (/belum ada tugas piket aktif/i.test(message)) {
+    return "Tambahkan atau aktifkan tugas piket terlebih dahulu sebelum resync.";
+  }
+  return message || fallback;
+}
+
 export default function PiketOperator() {
   const user = getStoredUser();
   const isStudentPicShell = user?.role === "mahasiswa";
@@ -191,6 +199,9 @@ export default function PiketOperator() {
         const nextAssignments = (raw.assignments || raw.schedules || []).map(mapPicketAssignment);
         setAssignments(nextAssignments);
         setSubmissions((raw.submissions || []).map(mapPicketSubmission));
+      } else {
+        setAssignments([]);
+        setSubmissions([]);
       }
 
       if (leaveRes.status === "fulfilled") {
@@ -313,16 +324,37 @@ export default function PiketOperator() {
       const dateDay = new Date(`${date}T00:00:00`).getDay();
       const dayRule = settings.weeklySchedule.find((day) => day.dayOfWeek === dateDay);
       const weekdayStudentIds = dayRule?.studentIds || [];
-      await apiPost("/picket/schedules/generate", {
-        date,
-        peoplePerDay: weekdayStudentIds.length || settings.peoplePerDay,
-        randomize: weekdayStudentIds.length > 0 ? false : settings.randomizeEnabled,
-        ...(weekdayStudentIds.length > 0 ? { studentIds: weekdayStudentIds } : {}),
-      });
+      const payload = weekdayStudentIds.length > 0
+        ? {
+          date,
+          studentIds: weekdayStudentIds,
+          replaceExisting: true,
+          randomize: false,
+        }
+        : {
+          date,
+          peoplePerDay: settings.peoplePerDay,
+          randomize: settings.randomizeEnabled,
+        };
+      await apiPost("/picket/schedules/generate", payload);
       setInfo(weekdayStudentIds.length > 0 ? `Jadwal piket dibuat dari anggota hari ${dayRule?.label}.` : "Jadwal piket berhasil dibuat oleh random picker.");
       await loadData();
     } catch (err: any) {
-      setError(err?.message || "Gagal generate jadwal piket.");
+      setError(getPicketScheduleErrorMessage(err, "Gagal generate jadwal piket."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resyncSchedule = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      await apiPost("/picket/schedules/resync", { date });
+      await loadData();
+      setInfo("Jadwal piket berhasil disinkronkan.");
+    } catch (err: any) {
+      setError(getPicketScheduleErrorMessage(err, "Gagal resync jadwal piket."));
     } finally {
       setSaving(false);
     }
@@ -348,6 +380,16 @@ export default function PiketOperator() {
       };
       const response = await apiPatch<any>("/picket/settings", buildSettingsPayload(nextSettings));
       const keepsMembers = responseKeepsWeekdayMembers(response, selectedDayOfWeek, selectedDay.studentIds);
+      const selectedDateDay = new Date(`${date}T00:00:00`).getDay();
+      const shouldSyncSelectedDate = selectedDateDay === selectedDayOfWeek;
+      if (shouldSyncSelectedDate) {
+        await apiPost("/picket/schedules/generate", {
+          date,
+          studentIds: selectedDay.studentIds,
+          replaceExisting: true,
+          randomize: false,
+        });
+      }
       setSettings(nextSettings);
       setIsEditingWeekdayMembers(false);
       const loadedSettings = await loadData();
@@ -355,10 +397,14 @@ export default function PiketOperator() {
       if (keepsMembers === false || loadedKeepsMembers === false) {
         setError("Backend belum menyimpan daftar anggota piket per hari. Field studentIds tidak muncul lagi saat GET /picket/settings.");
       } else {
-        setInfo(`Anggota piket hari ${selectedDay.label} berhasil disimpan.`);
+        setInfo(
+          shouldSyncSelectedDate
+            ? `Anggota piket hari ${selectedDay.label} berhasil disimpan dan jadwal tanggal ${date} disinkronkan.`
+            : `Anggota piket hari ${selectedDay.label} berhasil disimpan.`
+        );
       }
     } catch (err: any) {
-      setError(err?.message || "Gagal menyimpan anggota piket hari yang dipilih.");
+      setError(getPicketScheduleErrorMessage(err, "Gagal menyimpan anggota piket hari yang dipilih."));
     } finally {
       setSaving(false);
     }
@@ -454,6 +500,9 @@ export default function PiketOperator() {
             <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none" />
             <button onClick={() => void loadData()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-border bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">
               {loading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Muat Ulang
+            </button>
+            <button onClick={resyncSchedule} disabled={saving || loading} className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-60">
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Resync Jadwal Piket
             </button>
           </div>
         </div>
