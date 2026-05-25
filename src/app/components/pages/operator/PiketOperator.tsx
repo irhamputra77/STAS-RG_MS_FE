@@ -229,7 +229,7 @@ export default function PiketOperator() {
     }
   }, [date]);
 
-  const buildSettingsPayload = (nextSettings: PicketSettings = settings) => {
+  const buildSettingsPayload = (nextSettings: PicketSettings = settings, syncDate?: string | null) => {
     const weeklySchedule = nextSettings.weeklySchedule.map((day) => ({
       dayOfWeek: day.dayOfWeek,
       label: day.label,
@@ -245,6 +245,7 @@ export default function PiketOperator() {
       weekly_schedule: weeklySchedule,
       recurringSchedule: weeklySchedule,
       recurring_schedule: weeklySchedule,
+      ...(syncDate ? { syncDate } : {}),
     };
   };
 
@@ -262,10 +263,11 @@ export default function PiketOperator() {
     try {
       setSaving(true);
       setError("");
-      await apiPatch("/picket/settings", buildSettingsPayload());
+      await apiPatch("/picket/settings", buildSettingsPayload(settings, date));
+      await loadData();
       setInfo("Pengaturan piket berhasil disimpan.");
     } catch (err: any) {
-      setError(err?.message || "Gagal menyimpan pengaturan piket.");
+      setError(getPicketScheduleErrorMessage(err, "Gagal menyimpan pengaturan piket."));
     } finally {
       setSaving(false);
     }
@@ -378,18 +380,10 @@ export default function PiketOperator() {
             : { ...day, enabled: true }
         ),
       };
-      const response = await apiPatch<any>("/picket/settings", buildSettingsPayload(nextSettings));
+      const response = await apiPatch<any>("/picket/settings", buildSettingsPayload(nextSettings, date));
       const keepsMembers = responseKeepsWeekdayMembers(response, selectedDayOfWeek, selectedDay.studentIds);
       const selectedDateDay = new Date(`${date}T00:00:00`).getDay();
       const shouldSyncSelectedDate = selectedDateDay === selectedDayOfWeek;
-      if (shouldSyncSelectedDate) {
-        await apiPost("/picket/schedules/generate", {
-          date,
-          studentIds: selectedDay.studentIds,
-          replaceExisting: true,
-          randomize: false,
-        });
-      }
       setSettings(nextSettings);
       setIsEditingWeekdayMembers(false);
       const loadedSettings = await loadData();
