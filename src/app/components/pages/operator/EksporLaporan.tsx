@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import {
   AlertTriangle,
   BookOpen,
@@ -77,6 +77,12 @@ const TEMPLATE_STYLES: Record<string, { icon: React.ReactNode; iconBg: string; b
     iconBg: "bg-violet-100",
     border: "border-violet-200",
     bg: "bg-violet-50"
+  },
+  "database-dosen": {
+    icon: <Users size={24} className="text-cyan-700" />,
+    iconBg: "bg-cyan-100",
+    border: "border-cyan-200",
+    bg: "bg-cyan-50"
   },
   "layanan-surat": {
     icon: <FileText size={24} className="text-rose-600" />,
@@ -169,6 +175,7 @@ export default function EksporLaporan() {
   const selectedTemplate = templates.find((item) => item.id === selectedType) || null;
   const isAttendanceExport = selectedTemplate?.id === "kehadiran";
   const isStudentDatabaseExport = selectedTemplate?.id === "database-mahasiswa";
+  const isLecturerDatabaseExport = selectedTemplate?.id === "database-dosen";
 
   const showToast = (nextToast: ToastState) => {
     setToast(nextToast);
@@ -401,7 +408,9 @@ export default function EksporLaporan() {
                     ? "Export kehadiran mengikuti histori harian pada page attendance, termasuk status sintetis untuk hari tanpa absensi real."
                     : isStudentDatabaseExport
                       ? "Export database mahasiswa sekarang difilter berdasarkan angkatan, tanpa perlu memasukkan rentang tanggal."
-                    : selectedTemplate?.desc || "Pilih salah satu template di kiri untuk mengatur format dan filter export."}
+                      : isLecturerDatabaseExport
+                        ? "Export database dosen berisi master data dosen seperti kode dosen, NIP, NIDN, JFA, kampus asal, dan keterlibatan riset."
+                        : selectedTemplate?.desc || "Pilih salah satu template di kiri untuk mengatur format dan filter export."}
                 </p>
               </div>
 
@@ -444,6 +453,23 @@ export default function EksporLaporan() {
                         <p className="mt-1 text-xs leading-relaxed text-violet-800">
                           Export database mahasiswa tidak lagi membutuhkan rentang tanggal. Pilih angkatan tertentu atau kosongkan
                           untuk mengekspor seluruh mahasiswa yang tersedia.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isLecturerDatabaseExport && (
+                  <div className="rounded-[16px] border border-cyan-200 bg-cyan-50 px-4 py-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm">
+                        <Users size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-cyan-900">Master data dosen</p>
+                        <p className="mt-1 text-xs leading-relaxed text-cyan-800">
+                          Export ini menyiapkan data inti dosen dari page Database Dosen, termasuk kode dosen, kontak HP, asal kampus,
+                          tanggal persetujuan anggota, pendidikan terakhir, kategori dosen, JFA, dan ringkasan riset.
                         </p>
                       </div>
                     </div>
