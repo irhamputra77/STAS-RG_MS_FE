@@ -554,6 +554,7 @@ export default function Attendance() {
     }
 
     const result = await apiPost<any>("/picket/submissions", {
+      scheduleId: todayPicket.scheduleId || todayPicket.id,
       assignmentId: todayPicket.id,
       studentId: user?.id,
       date: todayPicket.date,

@@ -12,7 +12,12 @@ export type PicketTask = {
 
 export type PicketAssignment = {
   id: string;
+  scheduleId: string;
+  assignmentId: string;
   date: string;
+  scheduleDate: string;
+  dayId?: number | null;
+  dayName?: string | null;
   studentId: string;
   studentName: string;
   studentInitials: string;
@@ -21,6 +26,7 @@ export type PicketAssignment = {
   taskName: string;
   taskDescription?: string | null;
   status: string;
+  notes?: string | null;
   submissionStatus?: string | null;
   leaveStatus?: string | null;
   submitted: boolean;
@@ -31,6 +37,7 @@ export type PicketAssignment = {
 
 export type PicketSubmission = {
   id: string;
+  scheduleId?: string | null;
   assignmentId?: string | null;
   date: string;
   studentId: string;
@@ -46,6 +53,8 @@ export type PicketSubmission = {
 
 export type PicketLeaveRequest = {
   id: string;
+  scheduleId?: string | null;
+  assignmentId?: string | null;
   date: string;
   studentId: string;
   studentName: string;
@@ -102,9 +111,17 @@ export function mapPicketTask(row: any): PicketTask {
 
 export function mapPicketAssignment(row: any): PicketAssignment {
   const studentName = text(row?.student_name || row?.studentName || row?.name, "Mahasiswa");
+  const scheduleId = text(row?.schedule_id || row?.scheduleId || row?.id || row?.assignment_id || row?.assignmentId || `schedule-${row?.date || Date.now()}`);
+  const assignmentId = text(row?.assignment_id || row?.assignmentId || scheduleId);
+  const date = text(row?.schedule_date || row?.scheduleDate || row?.date || row?.tanggal || row?.assignment_date || row?.assignmentDate, getJakartaDateKey());
   return {
-    id: text(row?.id || row?.assignment_id || row?.assignmentId || `assignment-${row?.date || Date.now()}`),
-    date: text(row?.date || row?.tanggal || row?.assignment_date || row?.assignmentDate, getJakartaDateKey()),
+    id: scheduleId,
+    scheduleId,
+    assignmentId,
+    date,
+    scheduleDate: date,
+    dayId: row?.day_id ?? row?.dayId ?? null,
+    dayName: row?.day_name || row?.dayName || null,
     studentId: text(row?.student_id || row?.studentId || row?.user_id || row?.userId),
     studentName,
     studentInitials: text(row?.student_initials || row?.studentInitials, studentName.slice(0, 2).toUpperCase()),
@@ -113,6 +130,7 @@ export function mapPicketAssignment(row: any): PicketAssignment {
     taskName: text(row?.task_name || row?.taskName || row?.task?.name, "Tugas Piket"),
     taskDescription: row?.task_description || row?.taskDescription || row?.task?.description || null,
     status: text(row?.status, "Dijadwalkan"),
+    notes: row?.notes || null,
     submissionStatus: row?.submission_status || row?.submissionStatus || null,
     leaveStatus: row?.leave_status || row?.leaveStatus || row?.picket_leave_status || row?.picketLeaveStatus || null,
     submitted: bool(row?.submitted ?? row?.has_submission ?? row?.hasSubmission, Boolean(row?.submission_id || row?.submissionId)),
@@ -124,9 +142,11 @@ export function mapPicketAssignment(row: any): PicketAssignment {
 
 export function mapPicketSubmission(row: any): PicketSubmission {
   const studentName = text(row?.student_name || row?.studentName || row?.name, "Mahasiswa");
+  const scheduleId = row?.schedule_id || row?.scheduleId || row?.assignment_id || row?.assignmentId || null;
   return {
     id: text(row?.id || row?.submission_id || row?.submissionId || `submission-${Date.now()}`),
-    assignmentId: row?.assignment_id || row?.assignmentId || null,
+    scheduleId,
+    assignmentId: row?.assignment_id || row?.assignmentId || scheduleId,
     date: text(row?.date || row?.tanggal || row?.assignment_date || row?.assignmentDate, getJakartaDateKey()),
     studentId: text(row?.student_id || row?.studentId || row?.user_id || row?.userId),
     studentName,
@@ -141,8 +161,11 @@ export function mapPicketSubmission(row: any): PicketSubmission {
 }
 
 export function mapPicketLeaveRequest(row: any): PicketLeaveRequest {
+  const scheduleId = row?.schedule_id || row?.scheduleId || row?.assignment_id || row?.assignmentId || null;
   return {
     id: text(row?.id || row?.request_id || row?.requestId || `picket-leave-${Date.now()}`),
+    scheduleId,
+    assignmentId: row?.assignment_id || row?.assignmentId || scheduleId,
     date: text(row?.date || row?.tanggal || row?.assignment_date || row?.assignmentDate, getJakartaDateKey()),
     studentId: text(row?.student_id || row?.studentId || row?.user_id || row?.userId),
     studentName: text(row?.student_name || row?.studentName || row?.name, "Mahasiswa"),

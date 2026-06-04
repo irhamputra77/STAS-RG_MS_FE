@@ -92,6 +92,7 @@ export default function Piket() {
       setSaving(true);
       setError("");
       await apiPost("/picket/leave-requests", {
+        scheduleId: todayAssignment.scheduleId || todayAssignment.id,
         assignmentId: todayAssignment.id,
         studentId: user?.id,
         date: todayAssignment.date || getJakartaDateKey(),

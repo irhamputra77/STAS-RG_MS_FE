@@ -50,6 +50,13 @@ type WeeklyPicketDay = {
   studentIds: string[];
 };
 
+type ScheduleForm = {
+  studentId: string;
+  taskId: string;
+  status: string;
+  notes: string;
+};
+
 const WEEKDAY_OPTIONS: WeeklyPicketDay[] = [
   { dayOfWeek: 1, label: "Senin", enabled: true, peoplePerDay: 2, studentIds: [] },
   { dayOfWeek: 2, label: "Selasa", enabled: true, peoplePerDay: 2, studentIds: [] },
@@ -79,12 +86,20 @@ function normalizeWeeklySchedule(value: any, fallbackPeoplePerDay = 2): WeeklyPi
 }
 
 const statusStyle: Record<string, string> = {
+  Ditugaskan: "border-slate-200 bg-slate-50 text-slate-700",
   Menunggu: "border-amber-200 bg-amber-50 text-amber-700",
   Disetujui: "border-emerald-200 bg-emerald-50 text-emerald-700",
   Ditolak: "border-red-200 bg-red-50 text-red-600",
   Terkirim: "border-blue-200 bg-blue-50 text-blue-700",
   Valid: "border-emerald-200 bg-emerald-50 text-emerald-700",
   Bermasalah: "border-red-200 bg-red-50 text-red-600",
+};
+
+const emptyScheduleForm: ScheduleForm = {
+  studentId: "",
+  taskId: "",
+  status: "Ditugaskan",
+  notes: "",
 };
 
 function normalizeStudent(row: any): StudentOption {
@@ -140,6 +155,8 @@ export default function PiketOperator() {
   const [studentQuery, setStudentQuery] = React.useState("");
   const [selectedDayOfWeek, setSelectedDayOfWeek] = React.useState(1);
   const [isEditingWeekdayMembers, setIsEditingWeekdayMembers] = React.useState(false);
+  const [editingScheduleId, setEditingScheduleId] = React.useState<string | null>(null);
+  const [scheduleForm, setScheduleForm] = React.useState<ScheduleForm>(emptyScheduleForm);
   const [allowed, setAllowed] = React.useState(user?.role === "operator");
 
   const loadData = React.useCallback(async () => {
@@ -196,7 +213,8 @@ export default function PiketOperator() {
 
       if (overviewRes.status === "fulfilled") {
         const raw = overviewRes.value || {};
-        const nextAssignments = (raw.assignments || raw.schedules || []).map(mapPicketAssignment);
+        const rows = raw.schedules || raw.assignments || [];
+        const nextAssignments = rows.map(mapPicketAssignment);
         setAssignments(nextAssignments);
         setSubmissions((raw.submissions || []).map(mapPicketSubmission));
       } else {
@@ -362,6 +380,69 @@ export default function PiketOperator() {
     }
   };
 
+  const resetScheduleForm = () => {
+    setEditingScheduleId(null);
+    setScheduleForm(emptyScheduleForm);
+  };
+
+  const startEditSchedule = (item: PicketAssignment) => {
+    setEditingScheduleId(item.scheduleId || item.id);
+    setScheduleForm({
+      studentId: item.studentId,
+      taskId: item.taskId || "",
+      status: item.status || "Ditugaskan",
+      notes: item.notes || "",
+    });
+  };
+
+  const saveDailySchedule = async () => {
+    if (!scheduleForm.studentId || !scheduleForm.taskId) {
+      setError("Pilih mahasiswa dan tugas piket terlebih dahulu.");
+      return;
+    }
+
+    const payload = {
+      scheduleDate: date,
+      studentId: scheduleForm.studentId,
+      taskId: scheduleForm.taskId,
+      status: scheduleForm.status || "Ditugaskan",
+      notes: scheduleForm.notes.trim() || null,
+    };
+
+    try {
+      setSaving(true);
+      setError("");
+      if (editingScheduleId) {
+        await apiPatch(`/picket/schedules/${encodeURIComponent(editingScheduleId)}`, payload);
+        setInfo("Jadwal piket berhasil diperbarui.");
+      } else {
+        await apiPost("/picket/schedules", payload);
+        setInfo("Jadwal piket berhasil ditambahkan.");
+      }
+      resetScheduleForm();
+      await loadData();
+    } catch (err: any) {
+      setError(getPicketScheduleErrorMessage(err, "Gagal menyimpan jadwal piket."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeDailySchedule = async (item: PicketAssignment) => {
+    try {
+      setSaving(true);
+      setError("");
+      await apiDelete(`/picket/schedules/${encodeURIComponent(item.scheduleId || item.id)}`);
+      if (editingScheduleId === (item.scheduleId || item.id)) resetScheduleForm();
+      setInfo("Jadwal piket berhasil dihapus.");
+      await loadData();
+    } catch (err: any) {
+      setError(getPicketScheduleErrorMessage(err, "Gagal menghapus jadwal piket."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveWeekdayMembers = async () => {
     const selectedDay = settings.weeklySchedule.find((day) => day.dayOfWeek === selectedDayOfWeek);
     if (!selectedDay || selectedDay.studentIds.length === 0) {
@@ -446,8 +527,8 @@ export default function PiketOperator() {
     }
   };
 
-  const submittedAssignmentIds = new Set(submissions.map((item) => String(item.assignmentId || "")));
-  const missingAssignments = assignments.filter((item) => !item.submitted && !submittedAssignmentIds.has(item.id));
+  const submittedAssignmentIds = new Set(submissions.flatMap((item) => [item.scheduleId, item.assignmentId].filter(Boolean).map(String)));
+  const missingAssignments = assignments.filter((item) => !item.submitted && !submittedAssignmentIds.has(item.scheduleId || item.id));
   const filteredSubmissions = submissions.filter((item) => {
     const haystack = `${item.studentName} ${item.nim || ""} ${item.taskName} ${item.status}`.toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
@@ -780,7 +861,63 @@ export default function PiketOperator() {
 
             <section className="rounded-[16px] border border-border bg-white shadow-sm">
               <div className="border-b border-border px-5 py-4">
-                <h2 className="text-sm font-black text-foreground">Jadwal dan Status Hari Ini</h2>
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h2 className="text-sm font-black text-foreground">Jadwal dan Status Hari Ini</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">Tambah, edit, atau hapus jadwal piket tanggal {date}.</p>
+                  </div>
+                  {editingScheduleId && (
+                    <button onClick={resetScheduleForm} className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
+                      <X size={14} /> Batal Edit
+                    </button>
+                  )}
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(180px,1.2fr)_minmax(160px,1fr)_140px_minmax(160px,1fr)_120px]">
+                  <select
+                    value={scheduleForm.studentId}
+                    onChange={(event) => setScheduleForm((prev) => ({ ...prev, studentId: event.target.value }))}
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                  >
+                    <option value="">Pilih mahasiswa</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>{student.name} {student.nim ? `- ${student.nim}` : ""}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={scheduleForm.taskId}
+                    onChange={(event) => setScheduleForm((prev) => ({ ...prev, taskId: event.target.value }))}
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                  >
+                    <option value="">Pilih tugas</option>
+                    {tasks.map((task) => (
+                      <option key={task.id} value={task.id}>{task.name}{task.active ? "" : " (nonaktif)"}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={scheduleForm.status}
+                    onChange={(event) => setScheduleForm((prev) => ({ ...prev, status: event.target.value }))}
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                  >
+                    <option value="Ditugaskan">Ditugaskan</option>
+                    <option value="Menunggu">Menunggu</option>
+                    <option value="Selesai">Selesai</option>
+                    <option value="Diganti">Diganti</option>
+                  </select>
+                  <input
+                    value={scheduleForm.notes}
+                    onChange={(event) => setScheduleForm((prev) => ({ ...prev, notes: event.target.value }))}
+                    placeholder="Catatan opsional"
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                  />
+                  <button
+                    onClick={saveDailySchedule}
+                    disabled={saving || !scheduleForm.studentId || !scheduleForm.taskId}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                    {editingScheduleId ? "Update" : "Tambah"}
+                  </button>
+                </div>
               </div>
               {loading ? (
                 <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground"><Loader2 size={16} className="animate-spin" /> Memuat jadwal...</div>
@@ -790,15 +927,21 @@ export default function PiketOperator() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[720px] text-left text-sm">
                     <thead className="border-b border-border bg-slate-50 text-xs uppercase text-muted-foreground">
-                      <tr><th className="px-5 py-3">Mahasiswa</th><th className="px-5 py-3">Tugas</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Bukti</th></tr>
+                      <tr><th className="px-5 py-3">Mahasiswa</th><th className="px-5 py-3">Tugas</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Bukti</th><th className="px-5 py-3">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {assignments.map((item) => (
                         <tr key={item.id}>
                           <td className="px-5 py-3"><p className="font-black text-foreground">{item.studentName}</p><p className="text-xs text-muted-foreground">{item.nim || "-"}</p></td>
-                          <td className="px-5 py-3"><p className="font-bold text-foreground">{item.taskName}</p>{item.taskDescription && <p className="text-xs text-muted-foreground">{item.taskDescription}</p>}</td>
-                          <td className="px-5 py-3"><Badge status={item.submitted ? "Terkirim" : "Menunggu"} /></td>
+                          <td className="px-5 py-3"><p className="font-bold text-foreground">{item.taskName}</p>{item.taskDescription && <p className="text-xs text-muted-foreground">{item.taskDescription}</p>}{item.notes && <p className="text-xs text-muted-foreground">Catatan: {item.notes}</p>}</td>
+                          <td className="px-5 py-3"><Badge status={item.submitted ? "Terkirim" : item.status} /></td>
                           <td className="px-5 py-3">{item.photoUrl ? <a href={item.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-600 hover:underline">Lihat Foto</a> : <span className="text-xs text-muted-foreground">Belum submit</span>}</td>
+                          <td className="px-5 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button onClick={() => startEditSchedule(item)} className="h-8 rounded-[8px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">Edit</button>
+                              <button onClick={() => removeDailySchedule(item)} disabled={saving} className="inline-flex h-8 items-center gap-1 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white disabled:opacity-60"><Trash2 size={13} /> Hapus</button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
