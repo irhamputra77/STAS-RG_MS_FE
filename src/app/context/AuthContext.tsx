@@ -11,6 +11,8 @@ export interface AuthUser {
   initials: string;
   prodi?: string;
   tipe?: "Riset" | "Magang" | string;
+  status?: string;
+  studentStatus?: string;
 }
 
 interface AuthContextValue {
@@ -111,4 +113,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
-

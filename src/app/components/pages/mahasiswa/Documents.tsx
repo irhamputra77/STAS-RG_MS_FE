@@ -19,6 +19,7 @@ import {
   BookOpen,
   CalendarClock,
   SendHorizonal,
+  Lock,
 } from "lucide-react";
 
 type SuratStatus = "Menunggu" | "Diproses" | "Siap Unduh";
@@ -41,6 +42,55 @@ interface CertificateRecord {
   issueDate?: string | null;
   certificateNumber?: string | null;
   fileUrl?: string | null;
+}
+
+interface StudentDocumentRecord {
+  type: string;
+  label: string;
+  requiresAlumni: boolean;
+  locked: boolean;
+  lockReason: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+}
+
+const studentDocumentDefinitions = [
+  { type: "surat_pengantar", label: "Surat pengantar mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: false },
+  { type: "surat_penerimaan", label: "Surat Penerimaan mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: false },
+  { type: "surat_keterangan_selesai", label: "Surat Keterangan Selesai mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: true },
+  { type: "sertifikat", label: "Sertifikat", requiresAlumni: true },
+];
+
+function normalizeStudentDocuments(source: any, fallbackStatus?: string | null): StudentDocumentRecord[] {
+  const rawDocuments = source?.student_documents ?? source?.studentDocuments ?? source?.documents;
+  const documents = Array.isArray(rawDocuments) ? rawDocuments : [];
+  const status = String(source?.status || source?.studentStatus || fallbackStatus || "").toLowerCase();
+  const isAlumni = status === "alumni";
+  const byType = new Map(documents.map((doc: any) => [String(doc?.type || doc?.documentType || doc?.document_type || ""), doc]));
+
+  return studentDocumentDefinitions.map((definition) => {
+    const doc: any = byType.get(definition.type) || {};
+    const locked = Boolean(definition.requiresAlumni && !isAlumni);
+
+    return {
+      type: definition.type,
+      label: doc.label || definition.label,
+      requiresAlumni: Boolean(doc.requiresAlumni ?? doc.requires_alumni ?? definition.requiresAlumni),
+      locked: Boolean(doc.locked ?? locked),
+      lockReason: doc.lockReason || doc.lock_reason || (locked ? "Dokumen ini tersedia setelah status Anda Alumni." : null),
+      fileUrl: doc.fileUrl || doc.file_url || null,
+      fileName: doc.fileName || doc.file_name || null,
+      fileSize: Number.isFinite(Number(doc.fileSize ?? doc.file_size)) ? Number(doc.fileSize ?? doc.file_size) : null,
+    };
+  });
+}
+
+function formatFileSize(value?: number | null) {
+  const size = Number(value || 0);
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
 const SuratStatusBadge = ({ status }: { status: SuratStatus }) => {
@@ -85,6 +135,7 @@ export default function Documents() {
   const [tujuanPenggunaan, setTujuanPenggunaan] = useState("");
   const [suratData, setSuratData] = useState<SuratRecord[]>([]);
   const [certificateData, setCertificateData] = useState<CertificateRecord[]>([]);
+  const [studentDocuments, setStudentDocuments] = useState<StudentDocumentRecord[]>(normalizeStudentDocuments(null));
   const [assignedProjects, setAssignedProjects] = useState<Array<{ id: string; title: string }>>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [error, setError] = useState("");
@@ -101,6 +152,7 @@ export default function Documents() {
 
       try {
         const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`);
+        setStudentDocuments(normalizeStudentDocuments(profile, profile?.status || profile?.studentStatus));
         const resolvedId = String(profile?.id || profile?.student_id || "").trim();
         if (resolvedId) {
           setStudentRecordId(resolvedId);
@@ -297,6 +349,55 @@ export default function Documents() {
           )}
         </div>
 
+        <div className="bg-white border border-border rounded-[18px] shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3 bg-gradient-to-r from-emerald-50 to-white">
+            <div>
+              <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Berkas Resmi</p>
+              <h2 className="text-sm font-black text-foreground mt-0.5">Dokumen dari Admin STAS-RG</h2>
+            </div>
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black text-emerald-700">
+              {studentDocuments.filter((doc) => doc.fileUrl).length}/4 tersedia
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
+            {studentDocuments.map((doc) => {
+              const resolvedUrl = resolveApiAssetUrl(doc.fileUrl);
+              return (
+                <div key={doc.type} className={`rounded-[14px] border p-4 ${resolvedUrl ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-slate-50"}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${resolvedUrl ? "bg-emerald-500 text-white" : "bg-white text-slate-400 border border-slate-200"}`}>
+                      {doc.locked && !resolvedUrl ? <Lock size={17} /> : <FileText size={17} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-black text-foreground leading-snug">{doc.label}</p>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">
+                        {doc.fileName
+                          ? `${doc.fileName}${doc.fileSize ? ` • ${formatFileSize(doc.fileSize)}` : ""}`
+                          : doc.locked
+                            ? doc.lockReason || "Tersedia setelah status Alumni."
+                            : "Belum diunggah admin."}
+                      </p>
+                      {resolvedUrl ? (
+                        <a
+                          href={resolvedUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-white hover:bg-emerald-600"
+                        >
+                          <Download size={13} /> Unduh
+                        </a>
+                      ) : (
+                        <span className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-400">
+                          {doc.locked ? <Lock size={13} /> : <Hourglass size={13} />} Belum tersedia
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 p-1 rounded-[14px] w-fit">
           <button

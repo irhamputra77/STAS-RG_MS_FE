@@ -7,9 +7,10 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2, Hourglass, Check,
   Target, GitBranch, TrendingUp, MessageSquare, Calendar,
 } from "lucide-react";
-import { apiGet, getStoredUser } from "../../../lib/api";
+import { apiGet, apiPost, getStoredUser, setStoredUser } from "../../../lib/api";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 import { PicketAssignment, mapPicketAssignment } from "../../../lib/picket";
+import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 
 function getActiveMilestone(project: any) {
   const milestones = project?.milestones || [];
@@ -141,11 +142,14 @@ function MiniMilestones({ milestones, color }: { milestones: { label: string; do
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const user = getStoredUser();
   const [dashboardData, setDashboardData] = React.useState<any>(null);
   const [boardProjectsData, setBoardProjectsData] = React.useState<any[]>([]);
   const [boardSprintTasks, setBoardSprintTasks] = React.useState<any[]>([]);
   const [todayPicket, setTodayPicket] = React.useState<PicketAssignment | null>(null);
+  const [finishingStas, setFinishingStas] = React.useState(false);
+  const [finishError, setFinishError] = React.useState("");
 
   React.useEffect(() => {
     const loadDashboard = async () => {
@@ -296,11 +300,55 @@ export default function Dashboard() {
   const rawLeaveRecent = dashboardData?.leaveRecent || [];
   const letterRecent = dashboardData?.letterRecent || [];
   const attendanceToday = dashboardData?.attendanceToday || {};
+  const studentStatus = String(dashboardData?.student?.status || dashboardData?.header?.studentStatus || user?.studentStatus || user?.status || "");
+  const isAlumni = studentStatus.toLowerCase() === "alumni";
   const isRisetStudent = isRisetStudentType(user?.tipe || dashboardData?.header?.tipe || dashboardData?.student?.tipe);
   const cutiRecent = isRisetStudent
     ? rawLeaveRecent.filter((item: any) => getLeaveTypeLabel(item) !== "Cuti")
     : rawLeaveRecent;
 
+  const finishAsStasStudent = async () => {
+    if (finishingStas) return;
+
+    const approved = await confirm({
+      title: "Selesai sebagai Mahasiswa STAS?",
+      description: "Setelah dikonfirmasi, status Anda berubah menjadi Alumni dan keanggotaan riset/magang aktif akan ditutup. Admin baru bisa upload Surat Keterangan Selesai dan Sertifikat setelah status Alumni.",
+      confirmLabel: "Ya, Jadikan Alumni",
+      cancelLabel: "Batal",
+      variant: "warning",
+    });
+
+    if (!approved || !user?.id) return;
+
+    setFinishingStas(true);
+    setFinishError("");
+
+    try {
+      const result = await apiPost<any>("/profile/finish-stas");
+      const currentUser = getStoredUser();
+      if (currentUser) {
+        setStoredUser({
+          ...currentUser,
+          status: result?.status || "Alumni",
+          studentStatus: result?.studentStatus || "Alumni",
+        });
+      }
+
+      const refreshed = await apiGet<any>(`/dashboard/student?userId=${encodeURIComponent(user.id)}&_=${Date.now()}`);
+      setDashboardData(refreshed);
+      await confirm({
+        title: "Status berhasil diubah",
+        description: result?.message || "Status Anda sekarang Alumni.",
+        confirmLabel: "Mengerti",
+        variant: "primary",
+        hideCancel: true,
+      });
+    } catch (err: any) {
+      setFinishError(err?.message || "Gagal mengubah status menjadi Alumni.");
+    } finally {
+      setFinishingStas(false);
+    }
+  };
   // Quick links
   const quickLinks = [
     { label: "Logbook", icon: <BookOpen size={18} />, href: "/logbook", color: "bg-indigo-50 text-indigo-600 border-indigo-100" },
@@ -345,9 +393,36 @@ export default function Dashboard() {
                   <span>NIM {dashboardData.header.nim}</span>
                 </>
               )}
+              {studentStatus && (
+                <>
+                  <span className="hidden sm:inline">·</span>
+                  <span>Status {studentStatus}</span>
+                </>
+              )}
             </p>
           </div>
+          <div className="shrink-0">
+            {isAlumni ? (
+              <span className="inline-flex items-center gap-2 rounded-[12px] border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700">
+                <CheckCircle2 size={15} /> Alumni STAS-RG
+              </span>
+            ) : (
+              <button
+                onClick={finishAsStasStudent}
+                disabled={finishingStas}
+                className="inline-flex items-center justify-center gap-2 rounded-[12px] bg-amber-500 px-4 py-2 text-xs font-black text-white shadow-sm shadow-amber-200 transition-colors hover:bg-amber-600 disabled:opacity-60"
+              >
+                <CheckCircle2 size={15} /> {finishingStas ? "Memproses..." : "Selesai sebagai Mahasiswa STAS"}
+              </button>
+            )}
+          </div>
         </div>
+
+        {finishError && (
+          <div className="rounded-[12px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+            {finishError}
+          </div>
+        )}
 
         {/* ── Stat Cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4 2xl:grid-cols-5">
@@ -724,6 +799,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      {confirmDialog}
     </Layout>
   );
 }
