@@ -873,7 +873,7 @@ export default function PiketOperator() {
                     </button>
                   )}
                 </div>
-                <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(180px,1.2fr)_minmax(160px,1fr)_140px_minmax(160px,1fr)_120px]">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(160px,1fr)_140px_minmax(160px,1fr)_144px]">
                   <select
                     value={scheduleForm.studentId}
                     onChange={(event) => setScheduleForm((prev) => ({ ...prev, studentId: event.target.value }))}
@@ -913,7 +913,7 @@ export default function PiketOperator() {
                   <button
                     onClick={saveDailySchedule}
                     disabled={saving || !scheduleForm.studentId || !scheduleForm.taskId}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
+                    className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60 md:col-span-2 xl:col-span-1"
                   >
                     {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                     {editingScheduleId ? "Update" : "Tambah"}
