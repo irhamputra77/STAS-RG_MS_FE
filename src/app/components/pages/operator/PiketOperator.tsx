@@ -180,7 +180,7 @@ export default function PiketOperator() {
       const [settingsRes, taskRes, studentRes, managerRes, overviewRes, leaveRes] = await Promise.allSettled([
         apiGet<any>("/picket/settings"),
         apiGet<any>("/picket/tasks"),
-        apiGet<any[]>("/students"),
+        apiGet<any>("/picket/students"),
         apiGet<any>("/picket/managers"),
         apiGet<any>(`/picket/operator/overview?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/leave-requests?date=${encodeURIComponent(date)}&_=${Date.now()}`),
@@ -203,7 +203,8 @@ export default function PiketOperator() {
       }
 
       if (studentRes.status === "fulfilled") {
-        setStudents((studentRes.value || []).map(normalizeStudent).filter((item) => item.id));
+        const rows = Array.isArray(studentRes.value) ? studentRes.value : studentRes.value?.students || studentRes.value?.items || [];
+        setStudents(rows.map(normalizeStudent).filter((item) => item.id));
       }
 
       if (managerRes.status === "fulfilled") {
