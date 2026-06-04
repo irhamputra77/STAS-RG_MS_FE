@@ -11,9 +11,11 @@ interface DosenRecord {
   nip: string;
   nidn: string;
   email: string;
+  phone: string;
   asalKampus: string;
   pendidikanTerakhir: string;
   kategoriDosen: string;
+  tanggalPersetujuanAnggota: string;
   departemen: string;
   jfa: string;
   keahlian: string[];
@@ -42,9 +44,11 @@ const EMPTY_FORM = {
   nidn: "",
   password: "",
   email: "",
+  phone: "",
   asalKampus: "",
   pendidikanTerakhir: "",
   kategoriDosen: "",
+  tanggalPersetujuanAnggota: "",
   jfa: "",
   departemen: "",
   keahlian: "",
@@ -58,6 +62,20 @@ function toInitials(name: string) {
 function withFallback(value?: string | null, fallback = "-") {
   const normalized = String(value || "").trim();
   return normalized || fallback;
+}
+
+function formatDateDisplay(value?: string | null) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized === "-") return "-";
+
+  const date = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return normalized;
+
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(date);
 }
 
 export default function DatabaseDosen() {
@@ -82,9 +100,11 @@ export default function DatabaseDosen() {
       nip: withFallback(item.nip),
       nidn: withFallback(item.nidn),
       email: withFallback(item.email),
+      phone: withFallback(item.phone),
       asalKampus: withFallback(item.asal_kampus || item.asalKampus),
       pendidikanTerakhir: withFallback(item.pendidikan_terakhir || item.pendidikanTerakhir),
       kategoriDosen: withFallback(item.kategori_dosen || item.kategoriDosen),
+      tanggalPersetujuanAnggota: withFallback(item.tanggal_persetujuan_anggota || item.tanggalPersetujuanAnggota),
       departemen: withFallback(item.departemen),
       jfa: withFallback(item.jfa || item.jabatan),
       keahlian: Array.isArray(item.keahlian)
@@ -130,9 +150,11 @@ export default function DatabaseDosen() {
       nidn: dosen.nidn === "-" ? "" : dosen.nidn,
       password: "",
       email: dosen.email === "-" ? "" : dosen.email,
+      phone: dosen.phone === "-" ? "" : dosen.phone,
       asalKampus: dosen.asalKampus === "-" ? "" : dosen.asalKampus,
       pendidikanTerakhir: dosen.pendidikanTerakhir === "-" ? "" : dosen.pendidikanTerakhir,
       kategoriDosen: dosen.kategoriDosen === "-" ? "" : dosen.kategoriDosen,
+      tanggalPersetujuanAnggota: dosen.tanggalPersetujuanAnggota === "-" ? "" : dosen.tanggalPersetujuanAnggota,
       jfa: dosen.jfa === "-" ? "" : dosen.jfa,
       departemen: dosen.departemen === "-" ? "" : dosen.departemen,
       keahlian: dosen.keahlian.join(", "),
@@ -165,9 +187,11 @@ export default function DatabaseDosen() {
         nidn: form.nidn.trim() || null,
         password: form.password.trim() || null,
         email: form.email.trim() || null,
+        phone: form.phone.trim() || null,
         asal_kampus: form.asalKampus.trim() || null,
         pendidikan_terakhir: form.pendidikanTerakhir.trim() || null,
         kategori_dosen: form.kategoriDosen.trim() || null,
+        tanggal_persetujuan_anggota: form.tanggalPersetujuanAnggota || null,
         jfa: form.jfa.trim() || null,
         jabatan: form.jfa.trim() || null,
         departemen: form.departemen.trim() || null,
@@ -234,6 +258,7 @@ export default function DatabaseDosen() {
         dosen.nip.toLowerCase().includes(q) ||
         dosen.nidn.toLowerCase().includes(q) ||
         dosen.email.toLowerCase().includes(q) ||
+        dosen.phone.toLowerCase().includes(q) ||
         dosen.asalKampus.toLowerCase().includes(q);
       const matchesCampus = filterCampus === "Semua" || dosen.asalKampus === filterCampus;
       const matchesStatus = filterStatus === "Semua" || dosen.status === filterStatus;
@@ -257,7 +282,7 @@ export default function DatabaseDosen() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Cari nama, kode dosen, NIP, NIDN..."
+                placeholder="Cari nama, kode dosen, NIP, HP..."
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>
@@ -289,11 +314,23 @@ export default function DatabaseDosen() {
         </div>
 
         <div className="flex items-start gap-5">
-          <div className="flex-1 overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
+          <div className="flex-1 overflow-x-auto rounded-[14px] border border-border bg-white shadow-sm">
+            <table className="min-w-[1320px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border bg-slate-50">
-                  {["Dosen", "NIP / NIDN", "Asal Kampus", "Pendidikan", "Kategori", "Riset Dipimpin", "Riset Diikuti", "Status", "Aksi"].map((header) => (
+                  {[
+                    "Dosen",
+                    "NIP / NIDN",
+                    "Kontak HP",
+                    "Asal Kampus",
+                    "Persetujuan Anggota",
+                    "Pendidikan",
+                    "Kategori",
+                    "Riset Dipimpin",
+                    "Riset Diikuti",
+                    "Status",
+                    "Aksi"
+                  ].map((header) => (
                     <th key={header} className="px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">
                       {header}
                     </th>
@@ -329,7 +366,9 @@ export default function DatabaseDosen() {
                         <span className="font-mono">NIDN: {dosen.nidn}</span>
                       </div>
                     </td>
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{dosen.phone}</td>
                     <td className="px-5 py-3.5 text-xs text-muted-foreground">{dosen.asalKampus}</td>
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{formatDateDisplay(dosen.tanggalPersetujuanAnggota)}</td>
                     <td className="px-5 py-3.5 text-xs text-muted-foreground">{dosen.pendidikanTerakhir}</td>
                     <td className="px-5 py-3.5 text-xs text-muted-foreground">{dosen.kategoriDosen}</td>
                     <td className="px-5 py-3.5">
@@ -417,9 +456,11 @@ export default function DatabaseDosen() {
                     ["NIP", selected.nip],
                     ["NIDN", selected.nidn],
                     ["Email", selected.email],
+                    ["Kontak HP", selected.phone],
                     ["Asal Kampus", selected.asalKampus],
                     ["Pendidikan", selected.pendidikanTerakhir],
                     ["Kategori", selected.kategoriDosen],
+                    ["Persetujuan", formatDateDisplay(selected.tanggalPersetujuanAnggota)],
                     ["JFA", selected.jfa],
                     ["Departemen", selected.departemen],
                     ["Bergabung", selected.bergabung],
@@ -495,13 +536,15 @@ export default function DatabaseDosen() {
               {[
                 { key: "name", label: "Nama Lengkap", placeholder: "Dr. / Prof. ...", col: "col-span-2" },
                 { key: "kodeDosen", label: "Kode Dosen", placeholder: "KDS-001", col: "" },
-                { key: "password", label: modal === "add" ? "Password" : "Password Baru (Opsional)", placeholder: modal === "add" ? "Minimal 6 karakter" : "Kosongkan jika tidak diubah", col: "" },
+                { key: "password", label: modal === "add" ? "Password" : "Password Baru (Opsional)", placeholder: modal === "add" ? "Minimal 6 karakter" : "Kosongkan jika tidak diubah", col: "", type: "password" },
                 { key: "nip", label: "NIP", placeholder: "Nomor Induk Pegawai", col: "" },
                 { key: "nidn", label: "NIDN", placeholder: "Nomor Induk Dosen Nasional", col: "" },
                 { key: "email", label: "Email", placeholder: "nama@ac.id", col: "" },
+                { key: "phone", label: "Kontak HP", placeholder: "08xxxxxxxxxx", col: "" },
                 { key: "asalKampus", label: "Asal Kampus", placeholder: "Telkom University", col: "" },
                 { key: "pendidikanTerakhir", label: "Pendidikan Terakhir", placeholder: "S2 / S3", col: "" },
                 { key: "kategoriDosen", label: "Kategori Dosen", placeholder: "Tetap / Tidak Tetap", col: "" },
+                { key: "tanggalPersetujuanAnggota", label: "Tanggal Persetujuan Anggota", placeholder: "", col: "", type: "date" },
                 { key: "jfa", label: "JFA", placeholder: "Asisten Ahli, Lektor...", col: "" },
                 { key: "departemen", label: "Departemen", placeholder: "Teknik Informatika", col: "" },
                 { key: "keahlian", label: "Keahlian", placeholder: "ML, IoT, Cloud (pisah koma)", col: "col-span-2" }
@@ -509,7 +552,7 @@ export default function DatabaseDosen() {
                 <div key={field.key} className={field.col}>
                   <label className="mb-1.5 block text-xs font-black text-foreground">{field.label}</label>
                   <input
-                    type={field.key === "password" ? "password" : "text"}
+                    type={field.type || "text"}
                     value={(form as any)[field.key]}
                     onChange={(event) => setForm((prev) => ({ ...prev, [field.key]: event.target.value }))}
                     placeholder={field.placeholder}

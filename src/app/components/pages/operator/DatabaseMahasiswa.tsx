@@ -17,6 +17,12 @@ const STATUS_STYLE: Record<string, string> = {
 
 type ModalMode = "add" | "edit" | null;
 
+type ResearchMembershipForm = {
+  projectId: string;
+  bergabung: string;
+  selesai: string;
+};
+
 const AVATAR_COLORS = [
   "bg-[#8B6FFF] text-white",
   "bg-emerald-500 text-white",
@@ -80,12 +86,80 @@ function formatWfhDays(value: unknown) {
   return `${Number.isFinite(parsed) ? parsed : 0} hari`;
 }
 
+function resolveResearchIdsFromNames(
+  researchNames: string[],
+  options: Array<{ id: string; short: string; full: string }>
+) {
+  const lookup = new Map<string, string>();
+
+  options.forEach((option) => {
+    lookup.set(option.id, option.id);
+    lookup.set(option.full, option.id);
+    lookup.set(option.short, option.id);
+  });
+
+  const resolved: string[] = [];
+
+  (researchNames || []).forEach((name) => {
+    const projectId = lookup.get(name);
+    if (projectId && !resolved.includes(projectId)) {
+      resolved.push(projectId);
+    }
+  });
+
+  return resolved;
+}
+
+function getResearchOptionLabel(option: { short: string; full: string }) {
+  return option.short && option.short !== option.full ? `${option.short} - ${option.full}` : option.full;
+}
+
+function toDateInputValue(value: unknown) {
+  if (!value || value === "-") return "";
+
+  const normalized = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function normalizeResearchMembershipForms(source: any, fallbackIds: string[] = [], fallbackBergabung?: string | null): ResearchMembershipForm[] {
+  const rawMemberships = source?.research_memberships ?? source?.researchMemberships;
+  const memberships = Array.isArray(rawMemberships) ? rawMemberships : [];
+  const forms = memberships
+    .map((membership: any) => {
+      const projectId = String(membership?.project_id || membership?.projectId || membership?.id || "").trim();
+      if (!projectId) return null;
+
+      return {
+        projectId,
+        bergabung: toDateInputValue(membership?.bergabung || fallbackBergabung),
+        selesai: toDateInputValue(membership?.selesai),
+      };
+    })
+    .filter(Boolean) as ResearchMembershipForm[];
+
+  const existingIds = new Set(forms.map((membership) => membership.projectId));
+
+  fallbackIds.forEach((projectId) => {
+    const normalizedId = String(projectId || "").trim();
+    if (!normalizedId || existingIds.has(normalizedId)) return;
+
+    forms.push({
+      projectId: normalizedId,
+      bergabung: toDateInputValue(fallbackBergabung),
+      selesai: "",
+    });
+    existingIds.add(normalizedId);
+  });
+
+  return forms;
+}
+
 export default function DatabaseMahasiswa() {
   const { confirm, confirmDialog } = useConfirmDialog();
 
   const [mahasiswaList, setMahasiswaList] = useState<MahasiswaRecord[]>([]);
   const [logEntries, setLogEntries] = useState<any[]>([]);
-  const [risetOptions, setRisetOptions] = useState<Array<{ short: string; full: string }>>([]);
+  const [risetOptions, setRisetOptions] = useState<Array<{ id: string; short: string; full: string }>>([]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterRiset, setFilterRiset] = useState("Semua");
@@ -100,6 +174,7 @@ export default function DatabaseMahasiswa() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedRisetId, setSelectedRisetId] = useState('');
 
   const [form, setForm] = useState({
     id: "",
@@ -116,7 +191,7 @@ export default function DatabaseMahasiswa() {
     wfhQuota: "",
     status: "Aktif" as MahasiswaRecord["status"],
     tipe: "Riset" as MahasiswaRecord["tipe"],
-    riset: [] as string[],
+    risetMemberships: [] as ResearchMembershipForm[],
   });
 
   const PER_PAGE = 6;
@@ -131,17 +206,23 @@ export default function DatabaseMahasiswa() {
       const logRows = await apiGet<Array<any>>(`/logbooks?_=${cacheKey}`);
       const researches = await apiGet<Array<any>>(`/research?_=${cacheKey}`);
 
-      const risetNames = researches
-        .map((r: any) => {
-          const shortName = r.short_title || r.title || "Riset";
-          const fullName = r.title || r.short_title || "Riset";
+      const risetNames = researches.reduce<Array<{ id: string; short: string; full: string }>>((acc, r: any) => {
+        const id = String(r?.id || r?.project_id || r?.title || r?.short_title || "").trim();
+        const shortName = String(r?.short_title || r?.title || "Riset").trim();
+        const fullName = String(r?.title || r?.short_title || "Riset").trim();
 
-          return {
-            short: shortName,
-            full: fullName,
-          };
-        })
-        .filter((r) => r.short && r.full);
+        if (!id || !shortName || !fullName || acc.some((option) => option.id === id)) {
+          return acc;
+        }
+
+        acc.push({
+          id,
+          short: shortName,
+          full: fullName,
+        });
+
+        return acc;
+      }, []);
 
       setRisetOptions(risetNames);
 
@@ -167,6 +248,12 @@ export default function DatabaseMahasiswa() {
           status: item.status,
           tipe: item.tipe,
           riset: Array.isArray(item.research_projects) ? item.research_projects : [],
+          risetIds: Array.isArray(item.research_project_ids) ? item.research_project_ids : [],
+          risetMemberships: normalizeResearchMembershipForms(
+            item,
+            Array.isArray(item.research_project_ids) ? item.research_project_ids : [],
+            item.bergabung
+          ),
           bergabung: formatDateOnly(item.bergabung),
           pembimbing: item.pembimbing || "-",
           wfhFallbackQuota: getFallbackWfhQuota(item),
@@ -221,6 +308,12 @@ export default function DatabaseMahasiswa() {
           status: detail?.status || selected.status,
           tipe: detail?.tipe || selected.tipe,
           riset: Array.isArray(detail?.research_projects) ? detail.research_projects : selected.riset,
+          risetIds: Array.isArray(detail?.research_project_ids) ? detail.research_project_ids : selected.risetIds || [],
+          risetMemberships: normalizeResearchMembershipForms(
+            detail,
+            Array.isArray(detail?.research_project_ids) ? detail.research_project_ids : selected.risetIds || [],
+            detail?.bergabung || selected.bergabung
+          ),
           bergabung: formatDateOnly(detail?.bergabung || selected.bergabung),
           pembimbing: detail?.pembimbing || selected.pembimbing,
           wfhFallbackQuota: getFallbackWfhQuota(detail, selected),
@@ -267,6 +360,22 @@ export default function DatabaseMahasiswa() {
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const activeStudent = selectedDetail || selected;
+
+  const selectedRisetOptions = useMemo(
+    () =>
+      form.risetMemberships
+        .map((membership) => ({
+          membership,
+          option: risetOptions.find((option) => option.id === membership.projectId),
+        }))
+        .filter((item) => item.option) as Array<{ membership: ResearchMembershipForm; option: { id: string; short: string; full: string } }>,
+    [form.risetMemberships, risetOptions]
+  );
+
+  const availableRisetOptions = useMemo(
+    () => risetOptions.filter((option) => !form.risetMemberships.some((membership) => membership.projectId === option.id)),
+    [form.risetMemberships, risetOptions]
+  );
 
   const angkatanOptions = useMemo(
     () => Array.from(new Set(mahasiswaList.map((item) => item.angkatan).filter((item) => item && item !== "-"))).sort(),
@@ -328,6 +437,12 @@ export default function DatabaseMahasiswa() {
         status: detail?.status || m.status,
         tipe: detail?.tipe || m.tipe,
         riset: Array.isArray(detail?.research_projects) ? detail.research_projects : m.riset || [],
+        risetIds: Array.isArray(detail?.research_project_ids) ? detail.research_project_ids : m.risetIds || [],
+        risetMemberships: normalizeResearchMembershipForms(
+          detail,
+          Array.isArray(detail?.research_project_ids) ? detail.research_project_ids : m.risetIds || [],
+          detail?.bergabung || m.bergabung
+        ),
       };
     } catch {
       target = m;
@@ -348,9 +463,18 @@ export default function DatabaseMahasiswa() {
       wfhQuota: String(target.wfhFallbackQuota ?? 0),
       status: target.status,
       tipe: target.tipe,
-      riset: target.riset || [],
+      risetMemberships: Array.isArray(target.risetMemberships) && target.risetMemberships.length > 0
+        ? target.risetMemberships
+        : normalizeResearchMembershipForms(
+            target,
+            Array.isArray(target.risetIds) && target.risetIds.length > 0
+              ? target.risetIds
+              : resolveResearchIdsFromNames(target.riset || [], risetOptions),
+            target.bergabung
+          ),
     });
 
+    setSelectedRisetId("");
     setModal("edit");
   };
 
@@ -362,6 +486,15 @@ export default function DatabaseMahasiswa() {
 
     if (modal === "add" && !form.password.trim()) {
       setError("Password wajib diisi saat membuat akun mahasiswa baru.");
+      return;
+    }
+
+    const invalidMembership = form.risetMemberships.find(
+      (membership) => membership.bergabung && membership.selesai && membership.selesai < membership.bergabung
+    );
+
+    if (invalidMembership) {
+      setError("Tanggal selesai riset tidak boleh sebelum tanggal bergabung.");
       return;
     }
 
@@ -384,7 +517,11 @@ export default function DatabaseMahasiswa() {
         pembimbing: form.pembimbing.trim(),
         bergabung: form.bergabung || null,
         wfhQuota: form.wfhQuota === "" ? 0 : Number(form.wfhQuota) || 0,
-        riset: form.riset,
+        riset: form.risetMemberships.map((membership) => ({
+          projectId: membership.projectId,
+          bergabung: membership.bergabung || form.bergabung || null,
+          selesai: membership.selesai || null,
+        })),
       };
 
       let result;
@@ -544,8 +681,9 @@ export default function DatabaseMahasiswa() {
                   wfhQuota: "0",
                   status: "Aktif",
                   tipe: "Riset",
-                  riset: [],
+                  risetMemberships: [],
                 });
+                setSelectedRisetId("");
                 setModal("add");
               }}
               className="flex items-center gap-2 h-9 px-4 bg-amber-500 hover:bg-amber-600 text-white text-sm font-black rounded-[10px] transition-colors shadow-sm shadow-amber-200"
@@ -1029,32 +1167,108 @@ export default function DatabaseMahasiswa() {
 
               <div className="col-span-2">
                 <label className="text-xs font-black text-foreground block mb-1.5">Keanggotaan Riset</label>
-                <div className="flex flex-wrap gap-2">
-                  {risetOptions.length > 0 ? (
-                    risetOptions.map((r) => (
-                      <label key={r.full} className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={form.riset.includes(r.full)}
-                          onChange={(event) => {
-                            setForm((prev) => ({
-                              ...prev,
-                              riset: event.target.checked
-                                ? [...prev.riset, r.full]
-                                : prev.riset.filter((x) => x !== r.full),
-                            }));
-                          }}
-                          className="accent-amber-500"
-                        />
-                        <span className="text-xs font-bold text-foreground" title={r.full}>
-                          {r.short}
-                        </span>
-                      </label>
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Belum ada data riset</p>
-                  )}
-                </div>
+                {risetOptions.length > 0 ? (
+                  <>
+                    <select
+                      value={selectedRisetId}
+                      onChange={(event) => {
+                        const projectId = event.target.value;
+                        if (!projectId) return;
+
+                        setForm((prev) => ({
+                          ...prev,
+                          risetMemberships: prev.risetMemberships.some((membership) => membership.projectId === projectId)
+                            ? prev.risetMemberships
+                            : [...prev.risetMemberships, { projectId, bergabung: prev.bergabung || "", selesai: "" }],
+                        }));
+                        setSelectedRisetId("");
+                      }}
+                      className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer"
+                    >
+                      <option value="">Pilih riset untuk ditambahkan</option>
+                      {availableRisetOptions.map((option) => (
+                        <option key={option.id} value={option.id} title={option.full}>
+                          {getResearchOptionLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="mt-3 space-y-3">
+                      {selectedRisetOptions.length > 0 ? (
+                        selectedRisetOptions.map(({ membership, option }) => (
+                          <div
+                            key={option.id}
+                            className="rounded-[12px] border border-amber-200 bg-amber-50 p-3"
+                            title={option.full}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="flex items-center gap-2 truncate text-xs font-black text-amber-800">
+                                  <FlaskConical size={13} /> {getResearchOptionLabel(option)}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    risetMemberships: prev.risetMemberships.filter((item) => item.projectId !== option.id),
+                                  }));
+                                }}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-amber-200 bg-white text-amber-600 hover:text-amber-800"
+                                aria-label={`Hapus ${option.full}`}
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div>
+                                <label className="mb-1 block text-[11px] font-black text-amber-800">Tanggal bergabung</label>
+                                <input
+                                  type="date"
+                                  value={membership.bergabung}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      risetMemberships: prev.risetMemberships.map((item) =>
+                                        item.projectId === option.id ? { ...item, bergabung: value } : item
+                                      ),
+                                    }));
+                                  }}
+                                  className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-[11px] font-black text-amber-800">Tanggal selesai (opsional)</label>
+                                <input
+                                  type="date"
+                                  value={membership.selesai}
+                                  min={membership.bergabung || undefined}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      risetMemberships: prev.risetMemberships.map((item) =>
+                                        item.projectId === option.id ? { ...item, selesai: value } : item
+                                      ),
+                                    }));
+                                  }}
+                                  className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Belum ada riset yang dipilih.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Belum ada data riset</p>
+                )}
               </div>
             </div>
 
