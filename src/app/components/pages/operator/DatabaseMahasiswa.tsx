@@ -2,8 +2,8 @@ import { ProfileAvatar } from "../../molecules/ProfileAvatar";
 import React, { useEffect, useState, useMemo } from "react";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
-import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2 } from "lucide-react";
-import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
+import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2, FileText, Lock, UploadCloud, CheckCircle2 } from "lucide-react";
+import { apiDelete, apiGet, apiPost, apiPut, resolveApiAssetUrl } from "../../../lib/api";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 
 type MahasiswaRecord = any;
@@ -22,6 +22,27 @@ type ResearchMembershipForm = {
   bergabung: string;
   selesai: string;
 };
+
+type StudentDocumentForm = {
+  type: string;
+  label: string;
+  requiresAlumni: boolean;
+  locked: boolean;
+  lockReason: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+};
+
+const STUDENT_DOCUMENT_DEFINITIONS = [
+  { type: "surat_pengantar", label: "Surat pengantar mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: false },
+  { type: "surat_penerimaan", label: "Surat Penerimaan mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: false },
+  { type: "surat_keterangan_selesai", label: "Surat Keterangan Selesai mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: true },
+  { type: "sertifikat", label: "Sertifikat", requiresAlumni: true },
+];
+
+const STUDENT_DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.jpg,.jpeg,.png";
+const MAX_STUDENT_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
 const AVATAR_COLORS = [
   "bg-[#8B6FFF] text-white",
@@ -121,6 +142,60 @@ function toDateInputValue(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
 }
 
+function normalizeStudentDocuments(source: any, fallbackStatus?: string | null): StudentDocumentForm[] {
+  const rawDocuments = source?.student_documents ?? source?.studentDocuments ?? source?.documents;
+  const documents = Array.isArray(rawDocuments) ? rawDocuments : [];
+  const status = String(source?.status || source?.studentStatus || fallbackStatus || "").toLowerCase();
+  const isAlumni = status === "alumni";
+  const byType = new Map(documents.map((doc: any) => [String(doc?.type || doc?.documentType || doc?.document_type || ""), doc]));
+
+  return STUDENT_DOCUMENT_DEFINITIONS.map((definition) => {
+    const doc: any = byType.get(definition.type) || {};
+    const locked = Boolean(definition.requiresAlumni && !isAlumni);
+
+    return {
+      type: definition.type,
+      label: doc.label || definition.label,
+      requiresAlumni: Boolean(doc.requiresAlumni ?? doc.requires_alumni ?? definition.requiresAlumni),
+      locked: Boolean(doc.locked ?? locked),
+      lockReason: doc.lockReason || doc.lock_reason || (locked ? "Terbuka setelah mahasiswa berstatus Alumni." : null),
+      fileUrl: doc.fileUrl || doc.file_url || null,
+      fileName: doc.fileName || doc.file_name || null,
+      fileSize: Number.isFinite(Number(doc.fileSize ?? doc.file_size)) ? Number(doc.fileSize ?? doc.file_size) : null,
+    };
+  });
+}
+
+function formatFileSize(value?: number | null) {
+  const size = Number(value || 0);
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
+}
+
+function validateStudentDocumentFile(file: File) {
+  const allowedExtensions = ["pdf", "doc", "docx", "jpg", "jpeg", "png"];
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+
+  if (!allowedExtensions.includes(extension)) {
+    return "Format file harus PDF, DOC, DOCX, JPG, JPEG, atau PNG.";
+  }
+
+  if (file.size > MAX_STUDENT_DOCUMENT_BYTES) {
+    return "Ukuran file maksimal 10 MB.";
+  }
+
+  return null;
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Gagal membaca file dokumen."));
+    reader.readAsDataURL(file);
+  });
+}
 function normalizeResearchMembershipForms(source: any, fallbackIds: string[] = [], fallbackBergabung?: string | null): ResearchMembershipForm[] {
   const rawMemberships = source?.research_memberships ?? source?.researchMemberships;
   const memberships = Array.isArray(rawMemberships) ? rawMemberships : [];
@@ -174,6 +249,7 @@ export default function DatabaseMahasiswa() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [uploadingDocumentKey, setUploadingDocumentKey] = useState<string | null>(null);
   const [selectedRisetId, setSelectedRisetId] = useState('');
 
   const [form, setForm] = useState({
@@ -254,6 +330,7 @@ export default function DatabaseMahasiswa() {
             Array.isArray(item.research_project_ids) ? item.research_project_ids : [],
             item.bergabung
           ),
+          studentDocuments: normalizeStudentDocuments(item, item.status),
           bergabung: formatDateOnly(item.bergabung),
           pembimbing: item.pembimbing || "-",
           wfhFallbackQuota: getFallbackWfhQuota(item),
@@ -314,6 +391,7 @@ export default function DatabaseMahasiswa() {
             Array.isArray(detail?.research_project_ids) ? detail.research_project_ids : selected.risetIds || [],
             detail?.bergabung || selected.bergabung
           ),
+          studentDocuments: normalizeStudentDocuments(detail, detail?.status || selected.status),
           bergabung: formatDateOnly(detail?.bergabung || selected.bergabung),
           pembimbing: detail?.pembimbing || selected.pembimbing,
           wfhFallbackQuota: getFallbackWfhQuota(detail, selected),
@@ -443,6 +521,7 @@ export default function DatabaseMahasiswa() {
           Array.isArray(detail?.research_project_ids) ? detail.research_project_ids : m.risetIds || [],
           detail?.bergabung || m.bergabung
         ),
+        studentDocuments: normalizeStudentDocuments(detail, detail?.status || m.status),
       };
     } catch {
       target = m;
@@ -478,6 +557,43 @@ export default function DatabaseMahasiswa() {
     setModal("edit");
   };
 
+  const handleStudentDocumentUpload = async (student: MahasiswaRecord, documentType: string, file?: File | null) => {
+    if (!student?.id || !file) return;
+
+    const validationMessage = validateStudentDocumentFile(file);
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    const uploadKey = `${student.id}-${documentType}`;
+    setUploadingDocumentKey(uploadKey);
+    setError("");
+
+    try {
+      const fileDataUrl = await fileToDataUrl(file);
+      const result = await apiPut<any>(`/students/${encodeURIComponent(student.id)}/documents/${encodeURIComponent(documentType)}`, {
+        fileDataUrl,
+        fileName: file.name,
+      });
+      const nextDocuments = normalizeStudentDocuments({
+        status: student.status,
+        student_documents: result?.documents || [],
+      }, student.status);
+
+      const applyDocuments = (item: MahasiswaRecord | null) => item && item.id === student.id
+        ? { ...item, studentDocuments: nextDocuments, student_documents: nextDocuments }
+        : item;
+
+      setMahasiswaList((prev) => prev.map((item) => applyDocuments(item) || item));
+      setSelected((prev) => applyDocuments(prev));
+      setSelectedDetail((prev) => applyDocuments(prev));
+    } catch (err: any) {
+      setError(err?.message || "Gagal mengunggah dokumen mahasiswa.");
+    } finally {
+      setUploadingDocumentKey(null);
+    }
+  };
   const handleSave = async () => {
     if (!form.nim.trim() || !form.name.trim()) {
       setError("NIM dan Nama Lengkap wajib diisi.");
@@ -958,6 +1074,68 @@ export default function DatabaseMahasiswa() {
                     </div>
                   </div>
 
+                  <div className="mb-5 pb-5 border-b border-border">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <FileText size={11} /> Berkas Mahasiswa
+                    </p>
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {normalizeStudentDocuments(activeStudent, activeStudent.status).map((doc) => {
+                        const uploadKey = `${activeStudent.id}-${doc.type}`;
+                        const isUploading = uploadingDocumentKey === uploadKey;
+                        const resolvedUrl = resolveApiAssetUrl(doc.fileUrl);
+
+                        return (
+                          <div key={doc.type} className={`rounded-[12px] border px-3 py-3 ${doc.locked ? "border-slate-200 bg-slate-50" : "border-amber-100 bg-amber-50/40"}`}>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="text-xs font-black text-foreground">{doc.label}</p>
+                                <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
+                                  {doc.fileName
+                                    ? `${doc.fileName}${doc.fileSize ? ` • ${formatFileSize(doc.fileSize)}` : ""}`
+                                    : doc.locked
+                                      ? doc.lockReason || "Terbuka setelah status Alumni."
+                                      : "Belum ada file. Admin bisa upload dokumen ini."}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                {resolvedUrl && (
+                                  <a
+                                    href={resolvedUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-emerald-500 px-3 text-[11px] font-black text-white hover:bg-emerald-600"
+                                  >
+                                    <Download size={12} /> Unduh
+                                  </a>
+                                )}
+                                <label
+                                  className={`inline-flex h-8 items-center gap-1.5 rounded-[9px] px-3 text-[11px] font-black transition-colors ${
+                                    doc.locked || isUploading
+                                      ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+                                      : "cursor-pointer border border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
+                                  }`}
+                                >
+                                  {doc.locked ? <Lock size={12} /> : isUploading ? <CheckCircle2 size={12} /> : <UploadCloud size={12} />}
+                                  {doc.locked ? "Terkunci" : isUploading ? "Upload..." : doc.fileName ? "Ganti" : "Upload"}
+                                  <input
+                                    type="file"
+                                    accept={STUDENT_DOCUMENT_ACCEPT}
+                                    disabled={doc.locked || isUploading}
+                                    className="hidden"
+                                    onChange={(event) => {
+                                      const file = event.target.files?.[0] || null;
+                                      event.currentTarget.value = "";
+                                      void handleStudentDocumentUpload(activeStudent, doc.type, file);
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div>
                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
                       <BookOpen size={11} /> Logbook Terbaru
