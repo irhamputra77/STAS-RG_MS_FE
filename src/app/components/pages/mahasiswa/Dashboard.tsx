@@ -1,16 +1,15 @@
 import React from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Layout } from "../../templates/Layout";
 import {
   UserCheck, BookOpen, ClipboardCheck, CalendarOff, MapPin, Clock,
-  ChevronRight, FileText, FlaskConical, ScrollText, Award, Kanban,
+  ChevronRight, FileText, FileCheck, FlaskConical, ScrollText, Award, Kanban,
   ArrowRight, AlertTriangle, CheckCircle2, Hourglass, Check,
   Target, GitBranch, TrendingUp, MessageSquare, Calendar,
 } from "lucide-react";
-import { apiGet, apiPost, getStoredUser, setStoredUser } from "../../../lib/api";
+import { apiGet, getStoredUser } from "../../../lib/api";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 import { PicketAssignment, mapPicketAssignment } from "../../../lib/picket";
-import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 
 function getActiveMilestone(project: any) {
   const milestones = project?.milestones || [];
@@ -142,14 +141,12 @@ function MiniMilestones({ milestones, color }: { milestones: { label: string; do
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { confirm, confirmDialog } = useConfirmDialog();
+  const navigate = useNavigate();
   const user = getStoredUser();
   const [dashboardData, setDashboardData] = React.useState<any>(null);
   const [boardProjectsData, setBoardProjectsData] = React.useState<any[]>([]);
   const [boardSprintTasks, setBoardSprintTasks] = React.useState<any[]>([]);
   const [todayPicket, setTodayPicket] = React.useState<PicketAssignment | null>(null);
-  const [finishingStas, setFinishingStas] = React.useState(false);
-  const [finishError, setFinishError] = React.useState("");
 
   React.useEffect(() => {
     const loadDashboard = async () => {
@@ -307,48 +304,6 @@ export default function Dashboard() {
     ? rawLeaveRecent.filter((item: any) => getLeaveTypeLabel(item) !== "Cuti")
     : rawLeaveRecent;
 
-  const finishAsStasStudent = async () => {
-    if (finishingStas) return;
-
-    const approved = await confirm({
-      title: "Selesai sebagai Mahasiswa STAS?",
-      description: "Setelah dikonfirmasi, status Anda berubah menjadi Alumni dan keanggotaan riset/magang aktif akan ditutup. Admin baru bisa upload Surat Keterangan Selesai dan Sertifikat setelah status Alumni.",
-      confirmLabel: "Ya, Jadikan Alumni",
-      cancelLabel: "Batal",
-      variant: "warning",
-    });
-
-    if (!approved || !user?.id) return;
-
-    setFinishingStas(true);
-    setFinishError("");
-
-    try {
-      const result = await apiPost<any>("/profile/finish-stas");
-      const currentUser = getStoredUser();
-      if (currentUser) {
-        setStoredUser({
-          ...currentUser,
-          status: result?.status || "Alumni",
-          studentStatus: result?.studentStatus || "Alumni",
-        });
-      }
-
-      const refreshed = await apiGet<any>(`/dashboard/student?userId=${encodeURIComponent(user.id)}&_=${Date.now()}`);
-      setDashboardData(refreshed);
-      await confirm({
-        title: "Status berhasil diubah",
-        description: result?.message || "Status Anda sekarang Alumni.",
-        confirmLabel: "Mengerti",
-        variant: "primary",
-        hideCancel: true,
-      });
-    } catch (err: any) {
-      setFinishError(err?.message || "Gagal mengubah status menjadi Alumni.");
-    } finally {
-      setFinishingStas(false);
-    }
-  };
   // Quick links
   const quickLinks = [
     { label: "Logbook", icon: <BookOpen size={18} />, href: "/logbook", color: "bg-indigo-50 text-indigo-600 border-indigo-100" },
@@ -356,6 +311,7 @@ export default function Dashboard() {
     { label: "Riset & Board", icon: <FlaskConical size={18} />, href: "/research", color: "bg-[#F0FFF0] text-[#0AB600] border-green-200" },
     { label: isRisetStudent ? "Izin / Sakit / WFH" : "Cuti / Izin / WFH", icon: <CalendarOff size={18} />, href: "/leave", color: "bg-amber-50 text-amber-600 border-amber-100" },
     { label: "Dokumen & Sertifikat", icon: <Award size={18} />, href: "/documents", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+    { label: "Berkas Kelulusan", icon: <FileCheck size={18} />, href: "/graduation", color: "bg-teal-50 text-teal-600 border-teal-100" },
     { label: "Draft TA / Jurnal", icon: <ScrollText size={18} />, href: "/draft", color: "bg-blue-50 text-blue-600 border-blue-100" },
     { label: "Kehadiran GPS", icon: <MapPin size={18} />, href: "/attendance", color: "bg-rose-50 text-rose-600 border-rose-100" },
   ];
@@ -408,21 +364,15 @@ export default function Dashboard() {
               </span>
             ) : (
               <button
-                onClick={finishAsStasStudent}
-                disabled={finishingStas}
+                onClick={() => navigate("/graduation")}
                 className="inline-flex items-center justify-center gap-2 rounded-[12px] bg-amber-500 px-4 py-2 text-xs font-black text-white shadow-sm shadow-amber-200 transition-colors hover:bg-amber-600 disabled:opacity-60"
               >
-                <CheckCircle2 size={15} /> {finishingStas ? "Memproses..." : "Selesai sebagai Mahasiswa STAS"}
+                <CheckCircle2 size={15} /> Isi Berkas Kelulusan
               </button>
             )}
           </div>
         </div>
 
-        {finishError && (
-          <div className="rounded-[12px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
-            {finishError}
-          </div>
-        )}
 
         {/* ── Stat Cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4 2xl:grid-cols-5">
@@ -799,7 +749,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-      {confirmDialog}
     </Layout>
   );
 }

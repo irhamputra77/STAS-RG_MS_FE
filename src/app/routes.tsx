@@ -13,6 +13,7 @@ import DraftReport from "./components/pages/mahasiswa/DraftReport";
 import MyResearch from "./components/pages/mahasiswa/MyResearch";
 import ScrumBoard from "./components/pages/mahasiswa/ScrumBoard";
 import Piket from "./components/pages/mahasiswa/Piket";
+import GraduationSubmission from "./components/pages/mahasiswa/GraduationSubmission";
 import Settings from "./components/pages/Settings";
 import OperatorDashboard from "./components/pages/operator/OperatorDashboard";
 import DatabaseMahasiswa from "./components/pages/operator/DatabaseMahasiswa";
@@ -108,6 +109,7 @@ export const router = createBrowserRouter([
                   { path: "logbook/new", element: <LogbookForm /> },
                   { path: "leave", element: <LeaveRequest /> },
                   { path: "documents", element: <Documents /> },
+                  { path: "graduation", element: <GraduationSubmission /> },
                   { path: "draft", element: <DraftReport /> },
                   { path: "research", element: <MyResearch /> },
                   { path: "picket", element: <Piket /> },

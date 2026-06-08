@@ -2,6 +2,13 @@ export const MAHASISWA_LEADER_ROLE = "Mahasiswa Ketua Riset";
 
 export const MAHASISWA_RESEARCH_ROLES = [
   MAHASISWA_LEADER_ROLE,
+  "Web Developer",
+  "QA",
+  "IoT",
+  "Data Science",
+  "Machine Learning",
+  "Sosial Media",
+  "Creative Content",
   "Anggota Inti",
   "Backend Dev",
   "Frontend Dev",
