@@ -92,6 +92,8 @@ type BoardColumns = {
   done: BoardTask[];
 };
 
+type BoardColumnId = keyof BoardColumns;
+
 type ProjectView = {
   id: string;
   shortTitle: string;
@@ -253,11 +255,18 @@ function normalizeBoardStatus(value?: string): BoardTask["status"] {
   return "TO DO";
 }
 
-function getBoardColumnKey(status: BoardTask["status"]): keyof BoardColumns {
+function getBoardColumnKey(status: BoardTask["status"]): BoardColumnId {
   if (status === "TO DO") return "todo";
   if (status === "DOING") return "doing";
   if (status === "REVIEW") return "review";
   return "done";
+}
+
+function getBoardStatusFromColumnKey(columnId: BoardColumnId): BoardTask["status"] {
+  if (columnId === "todo") return "TO DO";
+  if (columnId === "doing") return "DOING";
+  if (columnId === "review") return "REVIEW";
+  return "DONE";
 }
 
 function mapBoardTask(item: any): BoardTask {
@@ -577,6 +586,9 @@ export function SharedBoardView({
   const [taskChecklistMessage, setTaskChecklistMessage] = useState("");
   const [pendingChecklistSubtaskId, setPendingChecklistSubtaskId] = useState<string | null>(null);
   const [selectedCommentSubtaskId, setSelectedCommentSubtaskId] = useState<string>("__task__");
+  const [draggedTask, setDraggedTask] = useState<{ taskId: string; fromColumn: BoardColumnId } | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<BoardColumnId | null>(null);
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const checklistAttachmentInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Attachment link state
@@ -846,30 +858,120 @@ export function SharedBoardView({
     }
   };
 
-  const handleMoveTaskStatus = async (value: string) => {
-    if (!selectedTask?.id || !value) return;
-    if (!canManageCards) {
+  const findTaskById = (columnsState: BoardColumns, taskId: string) => {
+    const allTasks = [
+      ...(columnsState.todo || []),
+      ...(columnsState.doing || []),
+      ...(columnsState.review || []),
+      ...(columnsState.done || [])
+    ];
+    return allTasks.find((item) => item.id === taskId) || null;
+  };
+
+  const moveTaskLocally = (task: BoardTask, nextColumn: BoardColumnId) => {
+    const nextStatus = getBoardStatusFromColumnKey(nextColumn);
+    const movedTask = { ...task, status: nextStatus };
+
+    setTasksMap((prev) => {
+      const columnsState = prev[activeId] || EMPTY_BOARD_COLUMNS;
+      const sanitized: BoardColumns = {
+        todo: (columnsState.todo || []).filter((item) => item.id !== movedTask.id),
+        doing: (columnsState.doing || []).filter((item) => item.id !== movedTask.id),
+        review: (columnsState.review || []).filter((item) => item.id !== movedTask.id),
+        done: (columnsState.done || []).filter((item) => item.id !== movedTask.id)
+      };
+      sanitized[nextColumn] = [...sanitized[nextColumn], movedTask];
+      return { ...prev, [activeId]: sanitized };
+    });
+
+    setSelectedTask((prev: any) => prev?.id === movedTask.id ? { ...prev, status: nextStatus } : prev);
+  };
+
+  const moveTaskToColumn = async (task: BoardTask, nextColumn: BoardColumnId, options?: { refreshSelected?: boolean }) => {
+    if (!task?.id) return;
+    if (!canFillExistingCards) {
       setTaskFetchMessage("Anda tidak memiliki izin memindahkan status kartu pada board ini.");
       return;
     }
 
-    const nextStatus = value === "todo"
-      ? "TO DO"
-      : value === "doing"
-        ? "DOING"
-        : value === "review"
-          ? "REVIEW"
-          : "DONE";
+    const currentColumn = getBoardColumnKey(task.status);
+    if (currentColumn === nextColumn) return;
+
+    const nextStatus = getBoardStatusFromColumnKey(nextColumn);
 
     try {
+      setTaskFetchMessage("");
+      setMovingTaskId(task.id);
+      moveTaskLocally(task, nextColumn);
       await apiPatch<{ task?: any }>(
-        `/research/${activeId}/board/tasks/${selectedTask.id}/status`,
+        `/research/${activeId}/board/tasks/${task.id}/status`,
         { status: nextStatus }
       );
-      await refreshBoardData(selectedTask.id);
+      await refreshBoardData(options?.refreshSelected ? task.id : null);
     } catch (error: any) {
       setTaskFetchMessage(error?.message || "Gagal memindahkan status task.");
+      await refreshBoardData(options?.refreshSelected ? task.id : null).catch(() => null);
+    } finally {
+      setMovingTaskId(null);
+      setDraggedTask(null);
+      setDragOverColumn(null);
     }
+  };
+
+  const handleMoveTaskStatus = async (value: string) => {
+    if (!selectedTask?.id || !value) return;
+    await moveTaskToColumn(selectedTask as BoardTask, value as BoardColumnId, { refreshSelected: true });
+  };
+
+  const handleTaskDragStart = (event: React.DragEvent<HTMLDivElement>, task: BoardTask, fromColumn: BoardColumnId) => {
+    if (!canFillExistingCards || movingTaskId) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-stas-task", JSON.stringify({ taskId: task.id, fromColumn }));
+    event.dataTransfer.setData("text/plain", task.id);
+    setDraggedTask({ taskId: task.id, fromColumn });
+  };
+
+  const handleTaskDragEnd = () => {
+    setDraggedTask(null);
+    setDragOverColumn(null);
+  };
+
+  const handleColumnDragOver = (event: React.DragEvent<HTMLDivElement>, columnId: BoardColumnId) => {
+    if (!canFillExistingCards || !draggedTask || movingTaskId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverColumn(columnId);
+  };
+
+  const handleColumnDrop = async (event: React.DragEvent<HTMLDivElement>, columnId: BoardColumnId) => {
+    if (!canFillExistingCards || movingTaskId) return;
+    event.preventDefault();
+
+    const rawPayload = event.dataTransfer.getData("application/x-stas-task");
+    const fallbackTaskId = event.dataTransfer.getData("text/plain");
+    let taskId = fallbackTaskId;
+
+    try {
+      const parsed = rawPayload ? JSON.parse(rawPayload) : null;
+      taskId = parsed?.taskId || fallbackTaskId;
+    } catch {
+      taskId = fallbackTaskId;
+    }
+
+    const columnsState = tasksMap[activeId] || EMPTY_BOARD_COLUMNS;
+    const task = findTaskById(columnsState, String(taskId || ""));
+
+    if (!task) {
+      setDraggedTask(null);
+      setDragOverColumn(null);
+      return;
+    }
+
+    await moveTaskToColumn(task, columnId);
   };
 
   const handleSaveBoardHeader = async () => {
@@ -1092,7 +1194,7 @@ export function SharedBoardView({
     }
   };
 
-  const columns = [
+  const columns: Array<{ id: BoardColumnId; title: string; bg: string; iconColor: string; textColor: string; pillBg: string }> = [
     { id: "todo", title: "TO DO", bg: "bg-slate-50", iconColor: "bg-slate-300", textColor: "text-slate-600", pillBg: "bg-slate-200 text-slate-700" },
     { id: "doing", title: "DOING", bg: "bg-blue-50/50", iconColor: "bg-blue-400", textColor: "text-blue-600", pillBg: "bg-blue-100 text-blue-700" },
     { id: "review", title: "REVIEW", bg: "bg-amber-50/50", iconColor: "bg-amber-400", textColor: "text-amber-600", pillBg: "bg-amber-100 text-amber-700" },
@@ -1673,7 +1775,13 @@ export function SharedBoardView({
           {/* ── Kanban Board ── */}
           <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
             {columns.map((col) => (
-              <div key={col.id} className={`flex flex-col min-w-[300px] w-[300px] rounded-[20px] ${col.bg} p-4`}>
+              <div
+                key={col.id}
+                onDragOver={(event) => handleColumnDragOver(event, col.id)}
+                onDragLeave={() => setDragOverColumn((current) => current === col.id ? null : current)}
+                onDrop={(event) => void handleColumnDrop(event, col.id)}
+                className={`flex flex-col min-w-[300px] w-[300px] rounded-[20px] ${col.bg} p-4 transition-all ${dragOverColumn === col.id ? "ring-2 ring-[#6C47FF]/40 ring-offset-2 bg-white/80" : ""}`}
+              >
                 <div className="flex items-center gap-2 mb-4 px-2">
                   <div className={`w-3 h-3 rounded-sm ${col.iconColor}`} />
                   <h3 className={`text-sm font-bold ${col.textColor} uppercase tracking-wider`}>{col.title}</h3>
@@ -1683,8 +1791,15 @@ export function SharedBoardView({
                   {(tasks[col.id] || []).map((task: any) => (
                     <div
                       key={task.id}
-                      onClick={() => openTask(task)}
-                      className={`bg-white rounded-[16px] p-5 shadow-sm border ${task.isOverdue && col.id !== "done" ? "border-red-400" : "border-border/60"} hover:shadow-md transition-all cursor-pointer`}
+                      draggable={canFillExistingCards && movingTaskId !== task.id}
+                      onDragStart={(event) => handleTaskDragStart(event, task, col.id)}
+                      onDragEnd={handleTaskDragEnd}
+                      onClick={() => {
+                        if (movingTaskId === task.id || draggedTask?.taskId === task.id) return;
+                        openTask(task);
+                      }}
+                      title={canFillExistingCards ? "Seret kartu ini ke kolom lain untuk mengubah status." : undefined}
+                      className={`bg-white rounded-[16px] p-5 shadow-sm border ${task.isOverdue && col.id !== "done" ? "border-red-400" : "border-border/60"} hover:shadow-md transition-all ${canFillExistingCards ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${movingTaskId === task.id ? "opacity-60" : ""} ${draggedTask?.taskId === task.id ? "scale-[0.98] opacity-70" : ""}`}
                     >
                       <p className="font-bold text-sm text-foreground mb-2.5 leading-snug">{task.title}</p>
                       {task.deadline && (
@@ -1859,28 +1974,30 @@ export function SharedBoardView({
                   <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">{selectedTask.sp} SP</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {canFillExistingCards && (
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        void handleMoveTaskStatus(e.target.value);
+                        e.currentTarget.value = "";
+                      }}
+                      className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-600 focus:outline-none hover:bg-slate-100 cursor-pointer transition-colors"
+                    >
+                      <option value="" disabled>Pindah ke...</option>
+                      <option value="todo">TO DO</option>
+                      <option value="doing">DOING</option>
+                      <option value="review">REVIEW</option>
+                      <option value="done">DONE</option>
+                    </select>
+                  )}
                   {canManageCards && (
                     <>
-                      <select
-                        defaultValue=""
-                        onChange={(e) => {
-                          if (!e.target.value) return;
-                          void handleMoveTaskStatus(e.target.value);
-                          e.currentTarget.value = "";
-                        }}
-                        className="text-xs font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-600 focus:outline-none hover:bg-slate-100 cursor-pointer transition-colors"
-                      >
-                        <option value="" disabled>Pindah ke...</option>
-                        <option value="todo">TO DO</option>
-                        <option value="doing">DOING</option>
-                        <option value="review">REVIEW</option>
-                        <option value="done">DONE</option>
-                      </select>
                       <button onClick={openEditTaskModal} className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors border border-transparent hover:border-slate-200"><Edit2 size={14} /></button>
                       <button onClick={() => setShowDeleteWarning(true)} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors border border-transparent hover:border-red-200"><Trash2 size={14} /></button>
                     </>
                   )}
-                  <div className="w-px h-5 bg-border mx-1" />
+                  {(canFillExistingCards || canManageCards) && <div className="w-px h-5 bg-border mx-1" />}
                   <button onClick={closeTask} className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors ml-1"><X size={18} /></button>
                 </div>
               </div>

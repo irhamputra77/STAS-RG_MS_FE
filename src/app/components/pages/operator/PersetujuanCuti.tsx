@@ -101,6 +101,27 @@ function resolveLeaveAttachment(item: any) {
   return { url, name: name || "Lampiran pengajuan" };
 }
 
+function formatDateTimeJakarta(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  try {
+    return parsed.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Jakarta"
+    }).replace(",", "");
+  } catch {
+    return raw;
+  }
+}
+
 function mapLeaveRequest(item: any): LeaveRequestAll {
   return {
     id: item.id,
@@ -117,6 +138,8 @@ function mapLeaveRequest(item: any): LeaveRequestAll {
     alasan: item.alasan,
     catatan: item.catatan || "",
     tanggalPengajuan: formatDateYmd(item.tanggal_pengajuan || item.tanggalPengajuan),
+    waktuPengajuan: formatDateTimeJakarta(item.created_at || item.createdAt || item.tanggal_pengajuan || item.tanggalPengajuan),
+    createdAt: item.created_at || item.createdAt || null,
     status: item.status,
     reviewedBy: item.reviewed_by_name || item.reviewedBy,
     reviewedAt: item.reviewed_at ? formatDateYmd(item.reviewed_at) : item.reviewedAt,
@@ -273,7 +296,7 @@ export default function PersetujuanCuti() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="bg-slate-50 border-b border-border">
-                    {["Mahasiswa", "Jenis", "Riset", "Periode", "Durasi", "Alasan", "Pengajuan", "Status", "Aksi"].map((h) => (
+                    {["Mahasiswa", "Jenis", "Riset", "Periode", "Durasi", "Alasan", "Pengajuan", "Waktu Input", "Status", "Aksi"].map((h) => (
                       <th key={h} className="px-5 py-3 text-xs font-black text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -296,6 +319,7 @@ export default function PersetujuanCuti() {
                       <td className="px-5 py-3.5 text-xs font-bold text-foreground">{l.durasi} hari</td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground max-w-[160px]"><p className="line-clamp-1">{l.alasan}</p></td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground whitespace-nowrap">{l.tanggalPengajuan}</td>
+                      <td className="px-5 py-3.5 text-xs font-semibold text-foreground whitespace-nowrap">{l.waktuPengajuan}</td>
                       <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_STYLE[l.status]}`}>{l.status}</span></td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-1">
@@ -341,6 +365,7 @@ export default function PersetujuanCuti() {
                 <div className="bg-slate-50 border border-border rounded-[10px] p-3"><p className="font-black text-muted-foreground mb-0.5">Riset</p><p className="font-black text-foreground">{detail.riset}</p></div>
                 <div className="bg-slate-50 border border-border rounded-[10px] p-3"><p className="font-black text-muted-foreground mb-0.5">Durasi</p><p className="font-black text-foreground">{detail.durasi} hari</p></div>
                 <div className="bg-slate-50 border border-border rounded-[10px] p-3"><p className="font-black text-muted-foreground mb-0.5">Pengajuan</p><p className="font-black text-foreground">{detail.tanggalPengajuan}</p></div>
+                <div className="bg-slate-50 border border-border rounded-[10px] p-3"><p className="font-black text-muted-foreground mb-0.5">Waktu Input</p><p className="font-black text-foreground">{detail.waktuPengajuan}</p></div>
                 <div className="bg-slate-50 border border-border rounded-[10px] p-3"><p className="font-black text-muted-foreground mb-0.5">Mulai</p><p className="font-black text-foreground">{detail.periodeStart}</p></div>
                 <div className="bg-slate-50 border border-border rounded-[10px] p-3"><p className="font-black text-muted-foreground mb-0.5">Selesai</p><p className="font-black text-foreground">{detail.periodeEnd}</p></div>
               </div>
