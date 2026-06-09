@@ -91,6 +91,40 @@ export function validatePicketPhoto(file: File) {
   return null;
 }
 
+export type PicketScheduleSettings = {
+  peoplePerDay: number;
+  randomizeEnabled: boolean;
+  weeklySchedule: Array<{ dayOfWeek: number; studentIds: string[] }>;
+};
+
+export function getNextWeeklyReshuffleDate(date: string) {
+  const current = new Date(`${date}T00:00:00`);
+  if (current.getDay() !== 0) return date;
+  current.setDate(current.getDate() + 1);
+  return current.toISOString().slice(0, 10);
+}
+
+export function getPicketScheduleGeneratePayload(date: string, settings: PicketScheduleSettings) {
+  const dateDay = new Date(`${date}T00:00:00`).getDay();
+  const dayRule = settings.weeklySchedule.find((day) => Number(day.dayOfWeek) === dateDay);
+  const weekdayStudentIds = Array.isArray(dayRule?.studentIds) ? dayRule.studentIds.filter(Boolean).map(String) : [];
+
+  if (weekdayStudentIds.length > 0) {
+    return {
+      date,
+      studentIds: weekdayStudentIds,
+      replaceExisting: true,
+      randomize: false,
+    };
+  }
+
+  return {
+    date,
+    peoplePerDay: settings.peoplePerDay,
+    randomize: settings.randomizeEnabled,
+  };
+}
+
 export function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();

@@ -22,6 +22,8 @@ import {
   PicketSubmission,
   PicketTask,
   getJakartaDateKey,
+  getNextWeeklyReshuffleDate,
+  getPicketScheduleGeneratePayload,
   mapPicketAssignment,
   mapPicketLeaveRequest,
   mapPicketSubmission,
@@ -158,6 +160,7 @@ export default function PiketOperator() {
   const [editingScheduleId, setEditingScheduleId] = React.useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = React.useState<ScheduleForm>(emptyScheduleForm);
   const [allowed, setAllowed] = React.useState(user?.role === "operator");
+  const [hasAutoReshuffledForDate, setHasAutoReshuffledForDate] = React.useState<string | null>(null);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -338,34 +341,44 @@ export default function PiketOperator() {
     }
   };
 
-  const generateSchedule = async () => {
+  const generateSchedule = React.useCallback(async (targetDate: string = date) => {
     try {
       setSaving(true);
       setError("");
-      const dateDay = new Date(`${date}T00:00:00`).getDay();
-      const dayRule = settings.weeklySchedule.find((day) => day.dayOfWeek === dateDay);
-      const weekdayStudentIds = dayRule?.studentIds || [];
-      const payload = weekdayStudentIds.length > 0
-        ? {
-          date,
-          studentIds: weekdayStudentIds,
-          replaceExisting: true,
-          randomize: false,
-        }
-        : {
-          date,
-          peoplePerDay: settings.peoplePerDay,
-          randomize: settings.randomizeEnabled,
-        };
+      const payload = getPicketScheduleGeneratePayload(targetDate, {
+        peoplePerDay: settings.peoplePerDay,
+        randomizeEnabled: settings.randomizeEnabled,
+        weeklySchedule: settings.weeklySchedule,
+      });
       await apiPost("/picket/schedules/generate", payload);
-      setInfo(weekdayStudentIds.length > 0 ? `Jadwal piket dibuat dari anggota hari ${dayRule?.label}.` : "Jadwal piket berhasil dibuat oleh random picker.");
+      if (targetDate !== date) {
+        setInfo(`Jadwal piket minggu depan berhasil di-reshuffle untuk tanggal ${targetDate}.`);
+      } else {
+        const targetDateDay = new Date(`${targetDate}T00:00:00`).getDay();
+        const dayRule = settings.weeklySchedule.find((day) => day.dayOfWeek === targetDateDay);
+        const weekdayStudentIds = dayRule?.studentIds || [];
+        setInfo(weekdayStudentIds.length > 0 ? `Jadwal piket dibuat dari anggota hari ${dayRule?.label}.` : "Jadwal piket berhasil dibuat oleh random picker.");
+      }
       await loadData();
     } catch (err: any) {
       setError(getPicketScheduleErrorMessage(err, "Gagal generate jadwal piket."));
     } finally {
       setSaving(false);
     }
-  };
+  }, [date, settings, loadData]);
+
+  const generateWeeklyReshuffle = React.useCallback(async () => {
+    const targetDate = getNextWeeklyReshuffleDate(date);
+    await generateSchedule(targetDate);
+  }, [date, generateSchedule]);
+
+  React.useEffect(() => {
+    const dateDay = new Date(`${date}T00:00:00`).getDay();
+    if (!loading && allowed && dateDay === 0 && hasAutoReshuffledForDate !== date) {
+      setHasAutoReshuffledForDate(date);
+      void generateWeeklyReshuffle();
+    }
+  }, [allowed, date, generateWeeklyReshuffle, hasAutoReshuffledForDate, loading]);
 
   const resyncSchedule = async () => {
     try {
@@ -610,7 +623,10 @@ export default function PiketOperator() {
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={saveSettings} disabled={saving} className="h-10 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60">Simpan</button>
-                  <button onClick={generateSchedule} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"><Shuffle size={15} /> Generate</button>
+                  <button onClick={() => void generateSchedule()} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"><Shuffle size={15} /> Generate</button>
+                </div>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button onClick={generateWeeklyReshuffle} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-[#0B61B6] text-sm font-black text-white hover:bg-[#094F96] disabled:opacity-60"><Shuffle size={15} /> Reshuffle Minggu</button>
                 </div>
                 <div className="mt-2 rounded-[12px] border border-emerald-200 bg-emerald-50 p-3">
                   <div className="mb-3">
@@ -873,7 +889,7 @@ export default function PiketOperator() {
                     </button>
                   )}
                 </div>
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(160px,1fr)_140px_minmax(160px,1fr)_144px]">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(180px,1.2fr)_minmax(160px,1fr)_140px_minmax(160px,1fr)_minmax(144px,auto)]">
                   <select
                     value={scheduleForm.studentId}
                     onChange={(event) => setScheduleForm((prev) => ({ ...prev, studentId: event.target.value }))}
@@ -913,7 +929,7 @@ export default function PiketOperator() {
                   <button
                     onClick={saveDailySchedule}
                     disabled={saving || !scheduleForm.studentId || !scheduleForm.taskId}
-                    className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60 md:col-span-2 xl:col-span-1"
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[10px] bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60 md:col-span-2 2xl:col-span-1"
                   >
                     {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                     {editingScheduleId ? "Update" : "Tambah"}

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  getNextWeeklyReshuffleDate,
+  getPicketScheduleGeneratePayload,
   mapPicketAssignment,
   mapPicketLeaveRequest,
   mapPicketTask,
@@ -66,4 +68,38 @@ test("mapPicketLeaveRequest reads Indonesian aliases", () => {
 test("validatePicketPhoto rejects oversized images", () => {
   const file = { type: "image/png", size: 9 * 1024 * 1024 } as File;
   assert.match(validatePicketPhoto(file) || "", /maksimal 5 MB/);
+});
+
+test("getNextWeeklyReshuffleDate returns next Monday when date is Sunday", () => {
+  assert.equal(getNextWeeklyReshuffleDate("2026-06-07"), "2026-06-08");
+  assert.equal(getNextWeeklyReshuffleDate("2026-06-08"), "2026-06-08");
+});
+
+test("getPicketScheduleGeneratePayload uses weekday studentIds and replaces existing schedule", () => {
+  const payload = getPicketScheduleGeneratePayload("2026-06-08", {
+    peoplePerDay: 2,
+    randomizeEnabled: true,
+    weeklySchedule: [{ dayOfWeek: 1, studentIds: ["S1", "S2"] }],
+  });
+
+  assert.deepEqual(payload, {
+    date: "2026-06-08",
+    studentIds: ["S1", "S2"],
+    replaceExisting: true,
+    randomize: false,
+  });
+});
+
+test("getPicketScheduleGeneratePayload uses randomize fallback when no weekday rule exists", () => {
+  const payload = getPicketScheduleGeneratePayload("2026-06-07", {
+    peoplePerDay: 3,
+    randomizeEnabled: false,
+    weeklySchedule: [{ dayOfWeek: 1, studentIds: ["S1"] }],
+  });
+
+  assert.deepEqual(payload, {
+    date: "2026-06-07",
+    peoplePerDay: 3,
+    randomize: false,
+  });
 });

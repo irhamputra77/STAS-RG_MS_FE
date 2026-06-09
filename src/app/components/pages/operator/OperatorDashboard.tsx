@@ -107,6 +107,28 @@ type DashboardSummary = {
   logbookTerbaru: Array<any>;
 };
 
+type WeeklyPicketMiss = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentInitials: string;
+  nim: string;
+  missedCount: number;
+  missedDates: string[];
+  taskNames: string[];
+  lastMissedDate?: string | null;
+  status?: string | null;
+};
+
+type WeeklyPicketMissResponse = {
+  weekStart?: string;
+  weekEnd?: string;
+  resetDay?: string;
+  items?: Array<any>;
+  students?: Array<any>;
+  misses?: Array<any>;
+};
+
 type OperatorWarningsResponse = {
   referenceDate?: string;
   referencePeriod?: string;
@@ -238,6 +260,9 @@ export default function OperatorDashboard() {
   const [earlyCheckoutAlerts, setEarlyCheckoutAlerts] = useState<EarlyCheckoutAlert[]>([]);
   const [attendanceMonitor, setAttendanceMonitor] = useState<AttendanceMonitorToday | null>(null);
   const [accessLocks, setAccessLocks] = useState<StudentAccessLock[]>([]);
+  const [weeklyPicketMisses, setWeeklyPicketMisses] = useState<WeeklyPicketMiss[]>([]);
+  const [weeklyPicketPeriod, setWeeklyPicketPeriod] = useState<{ start?: string; end?: string; resetDay?: string }>({});
+  const [weeklyPicketUnavailable, setWeeklyPicketUnavailable] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
@@ -332,6 +357,25 @@ export default function OperatorDashboard() {
       applyWarnings(warningsRes);
     };
 
+    const mapWeeklyPicketMiss = (item: any, index: number): WeeklyPicketMiss => {
+      const studentName = item?.student_name || item?.studentName || item?.name || "Mahasiswa";
+      const missedDates = item?.missed_dates || item?.missedDates || item?.dates || item?.picketDates || [];
+      const taskNames = item?.task_names || item?.taskNames || item?.tasks || item?.taskName || [];
+
+      return {
+        id: String(item?.id || item?.student_id || item?.studentId || `weekly-picket-miss-${index}`),
+        studentId: String(item?.student_id || item?.studentId || ""),
+        studentName,
+        studentInitials: item?.student_initials || item?.studentInitials || studentName.slice(0, 2).toUpperCase(),
+        nim: item?.nim || item?.student_nim || item?.studentNim || "-",
+        missedCount: Number(item?.missed_count ?? item?.missedCount ?? item?.total ?? (Array.isArray(missedDates) ? missedDates.length : 0)) || 0,
+        missedDates: Array.isArray(missedDates) ? missedDates.map(String).filter(Boolean) : [String(missedDates)].filter(Boolean),
+        taskNames: Array.isArray(taskNames) ? taskNames.map(String).filter(Boolean) : [String(taskNames)].filter(Boolean),
+        lastMissedDate: item?.last_missed_date || item?.lastMissedDate || item?.lastDate || null,
+        status: item?.status || item?.submission_status || item?.submissionStatus || "Belum Submit",
+      };
+    };
+
     const loadDashboard = async () => {
       setError("");
       try {
@@ -391,12 +435,17 @@ export default function OperatorDashboard() {
             label: "notifikasi admin",
             request: apiGet<Array<any>>("/notifications?limit=50"),
           },
+          {
+            key: "weeklyPicketMisses",
+            label: "piket mingguan",
+            request: apiGet<WeeklyPicketMissResponse>("/dashboard/picket-weekly-misses"),
+          },
         ] as const;
 
         const settled = await Promise.allSettled(requests.map((item) => item.request));
         const failures = settled.flatMap((result, index) =>
           result.status === "rejected"
-            ? requests[index].key === "accessLocks"
+            ? ["accessLocks", "weeklyPicketMisses"].includes(requests[index].key)
               ? []
               : `${requests[index].label}: ${result.reason?.message || "gagal dimuat"}`
             : []
@@ -446,6 +495,10 @@ export default function OperatorDashboard() {
           settled[10].status === "fulfilled"
             ? settled[10].value
             : [];
+        const weeklyPicketRes =
+          settled[11].status === "fulfilled"
+            ? settled[11].value
+            : null;
 
         if (failures.length === requests.length) {
           setError("Semua data dashboard gagal dimuat. Periksa koneksi API atau endpoint backend.");
@@ -586,6 +639,22 @@ export default function OperatorDashboard() {
         setResearches(mappedResearch);
         setAttendanceMonitor(attendanceMonitorRes);
         setAccessLocks(mappedAccessLocks);
+        if (weeklyPicketRes) {
+          const weeklyRows = Array.isArray(weeklyPicketRes)
+            ? weeklyPicketRes
+            : (weeklyPicketRes.items || weeklyPicketRes.students || weeklyPicketRes.misses || []);
+          setWeeklyPicketMisses(weeklyRows.map(mapWeeklyPicketMiss).filter((item) => item.missedCount > 0));
+          setWeeklyPicketPeriod({
+            start: weeklyPicketRes.weekStart,
+            end: weeklyPicketRes.weekEnd,
+            resetDay: weeklyPicketRes.resetDay || "Minggu",
+          });
+          setWeeklyPicketUnavailable(false);
+        } else {
+          setWeeklyPicketMisses([]);
+          setWeeklyPicketPeriod({});
+          setWeeklyPicketUnavailable(true);
+        }
         applyWarnings(warningsRes);
         setEarlyCheckoutAlerts(
           (notificationsRes || [])
@@ -791,6 +860,9 @@ export default function OperatorDashboard() {
   const unreadEarlyCheckoutAlerts = earlyCheckoutAlerts.filter((item) => !item.read);
   const earlyCheckoutDisplay = unreadEarlyCheckoutAlerts.length > 0 ? unreadEarlyCheckoutAlerts : earlyCheckoutAlerts;
   const jamTidakTerpenuhiCount = risetLowHours.length + unreadEarlyCheckoutAlerts.length;
+  const weeklyPicketPeriodLabel = weeklyPicketPeriod.start && weeklyPicketPeriod.end
+    ? `${formatDateYmd(weeklyPicketPeriod.start)} - ${formatDateYmd(weeklyPicketPeriod.end)}`
+    : "Minggu berjalan";
   const filteredAccessLocks = visibleAccessLocks.filter((lock) =>
     matchesSearchQuery(
       [
@@ -1156,6 +1228,76 @@ export default function OperatorDashboard() {
               </>
             )}
           </div>
+        </div>
+
+        {/* Piket Mingguan */}
+        <div className="bg-white border border-red-200 rounded-[14px] shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-red-100 bg-red-50/40 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-sm font-black text-foreground flex flex-wrap items-center gap-2">
+                <AlertTriangle size={15} className="text-red-500" /> Mahasiswa Tidak Melaksanakan Piket
+                <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{weeklyPicketMisses.length}</span>
+              </h2>
+              <p className="mt-1 text-[10px] font-semibold text-muted-foreground">
+                Periode {weeklyPicketPeriodLabel}. Data direset setiap hari {weeklyPicketPeriod.resetDay || "Minggu"}.
+              </p>
+            </div>
+            <Link to="/operator/piket" className="inline-flex h-8 w-fit items-center justify-center gap-1 rounded-[8px] border border-red-200 bg-white px-3 text-[10px] font-black text-red-600 hover:bg-red-50">
+              Kelola Piket <ChevronRight size={12} strokeWidth={3} />
+            </Link>
+          </div>
+          {weeklyPicketUnavailable ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-xs font-black text-foreground">Data piket mingguan belum tersedia</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">Tambahkan endpoint backend untuk mengirim daftar mahasiswa yang tidak submit piket pada minggu berjalan.</p>
+            </div>
+          ) : weeklyPicketMisses.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-xs font-black text-foreground">Tidak ada pelanggaran piket minggu ini</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">Mahasiswa yang melewatkan jadwal piket akan muncul di tabel ini.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-xs">
+                <thead>
+                  <tr className="border-b border-red-100 bg-red-50/50">
+                    <th className="px-5 py-3 font-black uppercase tracking-wide text-muted-foreground">Mahasiswa</th>
+                    <th className="px-5 py-3 font-black uppercase tracking-wide text-muted-foreground">Jumlah</th>
+                    <th className="px-5 py-3 font-black uppercase tracking-wide text-muted-foreground">Tanggal Tidak Piket</th>
+                    <th className="px-5 py-3 font-black uppercase tracking-wide text-muted-foreground">Tugas</th>
+                    <th className="px-5 py-3 font-black uppercase tracking-wide text-muted-foreground">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {weeklyPicketMisses.map((item) => (
+                    <tr key={item.id} className="hover:bg-red-50/20 transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">{item.studentInitials}</div>
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-black text-foreground">{item.studentName}</p>
+                            <p className="text-[10px] text-muted-foreground">{item.nim}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-black text-red-600">{item.missedCount}x</span>
+                      </td>
+                      <td className="px-5 py-3 text-muted-foreground">
+                        {item.missedDates.length > 0 ? item.missedDates.map(formatDateYmd).join(", ") : formatDateYmd(item.lastMissedDate || "")}
+                      </td>
+                      <td className="px-5 py-3">
+                        <p className="max-w-[260px] truncate font-bold text-foreground">{item.taskNames.length > 0 ? item.taskNames.join(", ") : "-"}</p>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-black text-red-600">{item.status || "Belum Submit"}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Main Grid */}
