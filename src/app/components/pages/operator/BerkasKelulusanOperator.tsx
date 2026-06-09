@@ -1,0 +1,403 @@
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Eye, FileCheck, Loader2, Search, X } from "lucide-react";
+import { apiGet } from "../../../lib/api";
+import { OperatorLayout } from "../../templates/OperatorLayout";
+
+type GraduationSubmission = {
+  id: string;
+  status: string;
+  submittedAt?: string | null;
+  submitted_at?: string | null;
+  createdAt?: string | null;
+  created_at?: string | null;
+  projectCount?: number;
+  project_count?: number;
+  projectSummary?: string;
+  project_summary?: string;
+  student?: {
+    id?: string;
+    nim?: string;
+    name?: string;
+    initials?: string;
+    status?: string;
+    tipe?: string;
+  };
+  projects?: any[];
+};
+
+type LinkField = {
+  key: string;
+  snakeKey: string;
+  label: string;
+};
+
+const STATUS_STYLE: Record<string, string> = {
+  Draft: "bg-slate-100 text-slate-600 border border-slate-200",
+  Dikirim: "bg-blue-100 text-blue-700 border border-blue-200",
+  Valid: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+  Revisi: "bg-amber-100 text-amber-700 border border-amber-200"
+};
+
+const COMMON_LINK_FIELDS: LinkField[] = [
+  { key: "reportUrl", snakeKey: "report_url", label: "Link Laporan PA/Magang" },
+  { key: "productPhotoFolderUrl", snakeKey: "product_photo_folder_url", label: "Link Folder Foto Produk" },
+  { key: "manualBookUrl", snakeKey: "manual_book_url", label: "Link Manual Book" },
+  { key: "demoVideoUrl", snakeKey: "demo_video_url", label: "Link Video Demo Project" }
+];
+
+const SPECIAL_LINK_FIELDS: LinkField[] = [
+  { key: "repositoryUrl", snakeKey: "repository_url", label: "Link Repository GitHub / GitLab" },
+  { key: "deployedUrl", snakeKey: "deployed_url", label: "Link Website Ter-deploy / Live" },
+  { key: "datasetModelUrl", snakeKey: "dataset_model_url", label: "Link Dataset & Model Weights" },
+  { key: "designDocumentationUrl", snakeKey: "design_documentation_url", label: "Link Master Desain & Dokumentasi Konten" }
+];
+
+function text(value: unknown, fallback = "-") {
+  const normalized = String(value ?? "").trim();
+  return normalized || fallback;
+}
+
+function formatDateTimeJakarta(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  try {
+    return parsed.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Jakarta"
+    }).replace(",", "");
+  } catch {
+    return raw;
+  }
+}
+
+function getStudentInitials(item: GraduationSubmission) {
+  const student = item.student || {};
+  if (student.initials) return student.initials;
+  return text(student.name, "M")
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "M";
+}
+
+function getSubmittedAt(item: GraduationSubmission) {
+  return item.submittedAt || item.submitted_at || item.createdAt || item.created_at || null;
+}
+
+function getProjectCount(item: GraduationSubmission) {
+  return Number(item.projectCount ?? item.project_count ?? item.projects?.length ?? 0);
+}
+
+function getProjectSummary(item: GraduationSubmission) {
+  return text(item.projectSummary || item.project_summary, "Belum ada ringkasan riset");
+}
+
+function getFieldValue(project: any, field: LinkField) {
+  return text(project?.[field.key] || project?.[field.snakeKey], "");
+}
+
+function getSpecialFields(project: any) {
+  const required = Array.isArray(project?.requiredSpecialFields)
+    ? project.requiredSpecialFields
+    : Array.isArray(project?.required_special_fields)
+      ? project.required_special_fields
+      : [];
+  const requiredKeys = new Set(required.map((field: any) => field?.key).filter(Boolean));
+
+  return SPECIAL_LINK_FIELDS.filter((field) => requiredKeys.has(field.key) || Boolean(getFieldValue(project, field)));
+}
+
+function LinkRow({ label, url }: { label: string; url?: string | null }) {
+  const value = text(url, "");
+
+  return (
+    <div className="rounded-[12px] border border-slate-200 bg-white p-3">
+      <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-muted-foreground">{label}</p>
+      {value ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 break-all text-xs font-semibold text-foreground">{value}</p>
+          <a
+            href={value}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[9px] bg-emerald-600 px-3 text-[11px] font-black text-white transition-colors hover:bg-emerald-700"
+          >
+            Buka <ExternalLink size={12} />
+          </a>
+        </div>
+      ) : (
+        <p className="text-xs font-semibold text-slate-400">Belum diisi</p>
+      )}
+    </div>
+  );
+}
+
+export default function BerkasKelulusanOperator() {
+  const [items, setItems] = useState<GraduationSubmission[]>([]);
+  const [selected, setSelected] = useState<GraduationSubmission | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+
+  const loadItems = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await apiGet<GraduationSubmission[]>("/graduation-submissions");
+      setItems(Array.isArray(rows) ? rows : []);
+    } catch (err: any) {
+      setError(err?.message || "Gagal memuat berkas kelulusan.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadItems();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return items;
+
+    return items.filter((item) => {
+      const student = item.student || {};
+      return [
+        student.name,
+        student.nim,
+        student.status,
+        item.status,
+        item.projectSummary,
+        item.project_summary
+      ].some((value) => String(value || "").toLowerCase().includes(keyword));
+    });
+  }, [items, search]);
+
+  const summary = useMemo(() => ({
+    total: items.length,
+    dikirim: items.filter((item) => item.status === "Dikirim").length,
+    valid: items.filter((item) => item.status === "Valid").length,
+    revisi: items.filter((item) => item.status === "Revisi").length
+  }), [items]);
+
+  const openDetail = async (item: GraduationSubmission) => {
+    setSelected(item);
+    if (!item.id) return;
+
+    setDetailLoadingId(item.id);
+    try {
+      const detail = await apiGet<GraduationSubmission>(`/graduation-submissions/${encodeURIComponent(item.id)}`);
+      setSelected(detail);
+      setItems((prev) => prev.map((row) => row.id === item.id ? { ...row, ...detail } : row));
+    } catch (err: any) {
+      setError(err?.message || "Gagal memuat detail berkas kelulusan.");
+    } finally {
+      setDetailLoadingId(null);
+    }
+  };
+
+  return (
+    <OperatorLayout title="Berkas Kelulusan Mahasiswa">
+      <div className="flex flex-col gap-5 pb-6">
+        {error && (
+          <div className="flex items-center gap-2 rounded-[14px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
+            <AlertTriangle size={16} /> {error}
+          </div>
+        )}
+
+        <div className="rounded-[20px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-emerald-700">
+                <FileCheck size={13} /> Review Berkas Kelulusan
+              </div>
+              <h2 className="text-2xl font-black text-foreground">Submit form kelulusan mahasiswa</h2>
+              <p className="mt-1 max-w-2xl text-sm font-medium text-muted-foreground">
+                Admin bisa melihat semua link yang diinput mahasiswa sebelum menerbitkan surat selesai dan sertifikat.
+              </p>
+            </div>
+            <button
+              onClick={() => void loadItems()}
+              className="h-10 rounded-[12px] bg-emerald-600 px-4 text-xs font-black text-white transition-colors hover:bg-emerald-700"
+            >
+              Refresh Data
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          {[
+            { label: "Total Submit", value: summary.total, color: "bg-slate-100 text-slate-700" },
+            { label: "Dikirim", value: summary.dikirim, color: "bg-blue-100 text-blue-700" },
+            { label: "Valid", value: summary.valid, color: "bg-emerald-100 text-emerald-700" },
+            { label: "Revisi", value: summary.revisi, color: "bg-amber-100 text-amber-700" }
+          ].map((item) => (
+            <div key={item.label} className="rounded-[16px] border border-border bg-white p-4 shadow-sm">
+              <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] ${item.color}`}>
+                <CheckCircle2 size={19} />
+              </div>
+              <p className="text-2xl font-black text-foreground">{item.value}</p>
+              <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">{item.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-[18px] border border-border bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="font-black text-foreground">Daftar Berkas Kelulusan</h3>
+              <p className="text-xs font-semibold text-muted-foreground">Klik detail untuk melihat semua link per riset.</p>
+            </div>
+            <div className="relative w-full md:w-[320px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cari nama, NIM, riset, status..."
+                className="h-10 w-full rounded-[12px] border border-border bg-slate-50 pl-9 pr-3 text-sm font-semibold outline-none transition-all focus:border-emerald-300 focus:bg-white focus:ring-2 focus:ring-emerald-100"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border bg-slate-50">
+                  {["Mahasiswa", "Status Mhs", "Riset", "Waktu Submit", "Status Berkas", "Aksi"].map((header) => (
+                    <th key={header} className="whitespace-nowrap px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-10 text-center text-sm font-bold text-muted-foreground">
+                      <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Memuat data...</span>
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-10 text-center text-sm font-bold text-muted-foreground">Belum ada berkas kelulusan yang dikirim.</td>
+                  </tr>
+                ) : filtered.map((item) => {
+                  const student = item.student || {};
+                  return (
+                    <tr key={item.id} className="transition-colors hover:bg-slate-50">
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-black text-white">
+                            {getStudentInitials(item)}
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-foreground">{text(student.name, "Mahasiswa")}</p>
+                            <p className="text-[10px] font-semibold text-muted-foreground">{text(student.nim)}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-black text-foreground">{text(student.status)}</span>
+                          <span className="text-[10px] font-bold text-muted-foreground">{text(student.tipe)}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <p className="text-xs font-black text-foreground">{getProjectCount(item)} riset</p>
+                        <p className="max-w-[280px] truncate text-[10px] font-semibold text-muted-foreground">{getProjectSummary(item)}</p>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-xs font-bold text-muted-foreground">{formatDateTimeJakarta(getSubmittedAt(item))}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black ${STATUS_STYLE[item.status] || STATUS_STYLE.Dikirim}`}>{text(item.status, "Dikirim")}</span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <button
+                          onClick={() => void openDetail(item)}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-emerald-50 px-3 text-[11px] font-black text-emerald-700 transition-colors hover:bg-emerald-100"
+                        >
+                          {detailLoadingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Detail
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-[240] flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 pt-[5vh] backdrop-blur-sm" onClick={() => setSelected(null)}>
+          <div className="w-full max-w-[900px] overflow-hidden rounded-[22px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">Detail Berkas Kelulusan</p>
+                <h3 className="mt-1 text-xl font-black text-foreground">{text(selected.student?.name, "Mahasiswa")}</h3>
+                <p className="text-xs font-semibold text-muted-foreground">{text(selected.student?.nim)} - {formatDateTimeJakarta(getSubmittedAt(selected))}</p>
+              </div>
+              <button onClick={() => setSelected(null)} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200">
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="max-h-[72vh] overflow-y-auto p-6">
+              <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-[14px] border border-border bg-slate-50 p-3">
+                  <p className="text-[10px] font-black uppercase text-muted-foreground">Status Berkas</p>
+                  <p className="mt-1 font-black text-foreground">{text(selected.status, "Dikirim")}</p>
+                </div>
+                <div className="rounded-[14px] border border-border bg-slate-50 p-3">
+                  <p className="text-[10px] font-black uppercase text-muted-foreground">Status Mahasiswa</p>
+                  <p className="mt-1 font-black text-foreground">{text(selected.student?.status)}</p>
+                </div>
+                <div className="rounded-[14px] border border-border bg-slate-50 p-3">
+                  <p className="text-[10px] font-black uppercase text-muted-foreground">Tipe</p>
+                  <p className="mt-1 font-black text-foreground">{text(selected.student?.tipe)}</p>
+                </div>
+                <div className="rounded-[14px] border border-border bg-slate-50 p-3">
+                  <p className="text-[10px] font-black uppercase text-muted-foreground">Jumlah Riset</p>
+                  <p className="mt-1 font-black text-foreground">{getProjectCount(selected)} riset</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                {(selected.projects || []).length === 0 ? (
+                  <div className="rounded-[14px] border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">Detail proyek belum tersedia.</div>
+                ) : (selected.projects || []).map((project: any) => {
+                  const specialFields = getSpecialFields(project);
+                  return (
+                    <div key={project.id || project.projectId || project.project_id} className="rounded-[18px] border border-border bg-slate-50 p-4">
+                      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h4 className="font-black text-foreground">{text(project.projectTitle || project.project_title, "Riset")}</h4>
+                          <p className="text-xs font-semibold text-muted-foreground">Posisi: {text(project.positionLabel || project.position_label, "Anggota")}</p>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {COMMON_LINK_FIELDS.map((field) => (
+                          <LinkRow key={field.key} label={field.label} url={getFieldValue(project, field)} />
+                        ))}
+                        {specialFields.map((field) => (
+                          <LinkRow key={field.key} label={field.label} url={getFieldValue(project, field)} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </OperatorLayout>
+  );
+}

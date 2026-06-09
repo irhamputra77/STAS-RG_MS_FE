@@ -34,6 +34,7 @@ import SertifikatOperator from "./components/pages/operator/SertifikatOperator";
 import ReviewDraftOperator from "./components/pages/operator/ReviewDraftOperator";
 import PengunduranDiriOperator from "./components/pages/operator/PengunduranDiriOperator";
 import PiketOperator from "./components/pages/operator/PiketOperator";
+import BerkasKelulusanOperator from "./components/pages/operator/BerkasKelulusanOperator";
 import DashboardDosen from "./components/pages/dosen/DashboardDosen";
 import RisetDosen from "./components/pages/dosen/RisetDosen";
 import ReviewLogbook from "./components/pages/dosen/ReviewLogbook";
@@ -146,6 +147,7 @@ export const router = createBrowserRouter([
               { path: "progress-board/:researchId", element: <ProgressBoard /> },
               { path: "progress-board/*", element: <ProgressBoard /> },
               { path: "draft", element: <ReviewDraftOperator /> },
+              { path: "kelulusan", element: <BerkasKelulusanOperator /> },
               { path: "sertifikat", element: <SertifikatOperator /> },
             ],
           },

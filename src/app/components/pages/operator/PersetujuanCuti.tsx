@@ -296,7 +296,7 @@ export default function PersetujuanCuti() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="bg-slate-50 border-b border-border">
-                    {["Mahasiswa", "Jenis", "Riset", "Periode", "Durasi", "Alasan", "Pengajuan", "Waktu Input", "Status", "Aksi"].map((h) => (
+                    {["Mahasiswa", "Jenis", "Durasi", "Alasan", "Pengajuan", "Waktu Input", "Status", "Aksi"].map((h) => (
                       <th key={h} className="px-5 py-3 text-xs font-black text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -314,8 +314,6 @@ export default function PersetujuanCuti() {
                         </div>
                       </td>
                       <td className="px-5 py-3.5"><TypeBadge jenis={l.jenis} /></td>
-                      <td className="px-5 py-3.5"><span className={`text-[10px] font-black px-2 py-0.5 rounded ${l.riset === "Riset A" ? "bg-[#F8F5FF] text-[#6C47FF]" : "bg-emerald-50 text-emerald-700"}`}>{l.riset}</span></td>
-                      <td className="px-5 py-3.5 text-xs text-muted-foreground whitespace-nowrap">{l.periodeStart}{l.periodeEnd !== l.periodeStart ? ` - ${l.periodeEnd}` : ""}</td>
                       <td className="px-5 py-3.5 text-xs font-bold text-foreground">{l.durasi} hari</td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground max-w-[160px]"><p className="line-clamp-1">{l.alasan}</p></td>
                       <td className="px-5 py-3.5 text-xs text-muted-foreground whitespace-nowrap">{l.tanggalPengajuan}</td>
