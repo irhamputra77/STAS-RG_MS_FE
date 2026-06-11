@@ -21,6 +21,14 @@ export function isDailyAttendanceAccessLock(lock?: AccessLockLike | null) {
   return getAccessLockReason(lock) === "ATTENDANCE_ABSENT";
 }
 
+export function shouldClearAccessLockFromError(error: unknown) {
+  const err = error as { status?: number; body?: any } | null | undefined;
+  if (!err) return false;
+  if (err.status === 404) return true;
+  if (err.body?.accessLocked === false || err.body?.locked === false || err.body?.active === false) return true;
+  return false;
+}
+
 export function shouldSuppressHolidayAttendanceLock(
   lock: AccessLockLike | null | undefined,
   holidays: unknown,

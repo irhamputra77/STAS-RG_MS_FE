@@ -10,6 +10,7 @@ import {
   getJakartaDateKey,
   mapPicketAssignment,
   mapPicketLeaveRequest,
+  mapPicketSubmissionResult,
   validatePicketPhoto,
 } from "../../../lib/picket";
 
@@ -113,10 +114,6 @@ export default function Piket() {
       setError("Bukti piket hanya dapat dikirim saat Anda punya jadwal piket hari ini.");
       return;
     }
-    if (todayAssignment.submitted || todayAssignment.submissionId) {
-      setError("Bukti piket untuk jadwal hari ini sudah dikirim.");
-      return;
-    }
     if (String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui") {
       setError("Bukti piket tidak perlu dikirim karena izin piket sudah disetujui.");
       return;
@@ -139,16 +136,18 @@ export default function Piket() {
         photoDataUrl: await fileToDataUrl(photoFile),
         source: "picket-page",
       });
+      const submission = mapPicketSubmissionResult(result);
       setTodayAssignment((prev) => prev ? {
         ...prev,
         submitted: true,
-        submissionId: result?.id || result?.submissionId || prev.submissionId,
-        submissionStatus: result?.status || result?.submissionStatus || "Terkirim",
-        photoUrl: result?.photoUrl || result?.photo_url || prev.photoUrl,
-        submittedAt: result?.submittedAt || result?.submitted_at || new Date().toISOString(),
+        submissionId: submission.id || prev.submissionId,
+        submissionStatus: submission.status || "Terkirim",
+        photoUrl: submission.photoUrl || prev.photoUrl,
+        submittedAt: submission.submittedAt || new Date().toISOString(),
       } : prev);
       clearPhoto();
       setInfo("Bukti piket berhasil dikirim.");
+      window.dispatchEvent(new Event("stas:access-lock-refresh"));
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Gagal mengirim bukti piket.");
@@ -243,7 +242,7 @@ export default function Piket() {
                       {todayAssignment.submitted && <Badge status={todayAssignment.submissionStatus || "Terkirim"} />}
                     </div>
 
-                    {todayAssignment.photoUrl ? (
+                    {todayAssignment.photoUrl && !photoPreview ? (
                       <a href={todayAssignment.photoUrl} target="_blank" rel="noreferrer" className="mt-3 block overflow-hidden rounded-[12px] border border-border bg-slate-50">
                         <img src={todayAssignment.photoUrl} alt="Bukti piket terkirim" className="h-36 w-full object-cover" />
                       </a>
@@ -260,7 +259,7 @@ export default function Piket() {
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
                           className="hidden"
-                          disabled={todayAssignment.submitted || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
+                          disabled={String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
                           onChange={(event) => pickPhoto(event.target.files?.[0] || null)}
                         />
                       </label>
@@ -274,9 +273,9 @@ export default function Piket() {
                     )}
 
                     <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                      {!todayAssignment.submitted && photoPreview && (
+                      {(todayAssignment.submitted || photoPreview) && (
                         <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-border bg-white px-3 text-sm font-black text-slate-700 hover:bg-slate-50">
-                          <ImagePlus size={15} /> Ganti Foto
+                          <ImagePlus size={15} /> {todayAssignment.submitted ? "Upload Ulang Foto" : "Ganti Foto"}
                           <input
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
@@ -288,10 +287,10 @@ export default function Piket() {
                       )}
                       <button
                         onClick={submitPicketPhoto}
-                        disabled={saving || !photoFile || todayAssignment.submitted || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
+                        disabled={saving || !photoFile || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
                       >
-                        {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} Kirim Bukti
+                        {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {todayAssignment.submitted ? "Kirim Ulang" : "Kirim Bukti"}
                       </button>
                     </div>
                   </div>

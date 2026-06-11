@@ -32,7 +32,7 @@ import { apiGet } from "../../lib/api";
 import { ProfileAvatar } from "../molecules/ProfileAvatar";
 import { useSyncedStoredUser } from "../../lib/userProfileSync";
 import { normalizeHolidays } from "../../lib/holidays";
-import { shouldSuppressHolidayAttendanceLock } from "../../lib/accessLocks";
+import { shouldClearAccessLockFromError, shouldSuppressHolidayAttendanceLock } from "../../lib/accessLocks";
 
 type StudentAccessLock = {
   id?: string;
@@ -319,6 +319,8 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
       if (lockResult.status === "fulfilled") {
         const data = lockResult.value;
         setAccessLock(isActiveAccessLock(data) && !shouldHideHolidayAttendanceLock(data) ? data : null);
+      } else if (shouldClearAccessLockFromError(lockResult.reason)) {
+        setAccessLock(null);
       }
     } catch {
       // Keep previous lock state.
@@ -376,12 +378,14 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("stas:access-lock-refresh", refreshAccessLock);
 
     const interval = window.setInterval(refreshAccessLock, 60000);
 
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("stas:access-lock-refresh", refreshAccessLock);
       window.clearInterval(interval);
     };
   }, [refreshAccessLock, user?.role]);

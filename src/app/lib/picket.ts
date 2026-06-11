@@ -51,6 +51,13 @@ export type PicketSubmission = {
   reviewNote?: string | null;
 };
 
+export type PicketSubmissionResult = {
+  id?: string | null;
+  status?: string | null;
+  photoUrl?: string | null;
+  submittedAt?: string | null;
+};
+
 export type PicketLeaveRequest = {
   id: string;
   scheduleId?: string | null;
@@ -97,6 +104,19 @@ export type PicketScheduleSettings = {
   weeklySchedule: Array<{ dayOfWeek: number; studentIds: string[] }>;
 };
 
+export type ManualPicketScheduleInput = {
+  scheduleDate: string;
+  studentIds: string[];
+  taskId: string;
+  status?: string;
+  notes?: string | null;
+};
+
+export type ManualPicketTaskInput = {
+  name: string;
+  description?: string | null;
+};
+
 export function getNextWeeklyReshuffleDate(date: string) {
   const current = new Date(`${date}T00:00:00`);
   if (current.getDay() !== 0) return date;
@@ -122,6 +142,27 @@ export function getPicketScheduleGeneratePayload(date: string, settings: PicketS
     date,
     peoplePerDay: settings.peoplePerDay,
     randomize: settings.randomizeEnabled,
+  };
+}
+
+export function getManualPicketSchedulePayloads(input: ManualPicketScheduleInput) {
+  const studentIds = Array.from(new Set(input.studentIds.map((id) => String(id || "").trim()).filter(Boolean)));
+  const notes = String(input.notes || "").trim();
+
+  return studentIds.map((studentId) => ({
+    scheduleDate: input.scheduleDate,
+    studentId,
+    taskId: input.taskId,
+    status: input.status || "Ditugaskan",
+    notes: notes || null,
+  }));
+}
+
+export function getManualPicketTaskPayload(input: ManualPicketTaskInput) {
+  return {
+    name: String(input.name || "").trim(),
+    description: String(input.description || "").trim() || null,
+    active: true,
   };
 }
 
@@ -191,6 +232,16 @@ export function mapPicketSubmission(row: any): PicketSubmission {
     submittedAt: row?.submitted_at || row?.submittedAt || null,
     status: text(row?.status || row?.review_status || row?.reviewStatus, "Terkirim"),
     reviewNote: row?.review_note || row?.reviewNote || null,
+  };
+}
+
+export function mapPicketSubmissionResult(value: any): PicketSubmissionResult {
+  const row = value?.submission || value?.item || value?.data || value || {};
+  return {
+    id: row?.id || row?.submission_id || row?.submissionId || null,
+    status: row?.status || row?.review_status || row?.reviewStatus || null,
+    photoUrl: resolveApiAssetUrl(row?.photo_url || row?.photoUrl || row?.file_url || row?.fileUrl || null),
+    submittedAt: row?.submitted_at || row?.submittedAt || row?.created_at || row?.createdAt || null,
   };
 }
 

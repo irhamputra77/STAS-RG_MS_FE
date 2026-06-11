@@ -22,6 +22,8 @@ import {
   PicketSubmission,
   PicketTask,
   getJakartaDateKey,
+  getManualPicketSchedulePayloads,
+  getManualPicketTaskPayload,
   getNextWeeklyReshuffleDate,
   getPicketScheduleGeneratePayload,
   mapPicketAssignment,
@@ -159,6 +161,9 @@ export default function PiketOperator() {
   const [isEditingWeekdayMembers, setIsEditingWeekdayMembers] = React.useState(false);
   const [editingScheduleId, setEditingScheduleId] = React.useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = React.useState<ScheduleForm>(emptyScheduleForm);
+  const [scheduleTaskMode, setScheduleTaskMode] = React.useState<"existing" | "manual">("existing");
+  const [manualScheduleTaskName, setManualScheduleTaskName] = React.useState("");
+  const [manualScheduleTaskDescription, setManualScheduleTaskDescription] = React.useState("");
   const [allowed, setAllowed] = React.useState(user?.role === "operator");
   const [hasAutoReshuffledForDate, setHasAutoReshuffledForDate] = React.useState<string | null>(null);
 
@@ -180,14 +185,16 @@ export default function PiketOperator() {
         setAllowed(true);
       }
 
-      const [settingsRes, taskRes, studentRes, managerRes, overviewRes, leaveRes] = await Promise.allSettled([
+      const [settingsRes, taskRes, studentRes, managerRes, overviewRes, schedulesRes, leaveRes] = await Promise.allSettled([
         apiGet<any>("/picket/settings"),
-        apiGet<any>("/picket/tasks"),
+        apiGet<any>("/picket/tasks?includeInactive=true"),
         apiGet<any>("/picket/students"),
         apiGet<any>("/picket/managers"),
         apiGet<any>(`/picket/operator/overview?date=${encodeURIComponent(date)}&_=${Date.now()}`),
+        apiGet<any>(`/picket/schedules?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/leave-requests?date=${encodeURIComponent(date)}&_=${Date.now()}`),
       ]);
+      let overviewAssignmentRowsLoaded = false;
 
       if (settingsRes.status === "fulfilled") {
         const raw = settingsRes.value?.settings || settingsRes.value || {};
@@ -201,7 +208,7 @@ export default function PiketOperator() {
       }
 
       if (taskRes.status === "fulfilled") {
-        const rows = Array.isArray(taskRes.value) ? taskRes.value : taskRes.value?.tasks || [];
+        const rows = Array.isArray(taskRes.value) ? taskRes.value : taskRes.value?.tasks || taskRes.value?.items || [];
         setTasks(rows.map(mapPicketTask));
       }
 
@@ -218,10 +225,18 @@ export default function PiketOperator() {
       if (overviewRes.status === "fulfilled") {
         const raw = overviewRes.value || {};
         const rows = raw.schedules || raw.assignments || [];
+        overviewAssignmentRowsLoaded = rows.length > 0;
         const nextAssignments = rows.map(mapPicketAssignment);
         setAssignments(nextAssignments);
         setSubmissions((raw.submissions || []).map(mapPicketSubmission));
-      } else {
+      }
+
+      if ((overviewRes.status !== "fulfilled" || !overviewAssignmentRowsLoaded) && schedulesRes.status === "fulfilled") {
+        const rawSchedules = schedulesRes.value || {};
+        const rows = Array.isArray(rawSchedules) ? rawSchedules : rawSchedules.items || rawSchedules.schedules || rawSchedules.assignments || [];
+        setAssignments(rows.map(mapPicketAssignment));
+        if (overviewRes.status !== "fulfilled") setSubmissions([]);
+      } else if (overviewRes.status !== "fulfilled") {
         setAssignments([]);
         setSubmissions([]);
       }
@@ -397,10 +412,16 @@ export default function PiketOperator() {
   const resetScheduleForm = () => {
     setEditingScheduleId(null);
     setScheduleForm(emptyScheduleForm);
+    setScheduleTaskMode("existing");
+    setManualScheduleTaskName("");
+    setManualScheduleTaskDescription("");
   };
 
   const startEditSchedule = (item: PicketAssignment) => {
     setEditingScheduleId(item.scheduleId || item.id);
+    setScheduleTaskMode("existing");
+    setManualScheduleTaskName("");
+    setManualScheduleTaskDescription("");
     setScheduleForm({
       studentId: item.studentId,
       taskId: item.taskId || "",
@@ -410,28 +431,40 @@ export default function PiketOperator() {
   };
 
   const saveDailySchedule = async () => {
-    if (!scheduleForm.studentId || !scheduleForm.taskId) {
-      setError("Pilih mahasiswa dan tugas piket terlebih dahulu.");
+    const useManualTask = scheduleTaskMode === "manual";
+    if (!scheduleForm.studentId || (!useManualTask && !scheduleForm.taskId) || (useManualTask && !manualScheduleTaskName.trim())) {
+      setError("Pilih mahasiswa dan isi tugas piket terlebih dahulu.");
       return;
     }
-
-    const payload = {
-      scheduleDate: date,
-      studentId: scheduleForm.studentId,
-      taskId: scheduleForm.taskId,
-      status: scheduleForm.status || "Ditugaskan",
-      notes: scheduleForm.notes.trim() || null,
-    };
 
     try {
       setSaving(true);
       setError("");
+      let taskId = scheduleForm.taskId;
+      if (useManualTask) {
+        const task = await apiPost<PicketTask>("/picket/tasks", getManualPicketTaskPayload({
+          name: manualScheduleTaskName,
+          description: manualScheduleTaskDescription,
+        }));
+        const normalizedTask = mapPicketTask(task);
+        taskId = normalizedTask.id;
+        setTasks((prev) => prev.some((item) => item.id === normalizedTask.id) ? prev : [normalizedTask, ...prev]);
+      }
+
+      const payload = getManualPicketSchedulePayloads({
+        scheduleDate: date,
+        studentIds: [scheduleForm.studentId],
+        taskId,
+        status: scheduleForm.status || "Ditugaskan",
+        notes: scheduleForm.notes.trim() || null,
+      })[0];
+
       if (editingScheduleId) {
         await apiPatch(`/picket/schedules/${encodeURIComponent(editingScheduleId)}`, payload);
         setInfo("Jadwal piket berhasil diperbarui.");
       } else {
         await apiPost("/picket/schedules", payload);
-        setInfo("Jadwal piket berhasil ditambahkan.");
+        setInfo(useManualTask ? "Jadwal piket dengan tugas manual berhasil ditambahkan." : "Jadwal piket berhasil ditambahkan.");
       }
       resetScheduleForm();
       await loadData();
@@ -515,6 +548,7 @@ export default function PiketOperator() {
     try {
       await apiPatch(`/picket/submissions/${encodeURIComponent(submission.id)}/review`, {
         status,
+        reviewNote: null,
         reviewedBy: user?.id,
       });
       setSubmissions((prev) => prev.map((item) => item.id === submission.id ? { ...item, status } : item));
@@ -533,6 +567,7 @@ export default function PiketOperator() {
     try {
       await apiPatch(`/picket/leave-requests/${encodeURIComponent(request.id)}/status`, {
         status,
+        reviewNote: null,
         reviewedBy: user?.id,
       });
       setLeaveRequests((prev) => prev.map((item) => item.id === request.id ? { ...item, status } : item));
@@ -773,106 +808,81 @@ export default function PiketOperator() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-                <div>
-                  {isEditingWeekdayMembers ? (
-                    <>
-                      <div className="mb-3 flex h-10 items-center gap-2 rounded-[10px] border border-border bg-white px-3">
-                        <Search size={15} className="text-muted-foreground" />
-                        <input
-                          value={studentQuery}
-                          onChange={(event) => setStudentQuery(event.target.value)}
-                          placeholder="Cari nama atau NIM mahasiswa..."
-                          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                        />
-                      </div>
-                      <div className="max-h-[320px] overflow-y-auto rounded-[12px] border border-border">
-                        {filteredStudents.length === 0 ? (
-                          <div className="p-5 text-center text-sm font-semibold text-muted-foreground">Mahasiswa tidak ditemukan.</div>
-                        ) : (
-                          filteredStudents.map((student) => (
-                            <label key={student.id} className="flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2.5 hover:bg-slate-50 last:border-b-0">
-                              <input
-                                type="checkbox"
-                                checked={selectedWeekdayStudentIds.includes(student.id)}
-                                onChange={(event) => toggleWeekdayStudent(student.id, event.target.checked)}
-                                className="accent-[#0AB600]"
-                              />
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-700">
-                                {student.initials}
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-xs font-black text-foreground">{student.name}</span>
-                                <span className="block truncate text-[10px] text-muted-foreground">
-                                  {student.nim || "-"} {student.tipe ? `- ${student.tipe}` : ""}
-                                </span>
-                              </span>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex min-h-[140px] items-center justify-center rounded-[12px] border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
-                      <div>
-                        <p className="text-sm font-black text-foreground">Anggota belum bisa diubah</p>
-                        <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                          Tekan tombol Edit Anggota untuk menambah atau menghapus mahasiswa piket hari {selectedWeekday?.label}.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-[12px] border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-xs font-black text-foreground">Daftar Terpilih</p>
-                    {isEditingWeekdayMembers && selectedWeekdayStudentIds.length > 0 && (
+              <div className="mt-4">
+                {isEditingWeekdayMembers && (
+                  <div className="mb-3 flex h-10 items-center gap-2 rounded-[10px] border border-border bg-white px-3">
+                    <Search size={15} className="text-muted-foreground" />
+                    <input
+                      value={studentQuery}
+                      onChange={(event) => setStudentQuery(event.target.value)}
+                      placeholder="Cari nama atau NIM mahasiswa..."
+                      className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                    />
+                    {selectedWeekdayStudentIds.length > 0 && (
                       <button
                         type="button"
                         onClick={() => updateWeeklyDay(selectedDayOfWeek, { studentIds: [] })}
-                        className="text-[10px] font-black text-red-600 hover:underline"
+                        className="shrink-0 text-[10px] font-black text-red-600 hover:underline"
                       >
                         Kosongkan
                       </button>
                     )}
                   </div>
-                  {selectedWeekdayStudents.length === 0 ? (
-                    <p className="rounded-[10px] border border-dashed border-slate-300 bg-white p-4 text-center text-xs font-semibold text-muted-foreground">
-                      Belum ada anggota dipilih.
-                    </p>
+                )}
+
+                <div className="max-h-[360px] overflow-y-auto rounded-[12px] border border-border">
+                  {isEditingWeekdayMembers ? (
+                    filteredStudents.length === 0 ? (
+                      <div className="p-5 text-center text-sm font-semibold text-muted-foreground">Mahasiswa tidak ditemukan.</div>
+                    ) : (
+                      filteredStudents.map((student) => (
+                        <label key={student.id} className="flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2.5 hover:bg-slate-50 last:border-b-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedWeekdayStudentIds.includes(student.id)}
+                            onChange={(event) => toggleWeekdayStudent(student.id, event.target.checked)}
+                            className="accent-[#0AB600]"
+                          />
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-700">
+                            {student.initials}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-black text-foreground">{student.name}</span>
+                            <span className="block truncate text-[10px] text-muted-foreground">
+                              {student.nim || "-"} {student.tipe ? `- ${student.tipe}` : ""}
+                            </span>
+                          </span>
+                        </label>
+                      ))
+                    )
+                  ) : selectedWeekdayStudents.length === 0 ? (
+                    <div className="p-5 text-center text-sm font-semibold text-muted-foreground">Belum ada anggota dipilih.</div>
                   ) : (
-                    <div className="flex max-h-[220px] flex-col gap-2 overflow-y-auto">
-                      {selectedWeekdayStudents.map((student) => (
-                        <div key={student.id} className="flex items-center justify-between gap-2 rounded-[10px] border border-border bg-white px-3 py-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-black text-foreground">{student.name}</p>
-                            <p className="truncate text-[10px] text-muted-foreground">{student.nim || "-"}</p>
-                          </div>
-                          {isEditingWeekdayMembers && (
-                            <button
-                              type="button"
-                              onClick={() => toggleWeekdayStudent(student.id, false)}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
-                              aria-label={`Hapus ${student.name} dari jadwal piket`}
-                            >
-                              <X size={13} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {isEditingWeekdayMembers && (
-                    <button
-                      onClick={saveWeekdayMembers}
-                      disabled={saving || selectedWeekdayStudentIds.length === 0}
-                      className="mt-3 h-10 w-full rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60"
-                    >
-                      Simpan Anggota Hari {selectedWeekday?.label}
-                    </button>
+                    selectedWeekdayStudents.map((student) => (
+                      <div key={student.id} className="flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-700">
+                          {student.initials}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-black text-foreground">{student.name}</span>
+                          <span className="block truncate text-[10px] text-muted-foreground">
+                            {student.nim || "-"} {student.tipe ? `- ${student.tipe}` : ""}
+                          </span>
+                        </span>
+                      </div>
+                    ))
                   )}
                 </div>
+
+                {isEditingWeekdayMembers && (
+                  <button
+                    onClick={saveWeekdayMembers}
+                    disabled={saving || selectedWeekdayStudentIds.length === 0}
+                    className="mt-3 h-10 w-full rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60"
+                  >
+                    Simpan Anggota Hari {selectedWeekday?.label}
+                  </button>
+                )}
               </div>
             </section>
 
@@ -881,7 +891,7 @@ export default function PiketOperator() {
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <h2 className="text-sm font-black text-foreground">Jadwal dan Status Hari Ini</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">Tambah, edit, atau hapus jadwal piket tanggal {date}.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Tambah, edit, atau hapus jadwal piket tanggal {date}; tugas bisa dipilih atau ditulis manual.</p>
                   </div>
                   {editingScheduleId && (
                     <button onClick={resetScheduleForm} className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
@@ -889,7 +899,8 @@ export default function PiketOperator() {
                     </button>
                   )}
                 </div>
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(180px,1.2fr)_minmax(160px,1fr)_140px_minmax(160px,1fr)_minmax(144px,auto)]">
+
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.4fr)_140px_minmax(160px,1fr)_minmax(144px,auto)]">
                   <select
                     value={scheduleForm.studentId}
                     onChange={(event) => setScheduleForm((prev) => ({ ...prev, studentId: event.target.value }))}
@@ -900,16 +911,51 @@ export default function PiketOperator() {
                       <option key={student.id} value={student.id}>{student.name} {student.nim ? `- ${student.nim}` : ""}</option>
                     ))}
                   </select>
-                  <select
-                    value={scheduleForm.taskId}
-                    onChange={(event) => setScheduleForm((prev) => ({ ...prev, taskId: event.target.value }))}
-                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
-                  >
-                    <option value="">Pilih tugas</option>
-                    {tasks.map((task) => (
-                      <option key={task.id} value={task.id}>{task.name}{task.active ? "" : " (nonaktif)"}</option>
-                    ))}
-                  </select>
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <div className="grid grid-cols-2 gap-2 rounded-[10px] border border-border bg-slate-50 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setScheduleTaskMode("existing")}
+                        className={`h-8 rounded-[8px] text-xs font-black ${scheduleTaskMode === "existing" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}
+                      >
+                        Pilih Tugas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScheduleTaskMode("manual")}
+                        className={`h-8 rounded-[8px] text-xs font-black ${scheduleTaskMode === "manual" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}
+                      >
+                        Tugas Manual
+                      </button>
+                    </div>
+                    {scheduleTaskMode === "existing" ? (
+                      <select
+                        value={scheduleForm.taskId}
+                        onChange={(event) => setScheduleForm((prev) => ({ ...prev, taskId: event.target.value }))}
+                        className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                      >
+                        <option value="">Pilih tugas</option>
+                        {tasks.map((task) => (
+                          <option key={task.id} value={task.id}>{task.name}{task.active ? "" : " (nonaktif)"}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2">
+                        <input
+                          value={manualScheduleTaskName}
+                          onChange={(event) => setManualScheduleTaskName(event.target.value)}
+                          placeholder="Tulis tugas piket manual"
+                          className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                        />
+                        <input
+                          value={manualScheduleTaskDescription}
+                          onChange={(event) => setManualScheduleTaskDescription(event.target.value)}
+                          placeholder="Deskripsi tugas opsional"
+                          className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
                   <select
                     value={scheduleForm.status}
                     onChange={(event) => setScheduleForm((prev) => ({ ...prev, status: event.target.value }))}
@@ -928,7 +974,7 @@ export default function PiketOperator() {
                   />
                   <button
                     onClick={saveDailySchedule}
-                    disabled={saving || !scheduleForm.studentId || !scheduleForm.taskId}
+                    disabled={saving || !scheduleForm.studentId || (scheduleTaskMode === "manual" ? !manualScheduleTaskName.trim() : !scheduleForm.taskId)}
                     className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[10px] bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60 md:col-span-2 2xl:col-span-1"
                   >
                     {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}

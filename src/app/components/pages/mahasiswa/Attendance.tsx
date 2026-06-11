@@ -9,6 +9,7 @@ import {
   PicketAssignment,
   fileToDataUrl,
   mapPicketAssignment,
+  mapPicketSubmissionResult,
   validatePicketPhoto,
 } from "../../../lib/picket";
 
@@ -555,7 +556,7 @@ export default function Attendance() {
 
     const result = await apiPost<any>("/picket/submissions", {
       scheduleId: todayPicket.scheduleId || todayPicket.id,
-      assignmentId: todayPicket.id,
+      assignmentId: todayPicket.assignmentId || todayPicket.id,
       studentId: user?.id,
       date: todayPicket.date,
       taskId: todayPicket.taskId,
@@ -563,14 +564,18 @@ export default function Attendance() {
       photoDataUrl: await fileToDataUrl(picketPhotoFile),
       source: "upload",
     });
+    const submission = mapPicketSubmissionResult(result);
 
     setTodayPicket((prev) => prev ? {
       ...prev,
       submitted: true,
-      submissionId: result?.id || result?.submissionId || prev.submissionId,
-      photoUrl: result?.photoUrl || result?.photo_url || prev.photoUrl,
+      submissionId: submission.id || prev.submissionId,
+      submissionStatus: submission.status || prev.submissionStatus || "Terkirim",
+      photoUrl: submission.photoUrl || prev.photoUrl,
+      submittedAt: submission.submittedAt || prev.submittedAt || new Date().toISOString(),
     } : prev);
     setPicketModalOpen(false);
+    window.dispatchEvent(new Event("stas:access-lock-refresh"));
   };
 
   const handleAttendanceAction = async (forceEarlyCheckout = false) => {

@@ -4,6 +4,7 @@ import {
   getAccessLockDate,
   getAccessLockReason,
   isDailyAttendanceAccessLock,
+  shouldClearAccessLockFromError,
   shouldSuppressHolidayAttendanceLock,
 } from "../../src/app/lib/accessLocks";
 
@@ -23,6 +24,12 @@ test("getAccessLockDate reads reference date aliases", () => {
 test("isDailyAttendanceAccessLock matches daily absent locks only", () => {
   assert.equal(isDailyAttendanceAccessLock({ reason: "ATTENDANCE_ABSENT" }), true);
   assert.equal(isDailyAttendanceAccessLock({ reason: "RISET_WEEKLY_HOURS_UNDER_TARGET" }), false);
+});
+
+test("shouldClearAccessLockFromError clears stale lock on not found or inactive response", () => {
+  assert.equal(shouldClearAccessLockFromError({ status: 404 }), true);
+  assert.equal(shouldClearAccessLockFromError({ status: 423, body: { accessLocked: false } }), true);
+  assert.equal(shouldClearAccessLockFromError({ status: 500 }), false);
 });
 
 test("shouldSuppressHolidayAttendanceLock suppresses absent lock on active holiday", () => {

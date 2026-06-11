@@ -2,9 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   getNextWeeklyReshuffleDate,
+  getManualPicketSchedulePayloads,
+  getManualPicketTaskPayload,
   getPicketScheduleGeneratePayload,
   mapPicketAssignment,
   mapPicketLeaveRequest,
+  mapPicketSubmissionResult,
   mapPicketTask,
   validatePicketPhoto,
 } from "../../src/app/lib/picket";
@@ -65,6 +68,22 @@ test("mapPicketLeaveRequest reads Indonesian aliases", () => {
   assert.equal(mapPicketLeaveRequest({ tanggal: "2026-05-24", alasan: "Sakit" }).reason, "Sakit");
 });
 
+test("mapPicketSubmissionResult reads nested submission response", () => {
+  assert.deepEqual(mapPicketSubmissionResult({
+    submission: {
+      submission_id: "SUB1",
+      review_status: "Terkirim",
+      photo_url: "/uploads/piket.jpg",
+      submitted_at: "2026-06-11T03:00:00.000Z",
+    },
+  }), {
+    id: "SUB1",
+    status: "Terkirim",
+    photoUrl: "https://ms-api.stas-rg.com/uploads/piket.jpg",
+    submittedAt: "2026-06-11T03:00:00.000Z",
+  });
+});
+
 test("validatePicketPhoto rejects oversized images", () => {
   const file = { type: "image/png", size: 9 * 1024 * 1024 } as File;
   assert.match(validatePicketPhoto(file) || "", /maksimal 5 MB/);
@@ -101,5 +120,42 @@ test("getPicketScheduleGeneratePayload uses randomize fallback when no weekday r
     date: "2026-06-07",
     peoplePerDay: 3,
     randomize: false,
+  });
+});
+
+test("getManualPicketSchedulePayloads creates one manual schedule payload per unique student", () => {
+  const payloads = getManualPicketSchedulePayloads({
+    scheduleDate: "2026-06-10",
+    studentIds: ["S1", "S2", "S1", "", " S3 "],
+    taskId: "T1",
+    status: "Ditugaskan",
+    notes: "  Piket pengganti  ",
+  });
+
+  assert.deepEqual(payloads, [
+    { scheduleDate: "2026-06-10", studentId: "S1", taskId: "T1", status: "Ditugaskan", notes: "Piket pengganti" },
+    { scheduleDate: "2026-06-10", studentId: "S2", taskId: "T1", status: "Ditugaskan", notes: "Piket pengganti" },
+    { scheduleDate: "2026-06-10", studentId: "S3", taskId: "T1", status: "Ditugaskan", notes: "Piket pengganti" },
+  ]);
+});
+
+test("getManualPicketSchedulePayloads defaults status and keeps notes nullable", () => {
+  assert.deepEqual(getManualPicketSchedulePayloads({
+    scheduleDate: "2026-06-10",
+    studentIds: ["S1"],
+    taskId: "T1",
+  }), [
+    { scheduleDate: "2026-06-10", studentId: "S1", taskId: "T1", status: "Ditugaskan", notes: null },
+  ]);
+});
+
+test("getManualPicketTaskPayload trims manual task input", () => {
+  assert.deepEqual(getManualPicketTaskPayload({
+    name: "  Rapihkan barang ruang depan  ",
+    description: "  Setelah jam piket selesai  ",
+  }), {
+    name: "Rapihkan barang ruang depan",
+    description: "Setelah jam piket selesai",
+    active: true,
   });
 });
