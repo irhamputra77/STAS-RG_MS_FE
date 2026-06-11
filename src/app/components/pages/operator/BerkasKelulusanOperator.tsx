@@ -1,7 +1,24 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, ExternalLink, Eye, FileCheck, Loader2, Search, X } from "lucide-react";
-import { apiGet } from "../../../lib/api";
+import { apiGet, apiPatch, apiPost } from "../../../lib/api";
 import { OperatorLayout } from "../../templates/OperatorLayout";
+
+type GraduationFieldKey =
+  | "reportUrl"
+  | "productPhotoFolderUrl"
+  | "manualBookUrl"
+  | "demoVideoUrl"
+  | "repositoryUrl"
+  | "deployedUrl"
+  | "datasetModelUrl"
+  | "designDocumentationUrl";
+
+type FieldReview = {
+  status?: "accepted" | "rejected" | "pending";
+  note?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+};
 
 type GraduationSubmission = {
   id: string;
@@ -14,6 +31,10 @@ type GraduationSubmission = {
   project_count?: number;
   projectSummary?: string;
   project_summary?: string;
+  graduationAllowedAt?: string | null;
+  graduation_allowed_at?: string | null;
+  graduationCompletedAt?: string | null;
+  graduation_completed_at?: string | null;
   student?: {
     id?: string;
     nim?: string;
@@ -26,7 +47,7 @@ type GraduationSubmission = {
 };
 
 type LinkField = {
-  key: string;
+  key: GraduationFieldKey;
   snakeKey: string;
   label: string;
 };
@@ -36,6 +57,12 @@ const STATUS_STYLE: Record<string, string> = {
   Dikirim: "bg-blue-100 text-blue-700 border border-blue-200",
   Valid: "bg-emerald-100 text-emerald-700 border border-emerald-200",
   Revisi: "bg-amber-100 text-amber-700 border border-amber-200"
+};
+
+const REVIEW_STYLE: Record<string, string> = {
+  accepted: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+  rejected: "bg-red-100 text-red-700 border border-red-200",
+  pending: "bg-slate-100 text-slate-600 border border-slate-200"
 };
 
 const COMMON_LINK_FIELDS: LinkField[] = [
@@ -101,8 +128,30 @@ function getProjectSummary(item: GraduationSubmission) {
   return text(item.projectSummary || item.project_summary, "Belum ada ringkasan riset");
 }
 
+function getGraduationAllowedAt(item?: GraduationSubmission | null) {
+  return item?.graduationAllowedAt || item?.graduation_allowed_at || null;
+}
+
 function getFieldValue(project: any, field: LinkField) {
   return text(project?.[field.key] || project?.[field.snakeKey], "");
+}
+
+function getFieldReview(project: any, field: LinkField): FieldReview {
+  const reviews = project?.fieldReviews || project?.field_reviews || {};
+  return reviews?.[field.key] || {};
+}
+
+function getReviewStatus(review: FieldReview) {
+  if (review.status === "accepted") return "accepted";
+  if (review.status === "rejected") return "rejected";
+  return "pending";
+}
+
+function getReviewLabel(review: FieldReview) {
+  const status = getReviewStatus(review);
+  if (status === "accepted") return "ACC";
+  if (status === "rejected") return "Ditolak";
+  return "Menunggu";
 }
 
 function getSpecialFields(project: any) {
@@ -116,23 +165,77 @@ function getSpecialFields(project: any) {
   return SPECIAL_LINK_FIELDS.filter((field) => requiredKeys.has(field.key) || Boolean(getFieldValue(project, field)));
 }
 
-function LinkRow({ label, url }: { label: string; url?: string | null }) {
-  const value = text(url, "");
+function LinkRow({
+  project,
+  field,
+  reviewingKey,
+  onReview
+}: {
+  project: any;
+  field: LinkField;
+  reviewingKey: string | null;
+  onReview: (projectRowId: string, fieldKey: GraduationFieldKey, status: "accepted" | "rejected", currentReview: FieldReview) => void;
+}) {
+  const value = getFieldValue(project, field);
+  const review = getFieldReview(project, field);
+  const reviewStatus = getReviewStatus(review);
+  const projectRowId = String(project?.id || "");
+  const accKey = `${projectRowId}:${field.key}:accepted`;
+  const rejectKey = `${projectRowId}:${field.key}:rejected`;
+  const disabled = !value || !projectRowId || Boolean(reviewingKey);
 
   return (
     <div className="rounded-[12px] border border-slate-200 bg-white p-3">
-      <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">{field.label}</p>
+        {value && (
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${REVIEW_STYLE[reviewStatus]}`}>
+            {getReviewLabel(review)}
+          </span>
+        )}
+      </div>
       {value ? (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3">
           <p className="min-w-0 break-all text-xs font-semibold text-foreground">{value}</p>
-          <a
-            href={value}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[9px] bg-emerald-600 px-3 text-[11px] font-black text-white transition-colors hover:bg-emerald-700"
-          >
-            Buka <ExternalLink size={12} />
-          </a>
+          {reviewStatus === "rejected" && review.note && (
+            <p className="rounded-[10px] bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
+              Catatan: {review.note}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={value}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[9px] bg-slate-900 px-3 text-[11px] font-black text-white transition-colors hover:bg-slate-800"
+            >
+              Buka <ExternalLink size={12} />
+            </a>
+            <button
+              type="button"
+              onClick={() => onReview(projectRowId, field.key, "accepted", review)}
+              disabled={disabled}
+              className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[11px] font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                reviewStatus === "accepted"
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              }`}
+            >
+              {reviewingKey === accKey ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} ACC
+            </button>
+            <button
+              type="button"
+              onClick={() => onReview(projectRowId, field.key, "rejected", review)}
+              disabled={disabled}
+              className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[11px] font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                reviewStatus === "rejected"
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "bg-red-50 text-red-700 hover:bg-red-100"
+              }`}
+            >
+              {reviewingKey === rejectKey ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />} Tolak
+            </button>
+          </div>
         </div>
       ) : (
         <p className="text-xs font-semibold text-slate-400">Belum diisi</p>
@@ -146,6 +249,8 @@ export default function BerkasKelulusanOperator() {
   const [selected, setSelected] = useState<GraduationSubmission | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [reviewingKey, setReviewingKey] = useState<string | null>(null);
+  const [allowing, setAllowing] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
@@ -190,6 +295,11 @@ export default function BerkasKelulusanOperator() {
     revisi: items.filter((item) => item.status === "Revisi").length
   }), [items]);
 
+  const syncSelectedDetail = (detail: GraduationSubmission) => {
+    setSelected(detail);
+    setItems((prev) => prev.map((row) => row.id === detail.id ? { ...row, ...detail } : row));
+  };
+
   const openDetail = async (item: GraduationSubmission) => {
     setSelected(item);
     if (!item.id) return;
@@ -197,14 +307,65 @@ export default function BerkasKelulusanOperator() {
     setDetailLoadingId(item.id);
     try {
       const detail = await apiGet<GraduationSubmission>(`/graduation-submissions/${encodeURIComponent(item.id)}`);
-      setSelected(detail);
-      setItems((prev) => prev.map((row) => row.id === item.id ? { ...row, ...detail } : row));
+      syncSelectedDetail(detail);
     } catch (err: any) {
       setError(err?.message || "Gagal memuat detail berkas kelulusan.");
     } finally {
       setDetailLoadingId(null);
     }
   };
+
+  const handleReview = async (
+    projectRowId: string,
+    fieldKey: GraduationFieldKey,
+    status: "accepted" | "rejected",
+    currentReview: FieldReview
+  ) => {
+    if (!selected?.id || !projectRowId) return;
+
+    let note: string | null = null;
+    if (status === "rejected") {
+      const input = window.prompt("Catatan penolakan untuk mahasiswa (opsional):", currentReview.note || "");
+      if (input === null) return;
+      note = input.trim() || null;
+    }
+
+    const actionKey = `${projectRowId}:${fieldKey}:${status}`;
+    setReviewingKey(actionKey);
+    setError("");
+    try {
+      const detail = await apiPatch<GraduationSubmission>(
+        `/graduation-submissions/${encodeURIComponent(selected.id)}/projects/${encodeURIComponent(projectRowId)}/fields/${encodeURIComponent(fieldKey)}/review`,
+        { status, note }
+      );
+      syncSelectedDetail(detail);
+    } catch (err: any) {
+      setError(err?.message || "Gagal menyimpan review berkas.");
+    } finally {
+      setReviewingKey(null);
+    }
+  };
+
+  const handleAllowGraduation = async () => {
+    if (!selected?.id || allowing) return;
+
+    const confirmed = window.confirm("Beri izin lulus untuk mahasiswa ini? Setelah diizinkan, mahasiswa bisa klik Jadi Alumni STAS-RG sendiri.");
+    if (!confirmed) return;
+
+    setAllowing(true);
+    setError("");
+    try {
+      const detail = await apiPost<GraduationSubmission>(`/graduation-submissions/${encodeURIComponent(selected.id)}/allow-graduation`);
+      syncSelectedDetail(detail);
+    } catch (err: any) {
+      setError(err?.message || "Gagal memberi izin lulus.");
+    } finally {
+      setAllowing(false);
+    }
+  };
+
+  const graduationAlreadyAllowed = Boolean(getGraduationAllowedAt(selected));
+  const canAllowSelected = selected?.status === "Valid" && selected.student?.status !== "Alumni" && !graduationAlreadyAllowed;
 
   return (
     <OperatorLayout title="Berkas Kelulusan Mahasiswa">
@@ -223,7 +384,7 @@ export default function BerkasKelulusanOperator() {
               </div>
               <h2 className="text-2xl font-black text-foreground">Submit form kelulusan mahasiswa</h2>
               <p className="mt-1 max-w-2xl text-sm font-medium text-muted-foreground">
-                Admin bisa melihat semua link yang diinput mahasiswa sebelum menerbitkan surat selesai dan sertifikat.
+                Admin bisa ACC/Tolak setiap link. Setelah semua link ACC, admin memberi izin lulus agar tombol Alumni muncul di mahasiswa.
               </p>
             </div>
             <button
@@ -337,7 +498,7 @@ export default function BerkasKelulusanOperator() {
 
       {selected && (
         <div className="fixed inset-0 z-[240] flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 pt-[5vh] backdrop-blur-sm" onClick={() => setSelected(null)}>
-          <div className="w-full max-w-[900px] overflow-hidden rounded-[22px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="w-full max-w-[940px] overflow-hidden rounded-[22px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">Detail Berkas Kelulusan</p>
@@ -369,6 +530,26 @@ export default function BerkasKelulusanOperator() {
                 </div>
               </div>
 
+              <div className="mb-5 rounded-[16px] border border-emerald-100 bg-emerald-50 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-emerald-900">Izin Lulus Mahasiswa</p>
+                    <p className="mt-1 text-xs font-semibold text-emerald-800">
+                      Setelah seluruh link ACC, admin memberi izin lulus. Mahasiswa tetap harus klik Jadi Alumni STAS-RG sendiri.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleAllowGraduation()}
+                    disabled={!canAllowSelected || allowing}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-emerald-600 px-4 text-xs font-black text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {allowing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                    {selected.student?.status === "Alumni" ? "Sudah Alumni" : graduationAlreadyAllowed ? "Sudah Diizinkan" : "Izinkan Lulus"}
+                  </button>
+                </div>
+              </div>
+
               <div className="flex flex-col gap-4">
                 {(selected.projects || []).length === 0 ? (
                   <div className="rounded-[14px] border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">Detail proyek belum tersedia.</div>
@@ -384,10 +565,22 @@ export default function BerkasKelulusanOperator() {
                       </div>
                       <div className="grid gap-3 md:grid-cols-2">
                         {COMMON_LINK_FIELDS.map((field) => (
-                          <LinkRow key={field.key} label={field.label} url={getFieldValue(project, field)} />
+                          <LinkRow
+                            key={field.key}
+                            project={project}
+                            field={field}
+                            reviewingKey={reviewingKey}
+                            onReview={handleReview}
+                          />
                         ))}
                         {specialFields.map((field) => (
-                          <LinkRow key={field.key} label={field.label} url={getFieldValue(project, field)} />
+                          <LinkRow
+                            key={field.key}
+                            project={project}
+                            field={field}
+                            reviewingKey={reviewingKey}
+                            onReview={handleReview}
+                          />
                         ))}
                       </div>
                     </div>
@@ -401,3 +594,4 @@ export default function BerkasKelulusanOperator() {
     </OperatorLayout>
   );
 }
+

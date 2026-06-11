@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Layout } from "../../templates/Layout";
 import { apiGet, apiPost, getStoredUser, setStoredUser } from "../../../lib/api";
 import {
@@ -13,6 +13,13 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
+
+type FieldReview = {
+  status?: "accepted" | "rejected" | "pending";
+  note?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+};
 
 type SpecialField = {
   key: GraduationFieldKey;
@@ -42,6 +49,7 @@ type GraduationProject = {
   deployedUrl: string;
   datasetModelUrl: string;
   designDocumentationUrl: string;
+  fieldReviews: Record<string, FieldReview>;
   requiredSpecialFields: SpecialField[];
 };
 
@@ -160,6 +168,7 @@ function normalizeProject(item: any): GraduationProject {
     deployedUrl: String(item?.deployedUrl || item?.deployed_url || ""),
     datasetModelUrl: String(item?.datasetModelUrl || item?.dataset_model_url || ""),
     designDocumentationUrl: String(item?.designDocumentationUrl || item?.design_documentation_url || ""),
+    fieldReviews: item?.fieldReviews || item?.field_reviews || {},
     requiredSpecialFields: Array.isArray(item?.requiredSpecialFields)
       ? item.requiredSpecialFields
       : Array.isArray(item?.required_special_fields)
@@ -189,10 +198,16 @@ function getRequiredKeys(project: GraduationProject) {
   ];
 }
 
+function getFieldReview(project: GraduationProject, key: GraduationFieldKey): FieldReview | undefined {
+  return project.fieldReviews?.[key];
+}
+
 function FieldInput({
   project,
   field,
   onChange,
+  review,
+  disabled = false,
 }: {
   project: GraduationProject;
   field: {
@@ -204,12 +219,29 @@ function FieldInput({
     icon?: React.ReactNode;
   };
   onChange: (projectId: string, key: GraduationFieldKey, value: string) => void;
+  review?: FieldReview;
+  disabled?: boolean;
 }) {
   const value = project[field.key] || "";
   const invalid = value.trim() ? !isValidUrl(value, field.required) : false;
+  const accepted = review?.status === "accepted";
+  const rejected = review?.status === "rejected";
+  const pendingReview = Boolean(value.trim()) && !accepted && !rejected;
+  const cardTone = rejected
+    ? "border-red-200 bg-red-50/40"
+    : accepted
+      ? "border-emerald-200 bg-emerald-50/30"
+      : "border-slate-200 bg-white";
+  const inputTone = invalid
+    ? "border-red-200 bg-red-50/50 text-red-700 focus:ring-red-100"
+    : rejected
+      ? "border-red-200 bg-white focus:border-red-300 focus:ring-red-100"
+      : accepted
+        ? "border-emerald-200 bg-white focus:border-emerald-400 focus:ring-emerald-100"
+        : "border-slate-200 bg-slate-50 focus:border-emerald-400 focus:bg-white focus:ring-emerald-100";
 
   return (
-    <div className="rounded-[16px] border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-[16px] border p-4 shadow-sm ${cardTone}`}>
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="flex items-start gap-2">
           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-emerald-50 text-emerald-600">
@@ -227,24 +259,48 @@ function FieldInput({
             )}
           </div>
         </div>
-        {isValidUrl(value, field.required) && value.trim() && (
-          <CheckCircle2 size={17} className="mt-1 shrink-0 text-emerald-500" />
-        )}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {accepted && (
+            <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase text-emerald-700">
+              ACC
+            </span>
+          )}
+          {rejected && (
+            <span className="rounded-full bg-red-100 px-2 py-1 text-[10px] font-black uppercase text-red-700">
+              Ditolak
+            </span>
+          )}
+          {pendingReview && (
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-500">
+              Menunggu
+            </span>
+          )}
+          {isValidUrl(value, field.required) && value.trim() && (
+            <CheckCircle2 size={17} className="shrink-0 text-emerald-500" />
+          )}
+        </div>
       </div>
       <input
         type="url"
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(project.projectId, field.key, event.target.value)}
         placeholder={field.placeholder}
-        className={`h-11 w-full rounded-[12px] border px-3 text-sm font-semibold outline-none transition-all focus:ring-2 ${
-          invalid
-            ? "border-red-200 bg-red-50/50 text-red-700 focus:ring-red-100"
-            : "border-slate-200 bg-slate-50 focus:border-emerald-400 focus:bg-white focus:ring-emerald-100"
-        }`}
+        className={`h-11 w-full rounded-[12px] border px-3 text-sm font-semibold outline-none transition-all focus:ring-2 disabled:cursor-not-allowed disabled:opacity-70 ${inputTone}`}
       />
       {invalid && (
         <p className="mt-2 text-xs font-bold text-red-500">
           Link harus diawali http:// atau https://.
+        </p>
+      )}
+      {rejected && review?.note && (
+        <p className="mt-2 rounded-[10px] bg-white px-3 py-2 text-xs font-bold text-red-600">
+          Catatan admin: {review.note}
+        </p>
+      )}
+      {accepted && (
+        <p className="mt-2 text-xs font-bold text-emerald-700">
+          Link ini sudah ACC admin.
         </p>
       )}
     </div>
@@ -256,8 +312,10 @@ export default function GraduationSubmission() {
   const [studentStatus, setStudentStatus] = useState("");
   const [submissionStatus, setSubmissionStatus] = useState("");
   const [submittedAt, setSubmittedAt] = useState("");
+  const [graduationAllowedAt, setGraduationAllowedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [becomingAlumni, setBecomingAlumni] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -280,6 +338,12 @@ export default function GraduationSubmission() {
     };
   }, [projects]);
 
+  const graduationAllowed = Boolean(graduationAllowedAt) && submissionStatus === "Valid" && studentStatus !== "Alumni";
+  const reviewLocked = submissionStatus === "Valid" || studentStatus === "Alumni";
+  const canSubmit = completion.complete && !submitting && projects.length > 0 && !reviewLocked;
+  const canBecomeAlumni = graduationAllowed && !becomingAlumni;
+  const submitLabel = submissionStatus === "Revisi" ? "Kirim Ulang Berkas Kelulusan" : "Kirim Berkas Kelulusan";
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -290,6 +354,7 @@ export default function GraduationSubmission() {
         setStudentStatus(data?.student?.status || data?.student?.studentStatus || "");
         setSubmissionStatus(data?.submission?.status || "");
         setSubmittedAt(data?.submission?.submittedAt || data?.submission?.submitted_at || "");
+        setGraduationAllowedAt(data?.submission?.graduationAllowedAt || data?.submission?.graduation_allowed_at || "");
       } catch (err: any) {
         setError(err?.message || "Gagal memuat form berkas kelulusan.");
       } finally {
@@ -309,7 +374,7 @@ export default function GraduationSubmission() {
   };
 
   const handleSubmit = async () => {
-    if (!completion.complete || submitting) return;
+    if (!canSubmit) return;
 
     try {
       setSubmitting(true);
@@ -330,18 +395,21 @@ export default function GraduationSubmission() {
         })),
       });
 
+      const nextStudentStatus = result?.student?.status || result?.student?.studentStatus || studentStatus;
+
       setProjects((result?.projects || projects).map(normalizeProject));
-      setStudentStatus(result?.student?.status || result?.student?.studentStatus || "Alumni");
+      setStudentStatus(nextStudentStatus);
       setSubmissionStatus(result?.submission?.status || "Dikirim");
       setSubmittedAt(result?.submission?.submittedAt || result?.submission?.submitted_at || new Date().toISOString());
+      setGraduationAllowedAt(result?.submission?.graduationAllowedAt || result?.submission?.graduation_allowed_at || "");
       setMessage(result?.message || "Berkas kelulusan berhasil dikirim.");
 
       const currentUser = getStoredUser();
-      if (currentUser) {
+      if (currentUser && nextStudentStatus && nextStudentStatus !== currentUser.status) {
         setStoredUser({
           ...currentUser,
-          status: result?.student?.status || "Alumni",
-          studentStatus: result?.student?.studentStatus || "Alumni",
+          status: nextStudentStatus,
+          studentStatus: nextStudentStatus,
         });
       }
     } catch (err: any) {
@@ -351,6 +419,39 @@ export default function GraduationSubmission() {
     }
   };
 
+
+  const handleBecomeAlumni = async () => {
+    if (!canBecomeAlumni) return;
+
+    try {
+      setBecomingAlumni(true);
+      setError("");
+      setMessage("");
+
+      const result = await apiPost<any>("/graduation-submissions/me/finalize-alumni");
+      const nextStudentStatus = result?.student?.status || result?.student?.studentStatus || "Alumni";
+
+      setProjects((result?.projects || projects).map(normalizeProject));
+      setStudentStatus(nextStudentStatus);
+      setSubmissionStatus(result?.submission?.status || "Valid");
+      setSubmittedAt(result?.submission?.submittedAt || result?.submission?.submitted_at || submittedAt);
+      setGraduationAllowedAt(result?.submission?.graduationAllowedAt || result?.submission?.graduation_allowed_at || graduationAllowedAt);
+      setMessage(result?.message || "Status kamu berhasil menjadi Alumni STAS-RG.");
+
+      const currentUser = getStoredUser();
+      if (currentUser) {
+        setStoredUser({
+          ...currentUser,
+          status: nextStudentStatus,
+          studentStatus: nextStudentStatus,
+        });
+      }
+    } catch (err: any) {
+      setError(err?.message || "Gagal memproses status Alumni STAS-RG.");
+    } finally {
+      setBecomingAlumni(false);
+    }
+  };
   const submittedLabel = submittedAt
     ? new Date(submittedAt).toLocaleDateString("id-ID", {
         day: "2-digit",
@@ -415,6 +516,30 @@ export default function GraduationSubmission() {
         {message && (
           <div className="rounded-[16px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
             {message}
+          </div>
+        )}
+
+        {submissionStatus === "Revisi" && (
+          <div className="rounded-[16px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+            Ada link yang ditolak admin. Perbaiki bagian yang bertanda Ditolak, lalu kirim ulang berkas kelulusan.
+          </div>
+        )}
+
+        {submissionStatus === "Valid" && studentStatus !== "Alumni" && !graduationAllowed && (
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">
+            Semua link sudah ACC. Tunggu admin memberi izin lulus agar tombol Jadi Alumni STAS-RG aktif.
+          </div>
+        )}
+
+        {submissionStatus === "Valid" && graduationAllowed && (
+          <div className="rounded-[16px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+            Semua link sudah ACC dan admin sudah memberi izin lulus. Kamu bisa klik tombol Jadi Alumni STAS-RG di bawah.
+          </div>
+        )}
+
+        {studentStatus === "Alumni" && (
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">
+            Status kamu sudah Alumni STAS-RG. Form berkas kelulusan dikunci sebagai arsip.
           </div>
         )}
 
@@ -491,6 +616,8 @@ export default function GraduationSubmission() {
                       project={project}
                       field={field}
                       onChange={handleChange}
+                      review={getFieldReview(project, field.key)}
+                      disabled={reviewLocked}
                     />
                   ))}
 
@@ -511,6 +638,8 @@ export default function GraduationSubmission() {
                         project={project}
                         field={field}
                         onChange={handleChange}
+                        review={getFieldReview(project, field.key)}
+                        disabled={reviewLocked}
                       />
                     ))
                   )}
@@ -537,22 +666,50 @@ export default function GraduationSubmission() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!completion.complete || submitting || projects.length === 0}
-          className="flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-emerald-600 px-5 text-sm font-black text-white shadow-lg shadow-emerald-100 transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
-        >
-          {submitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-          {submitting ? "Mengirim Berkas..." : "Kirim Berkas Kelulusan"}
-        </button>
+        {!reviewLocked && (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-emerald-600 px-5 text-sm font-black text-white shadow-lg shadow-emerald-100 transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+          >
+            {submitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            {submitting ? "Mengirim Berkas..." : submitLabel}
+          </button>
+        )}
+
+        {submissionStatus === "Valid" && studentStatus !== "Alumni" && (
+          <button
+            type="button"
+            onClick={handleBecomeAlumni}
+            disabled={!canBecomeAlumni}
+            className="flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-sky-600 px-5 text-sm font-black text-white shadow-lg shadow-sky-100 transition-all hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+          >
+            {becomingAlumni ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+            {graduationAllowed ? "Jadi Alumni STAS-RG" : "Menunggu Izin Lulus Admin"}
+          </button>
+        )}
 
         {!completion.complete && projects.length > 0 && (
           <p className="text-center text-xs font-bold text-slate-500">
             Tombol submit akan aktif setelah semua field wajib berisi URL valid.
           </p>
         )}
+
+        {reviewLocked && projects.length > 0 && (
+          <p className="text-center text-xs font-bold text-slate-500">
+            Form terkunci karena berkas sudah ACC semua atau status kamu sudah Alumni.
+          </p>
+        )}
       </div>
     </Layout>
   );
 }
+
+
+
+
+
+
+
+

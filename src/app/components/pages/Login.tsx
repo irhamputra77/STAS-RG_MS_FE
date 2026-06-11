@@ -1,11 +1,10 @@
-import React, { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+﻿import React, { useState } from "react";
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../../context/AuthContext";
 import type { UserRole } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../lib/api";
 import { useSystemBranding } from "../../lib/useSystemBranding";
-import { motion, useMotionValue, useSpring, useTransform } from "motion/react";
 
 const ROLE_DESTINATION: Record<UserRole, string> = {
   mahasiswa: "/dashboard",
@@ -13,210 +12,49 @@ const ROLE_DESTINATION: Record<UserRole, string> = {
   dosen: "/dosen/dashboard"
 };
 
-// Posisi pakai % agar responsif di semua tinggi layar
-const FLOATING_CARDS = [
-  { id: 1, x: "5%",  y: "3%",  rotate: -12, video: "/videos/v1.mp4" },
-  { id: 2, x: "52%", y: "2%",  rotate: 14,  video: "/videos/v2.mp4" },
-  { id: 3, x: "28%", y: "22%", rotate: -8,  video: "/videos/v3.mp4" },
-  { id: 4, x: "5%",  y: "42%", rotate: 18,  video: "/videos/v4.mp4" },
-  { id: 5, x: "52%", y: "38%", rotate: -18, video: "/videos/v5.mp4" },
-  { id: 6, x: "28%", y: "60%", rotate: 10,  video: "/videos/v2.mp4" },
-  { id: 7, x: "5%",  y: "68%", rotate: -14, video: "/videos/v4.mp4" },
-  { id: 8, x: "55%", y: "65%", rotate: 16,  video: "/videos/v1.mp4" },
-];
+const ROLE_CHIPS = ["Mahasiswa", "Operator", "Dosen"];
+const LOGIN_BACKGROUND_VIDEO = "/videos/v1.mp4";
 
-function VideoModal({ src, onClose }: { src: string; onClose: () => void }) {
-  return (
-    <motion.div
-      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
-    >
-      <motion.div
-        className="relative w-full max-w-2xl mx-4 rounded-3xl overflow-hidden shadow-2xl"
-        initial={{ scale: 0.7, opacity: 0, rotateY: 20 }}
-        animate={{ scale: 1, opacity: 1, rotateY: 0 }}
-        exit={{ scale: 0.7, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 200, damping: 22 }}
-        onClick={(e) => e.stopPropagation()}
-        style={{ perspective: 1000 }}
-      >
-        <video
-          className="w-full aspect-video object-cover"
-          src={src}
-          autoPlay
-          loop
-          muted={false}
-          playsInline
-          controls
-        />
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center text-lg font-black hover:bg-black/80 transition-colors backdrop-blur-sm"
-        >
-          ✕
-        </button>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function DraggableCard({ card, constraintsRef, onOpen }: {
-  card: typeof FLOATING_CARDS[0];
-  constraintsRef: React.RefObject<HTMLDivElement | null>;
-  onOpen: (video: string) => void;
-}) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [zIndex, setZIndex] = useState(30 + card.id);
-  const dragDistance = React.useRef(0);
-
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-
-  const rawRx = useTransform(y, [-200, 200], [25, -25]);
-  const rawRy = useTransform(x, [-200, 200], [-25, 25]);
-  const rotateX = useSpring(rawRx, { stiffness: 150, damping: 20 });
-  const rotateY = useSpring(rawRy, { stiffness: 150, damping: 20 });
+function BuildingIllustration() {
+  const windowMarks = [
+    [42, 224], [62, 219], [82, 214], [42, 260], [62, 255], [82, 250], [42, 296], [62, 291], [82, 286],
+    [142, 142], [162, 148], [182, 154], [202, 160], [142, 184], [162, 190], [182, 196], [202, 202], [142, 226], [162, 232], [182, 238], [202, 244],
+    [284, 152], [306, 138], [328, 124], [350, 110], [284, 194], [306, 180], [328, 166], [350, 152], [284, 236], [306, 222], [328, 208], [350, 194],
+    [458, 110], [484, 92], [548, 92], [574, 110], [458, 154], [484, 136], [548, 136], [574, 154], [458, 198], [484, 180], [548, 180], [574, 198],
+    [668, 162], [694, 174], [720, 186], [668, 210], [694, 222], [720, 234], [668, 258], [694, 270], [720, 282]
+  ];
+  const foregroundMarks = [
+    [336, 260], [364, 246], [392, 260], [420, 274], [336, 302], [364, 288], [392, 302], [420, 316],
+    [588, 262], [616, 250], [644, 266], [588, 302], [616, 290], [644, 306]
+  ];
 
   return (
-    <motion.div
-      drag
-      dragConstraints={constraintsRef}
-      dragElastic={0.15}
-      dragTransition={{ bounceStiffness: 180, bounceDamping: 18 }}
-      onPointerDown={() => setZIndex(200)}
-      onDragStart={() => { setIsDragging(true); dragDistance.current = 0; }}
-      onDrag={(_, info) => { dragDistance.current = Math.sqrt(info.offset.x ** 2 + info.offset.y ** 2); }}
-      onDragEnd={() => { setIsDragging(false); setZIndex(30 + card.id); }}
-      whileDrag={{ scale: 1.1 }}
-      animate={{
-        rotate: isDragging ? 0 : [card.rotate, card.rotate + 3, card.rotate - 2, card.rotate],
-      }}
-      transition={{
-        rotate: { duration: 4 + card.id, repeat: Infinity, ease: "easeInOut" }
-      }}
-      className="absolute cursor-grab active:cursor-grabbing"
-      style={{ left: card.x, top: card.y, rotate: card.rotate, zIndex, x, y, perspective: 800 }}
-      onClick={() => { if (dragDistance.current < 8) onOpen(card.video); }}
-    >
-      <motion.div
-        className="w-45 h-64 rounded-2xl overflow-hidden shadow-2xl select-none"
-        style={{
-          border: "2px solid rgba(255,255,255,0.3)",
-          rotateX,
-          rotateY,
-          transformStyle: "preserve-3d",
-        }}
-        whileHover={{ scale: 1.05, boxShadow: "0 30px 60px rgba(0,0,0,0.5)" }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      >
-        <video
-          className="w-full h-full object-cover pointer-events-none"
-          src={card.video}
-          autoPlay
-          loop
-          muted
-          playsInline
-          style={{ imageRendering: "auto", WebkitBackfaceVisibility: "hidden" }}
-        />
-
-        {/* Play hint on hover */}
-        <motion.div
-          className="absolute inset-0 flex items-center justify-center rounded-2xl"
-          initial={{ opacity: 0, backgroundColor: "rgba(0,0,0,0)" }}
-          whileHover={{ opacity: 1, backgroundColor: "rgba(0,0,0,0.3)" }}
-          transition={{ duration: 0.2 }}
-        >
-          <motion.div
-            className="w-12 h-12 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center"
-            initial={{ scale: 0.8 }}
-            whileHover={{ scale: 1 }}
-          >
-            <span className="text-white text-lg ml-1">▶</span>
-          </motion.div>
-        </motion.div>
-
-        {/* Shine overlay */}
-        <motion.div
-          className="absolute inset-0 pointer-events-none rounded-2xl"
-          style={{
-            background: useTransform(
-              [rotateX, rotateY],
-              ([rx, ry]: number[]) =>
-                `radial-gradient(circle at ${50 + ry * 2}% ${50 - rx * 2}%, rgba(255,255,255,0.18) 0%, transparent 65%)`
-            ),
-          }}
-        />
-      </motion.div>
-    </motion.div>
+    <svg viewBox="0 0 760 410" className="absolute -bottom-8 -right-16 h-[78%] w-[122%] text-[#214f59]" fill="none" aria-hidden="true">
+      <path d="M6 404H752" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+      <path d="M-12 404V242L76 216L128 252V404" fill="#e7eedc" stroke="currentColor" strokeWidth="5" />
+      <path d="M76 404V174L156 136L244 166V404" fill="#f8f4e2" stroke="currentColor" strokeWidth="5" />
+      <path d="M244 404V186L336 106L430 138V404" fill="#fffdf0" stroke="currentColor" strokeWidth="5" />
+      <path d="M430 404V96L526 32L632 92V404" fill="#f8f6e7" stroke="currentColor" strokeWidth="5" />
+      <path d="M526 32V404" stroke="currentColor" strokeWidth="5" />
+      <path d="M632 404V142L748 190V404" fill="#edf2de" stroke="currentColor" strokeWidth="5" />
+      <path d="M22 404V304L116 284L194 328V404" fill="#f2f4df" stroke="currentColor" strokeWidth="5" />
+      <path d="M304 404V264L382 226L466 278V404" fill="#f7d9c9" stroke="currentColor" strokeWidth="5" />
+      <path d="M552 404V274L628 236L714 288V404" fill="#f8e2d2" stroke="currentColor" strokeWidth="5" />
+      {windowMarks.map(([x, y], index) => (
+        <path key={index} d={`M${x} ${y}L${x + 30} ${y - 11}`} stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      ))}
+      {foregroundMarks.map(([x, y], index) => (
+        <path key={`front-${index}`} d={`M${x} ${y}L${x + 34} ${y - 16}`} stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      ))}
+      <circle cx="610" cy="354" r="38" fill="#fbfff4" stroke="currentColor" strokeWidth="5" />
+      <path d="M610 404V322M586 366L610 404L636 366" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="96" cy="366" r="31" fill="#fbfff4" stroke="currentColor" strokeWidth="5" />
+      <path d="M96 404V336M76 374L96 404L120 374" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="706" cy="370" r="28" fill="#fbfff4" stroke="currentColor" strokeWidth="5" />
+      <path d="M706 404V344M688 376L706 404L728 376" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
-
-function CardPanel({ branding }: { branding: any }) {
-  const constraintsRef = React.useRef<HTMLDivElement>(null);
-  const [activeVideo, setActiveVideo] = useState<string | null>(null);
-
-  return (
-    <>
-      {activeVideo && (
-        <VideoModal src={activeVideo} onClose={() => setActiveVideo(null)} />
-      )}
-
-      <div
-        ref={constraintsRef}
-        className="hidden md:flex w-2/5 relative overflow-hidden bg-gradient-to-br from-[#0AB600] to-[#065e00] select-none"
-        style={{ perspective: 1000 }}
-      >
-        <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "radial-gradient(white 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
-        <div className="absolute inset-0 bg-black/20" />
-
-        {FLOATING_CARDS.map((card) => (
-          <DraggableCard
-            key={card.id}
-            card={card}
-            constraintsRef={constraintsRef}
-            onOpen={setActiveVideo}
-          />
-        ))}
-
-        <div className="absolute inset-0 z-[50] pointer-events-none flex flex-col justify-between p-10 text-white">
-          <div className="flex items-center gap-4">
-            {branding.logoDataUrl ? (
-              <img src={branding.logoDataUrl} alt="Logo" className="w-14 h-14 rounded-[18px] object-contain bg-white shadow-lg p-1" />
-            ) : (
-              <div className="w-14 h-14 bg-white rounded-[18px] flex items-center justify-center font-black text-2xl text-[#0AB600] shadow-lg">SR</div>
-            )}
-            <div>
-              <h1 className="text-2xl font-black tracking-tight drop-shadow">{branding.appName}</h1>
-              <p className="text-white/70 text-sm font-medium mt-0.5">{branding.universityName}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <h2 className="text-4xl font-black leading-tight drop-shadow-lg">
-              STAS-RG<br />Management<br />System
-            </h2>
-            <p className="text-white/80 text-base leading-relaxed max-w-[260px] drop-shadow">
-              Platform terpadu manajemen riset, akademik, dan kehadiran Anggota STAS-RG.
-            </p>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {["Riset", "Logbook", "Absensi GPS", "Laporan", "Multi-Role"].map((tag) => (
-                <span key={tag} className="px-3 py-1.5 bg-white/20 border border-white/30 rounded-full text-xs font-bold text-white backdrop-blur-sm">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-sm text-white/40 font-medium">© 2026 STAS-RG MS · All rights reserved.</p>
-        </div>
-      </div>
-    </>
-  );
-}
-
 export default function Login() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -266,83 +104,150 @@ export default function Login() {
   };
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden">
-      <div className="w-full h-full bg-white flex">
+    <main className="relative min-h-screen overflow-hidden bg-[#07140e] p-4 text-[#06140d] sm:p-6 lg:p-8">
+      <video
+        className="fixed inset-0 z-0 h-full w-full object-cover"
+        src={LOGIN_BACKGROUND_VIDEO}
+        autoPlay
+        loop
+        muted
+        playsInline
+        aria-hidden="true"
+      />
+      <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(115deg,rgba(7,20,14,0.88),rgba(18,61,40,0.55)_42%,rgba(7,20,14,0.76))]" />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[2] h-56 bg-[linear-gradient(to_top,rgba(255,255,255,0.12),transparent)]" />
+      <div className="pointer-events-none fixed -left-24 top-16 z-[2] h-72 w-72 rounded-full bg-[#d8ef9a]/20 blur-3xl" />
+      <div className="pointer-events-none fixed -right-28 bottom-10 z-[2] h-80 w-80 rounded-full bg-[#f4c7a1]/25 blur-3xl" />
 
-        <CardPanel branding={branding} />
-
-        <div className="flex-1 flex items-center justify-center p-8 lg:p-14 bg-white overflow-y-auto">
-          <div className="w-full max-w-[400px]">
-
-            <div className="flex flex-col items-center text-center mb-10">
+      <section className="relative z-10 mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-[1160px] items-center justify-center sm:min-h-[calc(100vh-3rem)] lg:min-h-[calc(100vh-4rem)]">
+        <div className="grid w-full overflow-hidden rounded-[30px] border border-white/20 bg-[#f8f8ed] shadow-2xl shadow-black/30 lg:grid-cols-[0.98fr_1.02fr]">
+          <section className="relative flex min-h-[660px] flex-col bg-[#ececde] px-6 py-7 sm:px-10 lg:px-12">
+            <div className="flex items-center gap-3">
               {branding.logoDataUrl ? (
-                <img src={branding.logoDataUrl} alt="Logo" className="w-14 h-14 rounded-[14px] object-contain bg-white border border-border shadow-sm mb-3 p-1" />
+                <img src={branding.logoDataUrl} alt="Logo" className="h-10 w-10 rounded-[12px] bg-white object-contain p-1 shadow-sm" />
               ) : (
-                <div className="w-14 h-14 bg-[#0AB600] rounded-[14px] flex items-center justify-center text-white font-black text-xl shadow-sm mb-3">SR</div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-[#123d28] text-sm font-black text-[#f4f1df] shadow-sm">SR</div>
               )}
-              <h1 className="font-black text-foreground text-xl">{branding.appName}</h1>
-              <p className="text-muted-foreground text-sm mt-1">Masuk ke sistem dengan akun Anda</p>
+              <div>
+                <p className="text-sm font-black tracking-tight text-[#07140e]">{branding.appName}</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#4a6757]">{branding.universityName}</p>
+              </div>
             </div>
 
-            <h2 className="text-2xl font-black text-foreground mb-1">Selamat Datang 👋</h2>
-            <p className="text-muted-foreground text-sm mb-5">Masukkan ID / NIM / Email dan password Anda.</p>
-
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div className="space-y-1.5">
-                <label className="text-sm font-black text-foreground">NIM / Email</label>
-                <input
-                  type="text"
-                  value={identifier}
-                  onChange={(e) => { setIdentifier(e.target.value); setError(""); }}
-                  placeholder="NIM atau alamat email"
-                  autoComplete="username"
-                  className="w-full h-12 px-4 rounded-[14px] border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/30 focus:border-[#0AB600] transition-all"
-                />
+            <div className="mx-auto flex w-full max-w-[350px] flex-1 flex-col justify-center py-10">
+              <div className="mb-8 text-center">
+                <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-[#d7d7c7] bg-white/60 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-[#1b5b39]">
+                  <ShieldCheck size={13} /> Secure Access
+                </div>
+                <h1 className="text-3xl font-black tracking-tight text-[#07140e]">Sign In</h1>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-[#6d6d61]">
+                  Masuk untuk mengelola riset, logbook, absensi, dan dokumen STAS-RG.
+                </p>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-black text-foreground">Password</label>
-                <div className="relative">
-                  <input
-                    type={showPw ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                    placeholder="Masukkan password"
-                    autoComplete="current-password"
-                    className="w-full h-12 px-4 pr-12 rounded-[14px] border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/30 focus:border-[#0AB600] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPw(!showPw)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+
+              <div className="mb-6 rounded-full border border-[#dbdccb] bg-[#f7f7ed] p-1">
+                <div className="grid grid-cols-3 gap-1">
+                  {ROLE_CHIPS.map((role) => (
+                    <span key={role} className="rounded-full px-2 py-2 text-center text-[11px] font-black text-[#214b33]">
+                      {role}
+                    </span>
+                  ))}
                 </div>
               </div>
 
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-[10px] text-xs font-bold text-red-600">
-                  {error}
+              <form className="space-y-4" onSubmit={handleSubmit}>
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-wide text-[#162218]">ID / NIM / Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55705d]" size={17} />
+                    <input
+                      type="text"
+                      value={identifier}
+                      onChange={(e) => { setIdentifier(e.target.value); setError(""); }}
+                      placeholder="NIM atau alamat email"
+                      autoComplete="username"
+                      className="h-12 w-full rounded-full border border-transparent bg-white pl-11 pr-4 text-sm font-bold text-[#07140e] shadow-sm outline-none transition-all placeholder:text-[#9b9b8e] focus:border-[#1c6b43] focus:ring-4 focus:ring-[#1c6b43]/10"
+                    />
+                  </div>
                 </div>
-              )}
 
-              <div className="pt-1">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-xs font-black uppercase tracking-wide text-[#162218]">Password</label>
+                    <span className="text-[11px] font-black text-[#1c6b43]">Role otomatis</span>
+                  </div>
+                  <div className="relative">
+                    <LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55705d]" size={17} />
+                    <input
+                      type={showPw ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                      placeholder="Masukkan password"
+                      autoComplete="current-password"
+                      className="h-12 w-full rounded-full border border-transparent bg-white pl-11 pr-12 text-sm font-bold text-[#07140e] shadow-sm outline-none transition-all placeholder:text-[#9b9b8e] focus:border-[#1c6b43] focus:ring-4 focus:ring-[#1c6b43]/10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(!showPw)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#55705d] transition-colors hover:text-[#07140e]"
+                      aria-label={showPw ? "Sembunyikan password" : "Tampilkan password"}
+                    >
+                      {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="rounded-[16px] border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold leading-relaxed text-red-600">
+                    {error}
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full h-12 bg-[#0AB600] hover:bg-[#099800] text-white font-black rounded-[14px] transition-all shadow-sm shadow-[#0AB600]/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#17623d] px-5 text-sm font-black text-[#fffdf1] shadow-lg shadow-[#17623d]/20 transition-all hover:-translate-y-0.5 hover:bg-[#0f4d2e] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {submitting ? "Memproses..." : "Masuk Sekarang"}
+                  {!submitting && <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />}
                 </button>
-              </div>
-            </form>
+              </form>
 
-            <p className="text-center text-xs text-muted-foreground mt-6">
-              Role ditentukan otomatis berdasarkan akun Anda.
-            </p>
-          </div>
+              <p className="mt-6 text-center text-xs font-semibold leading-relaxed text-[#777765]">
+                Akun dan role ditentukan oleh data yang sudah dibuat admin/operator.
+              </p>
+            </div>
+          </section>
+
+          <aside className="relative hidden min-h-[660px] overflow-hidden bg-[#fffdf1] lg:block">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(247,160,72,0.16),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.75),rgba(255,253,241,0.9))]" />
+            <div className="relative z-10 flex h-full flex-col justify-between p-12">
+              <div className="max-w-[420px] pt-8">
+                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#ff8a25]/10 text-[#ff7a00]">
+                  <Sparkles size={24} />
+                </div>
+                <blockquote className="text-[26px] font-black leading-tight tracking-tight text-[#07140e]">
+                  Ikuti Sistem Atau sistem yang buat anda hancur.
+                </blockquote>
+                <div className="mt-8 flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#123d28] text-sm font-black text-[#fffdf1]">RG</div>
+                  <div>
+                    <p className="text-sm font-black text-[#07140e]">CoE STAS-RG</p>
+                    <p className="text-xs font-bold text-[#6d6d61]">Research Management Platform</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative h-[430px]">
+                <BuildingIllustration />
+              </div>
+            </div>
+          </aside>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
+
+
+
