@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+﻿import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   LayoutDashboard,
@@ -57,6 +57,7 @@ function getAccessLockReasonLabel(reason?: string | null) {
   if (reason === "ATTENDANCE_ABSENT") return "Tidak Hadir";
   if (reason === "RISET_WEEKLY_HOURS_UNDER_TARGET") return "Jam Kerja Riset Mingguan Tidak Terpenuhi";
   if (reason === "PICKET_SUBMISSION_INVALID") return "Piket Tidak Sesuai";
+  if (reason === "PICKET_SUBMISSION_MISSING") return "Belum Melakukan Piket";
   return reason || "-";
 }
 
@@ -770,3 +771,5 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     </div>
   );
 }
+
+

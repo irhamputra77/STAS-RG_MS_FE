@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import {
@@ -222,6 +222,7 @@ const ACCESS_LOCK_REASON_LABELS: Record<string, string> = {
   CHECKOUT_MISSING_22: "Belum Checkout Sampai 22.00 WIB",
   RISET_WEEKLY_HOURS_UNDER_TARGET: "Jam Kerja Riset Mingguan Tidak Terpenuhi",
   PICKET_SUBMISSION_INVALID: "Piket Tidak Sesuai",
+  PICKET_SUBMISSION_MISSING: "Belum Melakukan Piket",
 };
 
 const ACCESS_LOCK_REASON_MESSAGES: Record<string, string> = {
@@ -230,6 +231,7 @@ const ACCESS_LOCK_REASON_MESSAGES: Record<string, string> = {
   CHECKOUT_MISSING_22: "Mahasiswa Magang belum checkout sampai pukul 22.00 WIB.",
   RISET_WEEKLY_HOURS_UNDER_TARGET: "Akses dikunci karena jam kerja Riset mingguan belum memenuhi target.",
   PICKET_SUBMISSION_INVALID: "Anda telah melakukan kegiatan piket yang tidak sesuai dengan tugas anda, mohon hubungi admin untuk melepas block.",
+  PICKET_SUBMISSION_MISSING: "Belum melakukan piket atau belum mengirim bukti piket dari jadwal sebelumnya.",
 };
 
 function getLockReasonLabel(reason?: string | null, reasonLabel?: string | null) {
@@ -1198,7 +1200,7 @@ export default function OperatorDashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground leading-snug break-words">{lock.studentName}</p>
-                        <p className="text-[10px] text-muted-foreground">{lock.nim} · {getStudentTypeLabel(lock.studentId, lock.studentType)}</p>
+                        <p className="text-[10px] text-muted-foreground">{lock.nim} Â· {getStudentTypeLabel(lock.studentId, lock.studentType)}</p>
                         <div className="mt-1.5 rounded-[9px] border border-rose-100 bg-rose-50 px-2.5 py-2">
                           <p className="text-[9px] font-black uppercase tracking-wide text-rose-500">Alasan Ditangguhkan</p>
                           <p className="text-[10px] font-black text-rose-700 mt-0.5">{getLockReasonLabel(lock.reason, lock.reasonLabel)}</p>
@@ -1460,3 +1462,5 @@ export default function OperatorDashboard() {
     </OperatorLayout>
   );
 }
+
+
