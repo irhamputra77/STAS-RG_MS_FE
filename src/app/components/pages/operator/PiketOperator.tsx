@@ -620,15 +620,6 @@ export default function PiketOperator() {
             <h1 className="text-2xl font-black text-foreground">Piket Harian</h1>
             <p className="mt-1 text-sm font-medium text-muted-foreground">Atur random picker, tugas, penanggung jawab, dan review bukti foto piket.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none" />
-            <button onClick={() => void loadData()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-border bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              {loading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Muat Ulang
-            </button>
-            <button onClick={resyncSchedule} disabled={saving || loading} className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-60">
-              {saving ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Resync Jadwal Piket
-            </button>
-          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -900,39 +891,39 @@ export default function PiketOperator() {
                   )}
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.4fr)_140px_minmax(160px,1fr)_minmax(144px,auto)]">
+                <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-6">
                   <select
                     value={scheduleForm.studentId}
                     onChange={(event) => setScheduleForm((prev) => ({ ...prev, studentId: event.target.value }))}
-                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                    className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none lg:col-span-2"
                   >
                     <option value="">Pilih mahasiswa</option>
                     {students.map((student) => (
                       <option key={student.id} value={student.id}>{student.name} {student.nim ? `- ${student.nim}` : ""}</option>
                     ))}
                   </select>
-                  <div className="flex min-w-0 flex-col gap-2">
+                  <div className="flex min-w-0 flex-col gap-2 lg:col-span-4">
                     <div className="grid grid-cols-2 gap-2 rounded-[10px] border border-border bg-slate-50 p-1">
                       <button
                         type="button"
                         onClick={() => setScheduleTaskMode("existing")}
-                        className={`h-8 rounded-[8px] text-xs font-black ${scheduleTaskMode === "existing" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}
+                        className={`h-8 min-w-0 rounded-[8px] px-2 text-xs font-black ${scheduleTaskMode === "existing" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}
                       >
-                        Pilih Tugas
+                        <span className="block truncate">Pilih Tugas</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setScheduleTaskMode("manual")}
-                        className={`h-8 rounded-[8px] text-xs font-black ${scheduleTaskMode === "manual" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}
+                        className={`h-8 min-w-0 rounded-[8px] px-2 text-xs font-black ${scheduleTaskMode === "manual" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}
                       >
-                        Tugas Manual
+                        <span className="block truncate">Tugas Manual</span>
                       </button>
                     </div>
                     {scheduleTaskMode === "existing" ? (
                       <select
                         value={scheduleForm.taskId}
                         onChange={(event) => setScheduleForm((prev) => ({ ...prev, taskId: event.target.value }))}
-                        className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                        className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
                       >
                         <option value="">Pilih tugas</option>
                         {tasks.map((task) => (
@@ -945,13 +936,13 @@ export default function PiketOperator() {
                           value={manualScheduleTaskName}
                           onChange={(event) => setManualScheduleTaskName(event.target.value)}
                           placeholder="Tulis tugas piket manual"
-                          className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                          className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
                         />
                         <input
                           value={manualScheduleTaskDescription}
                           onChange={(event) => setManualScheduleTaskDescription(event.target.value)}
                           placeholder="Deskripsi tugas opsional"
-                          className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                          className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
                         />
                       </div>
                     )}
@@ -959,7 +950,7 @@ export default function PiketOperator() {
                   <select
                     value={scheduleForm.status}
                     onChange={(event) => setScheduleForm((prev) => ({ ...prev, status: event.target.value }))}
-                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                    className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none lg:col-span-2"
                   >
                     <option value="Ditugaskan">Ditugaskan</option>
                     <option value="Menunggu">Menunggu</option>
@@ -970,12 +961,12 @@ export default function PiketOperator() {
                     value={scheduleForm.notes}
                     onChange={(event) => setScheduleForm((prev) => ({ ...prev, notes: event.target.value }))}
                     placeholder="Catatan opsional"
-                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
+                    className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none lg:col-span-3"
                   />
                   <button
                     onClick={saveDailySchedule}
                     disabled={saving || !scheduleForm.studentId || (scheduleTaskMode === "manual" ? !manualScheduleTaskName.trim() : !scheduleForm.taskId)}
-                    className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[10px] bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60 md:col-span-2 2xl:col-span-1"
+                    className="inline-flex h-10 min-w-0 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[10px] bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60 md:col-span-2 lg:col-span-1"
                   >
                     {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                     {editingScheduleId ? "Update" : "Tambah"}
