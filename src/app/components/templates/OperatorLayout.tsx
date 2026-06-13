@@ -209,7 +209,7 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
   };
 
   return (
-    <div className="h-screen w-screen bg-slate-50 overflow-hidden flex">
+    <div className="cartoon-ui h-screen w-screen bg-slate-50 overflow-hidden flex">
       <div className="w-full flex h-screen overflow-hidden bg-slate-50 relative">
         <aside className="hidden lg:flex w-[248px] bg-white border-r border-border flex-col shrink-0 z-20">
           <SidebarContent

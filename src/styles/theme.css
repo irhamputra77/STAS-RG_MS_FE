@@ -277,6 +277,36 @@
     box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 16%, transparent), inset 0 -3px 0 color-mix(in srgb, var(--primary) 10%, transparent) !important;
   }
 
+  .cartoon-ui input.border-none,
+  .cartoon-ui input[class*="border-none"],
+  .cartoon-ui input[class*="bg-transparent"],
+  .cartoon-ui textarea.border-none,
+  .cartoon-ui textarea[class*="border-none"],
+  .cartoon-ui textarea[class*="bg-transparent"],
+  .cartoon-ui select.border-none,
+  .cartoon-ui select[class*="border-none"],
+  .cartoon-ui select[class*="bg-transparent"] {
+    background: transparent !important;
+    border-color: transparent !important;
+    border-width: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .cartoon-ui input.border-none:focus,
+  .cartoon-ui input[class*="border-none"]:focus,
+  .cartoon-ui input[class*="bg-transparent"]:focus,
+  .cartoon-ui textarea.border-none:focus,
+  .cartoon-ui textarea[class*="border-none"]:focus,
+  .cartoon-ui textarea[class*="bg-transparent"]:focus,
+  .cartoon-ui select.border-none:focus,
+  .cartoon-ui select[class*="border-none"]:focus,
+  .cartoon-ui select[class*="bg-transparent"]:focus {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
   .cartoon-ui .bg-white[class*="border"],
   .cartoon-ui .bg-card[class*="border"],
   .cartoon-ui [class*="bg-white"][class*="shadow"],
@@ -317,4 +347,19 @@
     border: 2px solid var(--background);
     background-color: color-mix(in srgb, var(--primary) 42%, #D1D1D6);
   }
+}
+/* Hide visual scrollbars while keeping scroll interaction available. */
+.cartoon-ui,
+.cartoon-ui *,
+.custom-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.cartoon-ui::-webkit-scrollbar,
+.cartoon-ui *::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
