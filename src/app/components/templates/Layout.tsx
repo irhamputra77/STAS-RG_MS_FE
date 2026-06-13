@@ -490,7 +490,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   };
 
   return (
-    <div className="h-screen w-screen bg-background text-foreground overflow-hidden flex">
+    <div className="cartoon-ui h-screen w-screen bg-background text-foreground overflow-hidden flex">
       <div className="w-full flex h-screen overflow-hidden bg-background relative">
         <aside className="hidden lg:flex w-[248px] bg-white border-r border-border flex-col shrink-0 z-20">
           <div className="h-[60px] flex items-center px-6 border-b border-border">
