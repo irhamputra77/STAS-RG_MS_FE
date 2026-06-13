@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../../context/AuthContext";
@@ -13,7 +13,11 @@ const ROLE_DESTINATION: Record<UserRole, string> = {
 };
 
 const ROLE_CHIPS = ["Mahasiswa", "Operator", "Dosen"];
-const LOGIN_BACKGROUND_VIDEO = "/videos/v1.mp4";
+const LOGIN_BACKGROUND_VIDEOS = ["/videos/v1.mp4", "/videos/v2.mp4", "/videos/v3.mp4", "/videos/v4.mp4", "/videos/v5.mp4"];
+
+function getRandomLoginVideoIndex() {
+  return Math.floor(Math.random() * LOGIN_BACKGROUND_VIDEOS.length);
+}
 
 function BuildingIllustration() {
   const windowMarks = [
@@ -61,6 +65,7 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [videoIndex, setVideoIndex] = useState(getRandomLoginVideoIndex);
   const { login } = useAuth();
   const navigate = useNavigate();
   const branding = useSystemBranding();
@@ -107,11 +112,13 @@ export default function Login() {
     <main className="relative min-h-screen overflow-hidden bg-[#07140e] p-4 text-[#06140d] sm:p-6 lg:p-8">
       <video
         className="fixed inset-0 z-0 h-full w-full object-cover"
-        src={LOGIN_BACKGROUND_VIDEO}
+        key={LOGIN_BACKGROUND_VIDEOS[videoIndex]}
+        src={LOGIN_BACKGROUND_VIDEOS[videoIndex]}
         autoPlay
         loop
         muted
         playsInline
+        onError={() => setVideoIndex((current) => (current + 1) % LOGIN_BACKGROUND_VIDEOS.length)}
         aria-hidden="true"
       />
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(115deg,rgba(7,20,14,0.88),rgba(18,61,40,0.55)_42%,rgba(7,20,14,0.76))]" />
