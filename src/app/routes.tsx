@@ -13,6 +13,7 @@ import DraftReport from "./components/pages/mahasiswa/DraftReport";
 import MyResearch from "./components/pages/mahasiswa/MyResearch";
 import ScrumBoard from "./components/pages/mahasiswa/ScrumBoard";
 import Piket from "./components/pages/mahasiswa/Piket";
+import PicketHistory from "./components/pages/mahasiswa/PicketHistory";
 import GraduationSubmission from "./components/pages/mahasiswa/GraduationSubmission";
 import Settings from "./components/pages/Settings";
 import OperatorDashboard from "./components/pages/operator/OperatorDashboard";
@@ -114,7 +115,9 @@ export const router = createBrowserRouter([
                   { path: "draft", element: <DraftReport /> },
                   { path: "research", element: <MyResearch /> },
                   { path: "picket", element: <Piket /> },
+                  { path: "picket/history", element: <PicketHistory /> },
                   { path: "picket/manage", element: <PiketOperator /> },
+                  { path: "picket/manage/history", element: <PicketHistory management /> },
                   { path: "scrum-board", element: <Navigate to="/research" replace /> },
                   { path: "scrum-board/:researchId", element: <ScrumBoard /> },
                   { path: "board", element: <Navigate to="/research" replace /> },
@@ -137,6 +140,7 @@ export const router = createBrowserRouter([
               { path: "logbook", element: <LogbookMonitor /> },
               { path: "kehadiran", element: <KehadiranMahasiswa /> },
               { path: "piket", element: <PiketOperator /> },
+              { path: "piket/history", element: <PicketHistory management /> },
               { path: "cuti", element: <PersetujuanCuti /> },
               { path: "pengunduran", element: <PengunduranDiriOperator /> },
               { path: "surat", element: <LayananSurat /> },

@@ -1,5 +1,5 @@
 import React from "react";
-import { CalendarOff, CheckCircle2, ClipboardCheck, ImagePlus, Loader2, Send, UploadCloud, UserCog } from "lucide-react";
+import { CalendarOff, CheckCircle2, ClipboardCheck, History, ImagePlus, Loader2, Send, UploadCloud, UserCog } from "lucide-react";
 import { Link } from "react-router";
 import { Layout } from "../../templates/Layout";
 import { apiGet, apiPost, getStoredUser } from "../../../lib/api";
@@ -203,11 +203,16 @@ export default function Piket() {
             <h1 className="text-2xl font-black text-foreground">Piket Saya</h1>
             <p className="mt-1 text-sm font-medium text-muted-foreground">Lihat jadwal, riwayat, dan ajukan izin jika tidak bisa piket.</p>
           </div>
-          {isManager && (
-            <Link to="/picket/manage" className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800">
-              <UserCog size={16} /> Kelola Piket
+          <div className="flex flex-wrap gap-2">
+            <Link to="/picket/history" className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50">
+              <History size={16} /> Riwayat Submit
             </Link>
-          )}
+            {isManager && (
+              <Link to="/picket/manage" className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800">
+                <UserCog size={16} /> Kelola Piket
+              </Link>
+            )}
+          </div>
         </div>
 
         {loading ? (

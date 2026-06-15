@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   ClipboardCheck,
+  History,
   Loader2,
   Plus,
   RefreshCw,
@@ -13,6 +14,7 @@ import {
   UserCog,
   X,
 } from "lucide-react";
+import { Link } from "react-router";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Layout } from "../../templates/Layout";
 import { apiDelete, apiGet, apiPatch, apiPost, getStoredUser } from "../../../lib/api";
@@ -628,6 +630,12 @@ export default function PiketOperator() {
             <h1 className="text-2xl font-black text-foreground">Piket Harian</h1>
             <p className="mt-1 text-sm font-medium text-muted-foreground">Atur random picker, tugas, penanggung jawab, dan review bukti foto piket.</p>
           </div>
+          <Link
+            to={isStudentPicShell ? "/picket/manage/history" : "/operator/piket/history"}
+            className="inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[10px] border border-border bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"
+          >
+            <History size={16} /> Riwayat Submit
+          </Link>
         </div>
 
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">

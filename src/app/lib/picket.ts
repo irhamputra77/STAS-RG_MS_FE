@@ -40,6 +40,9 @@ export type PicketAssignment = {
   submissionId?: string | null;
   photoUrl?: string | null;
   submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  reviewNote?: string | null;
 };
 
 export type PicketSubmission = {
@@ -271,6 +274,9 @@ export function mapPicketAssignment(row: any): PicketAssignment {
     submissionId: row?.submission_id || row?.submissionId || null,
     photoUrl: resolveApiAssetUrl(row?.photo_url || row?.photoUrl || row?.submission_photo_url || row?.submissionPhotoUrl || null),
     submittedAt: row?.submitted_at || row?.submittedAt || null,
+    reviewedAt: row?.reviewed_at || row?.reviewedAt || row?.submission?.reviewed_at || row?.submission?.reviewedAt || null,
+    reviewedBy: row?.reviewed_by || row?.reviewedBy || row?.submission?.reviewed_by || row?.submission?.reviewedBy || null,
+    reviewNote: row?.review_note || row?.reviewNote || row?.submission?.review_note || row?.submission?.reviewNote || null,
   };
 }
 

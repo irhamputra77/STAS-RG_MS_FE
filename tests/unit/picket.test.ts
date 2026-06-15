@@ -61,11 +61,31 @@ test("mapPicketAssignment normalizes assignment and submission aliases", () => {
     submissionId: "S1",
     photoUrl: null,
     submittedAt: null,
+    reviewedAt: null,
+    reviewedBy: null,
+    reviewNote: null,
   });
 });
 
 test("mapPicketLeaveRequest reads Indonesian aliases", () => {
   assert.equal(mapPicketLeaveRequest({ tanggal: "2026-05-24", alasan: "Sakit" }).reason, "Sakit");
+});
+
+test("mapPicketAssignment reads submission review fields", () => {
+  const item = mapPicketAssignment({
+    schedule_id: "SCH2",
+    student_id: "M2",
+    task_name: "Rapikan lab",
+    submission_id: "SUB2",
+    submission_status: "Valid",
+    reviewed_at: "2026-06-15T08:21:44.488Z",
+    reviewed_by: "OP1",
+    review_note: "Foto sudah sesuai",
+  });
+
+  assert.equal(item.reviewedAt, "2026-06-15T08:21:44.488Z");
+  assert.equal(item.reviewedBy, "OP1");
+  assert.equal(item.reviewNote, "Foto sudah sesuai");
 });
 
 test("mapPicketSubmissionResult reads nested submission response", () => {
