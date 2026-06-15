@@ -6,6 +6,7 @@ import { apiGet, apiPost, getStoredUser } from "../../../lib/api";
 import {
   PicketAssignment,
   PicketLeaveRequest,
+  ensurePicketPhotoPreviewable,
   fileToDataUrl,
   getJakartaDateKey,
   mapPicketAssignment,
@@ -90,11 +91,17 @@ export default function Piket() {
     };
   }, [photoPreview]);
 
-  const pickPhoto = (file?: File | null) => {
+  const pickPhoto = async (file?: File | null) => {
     if (!file) return;
     const validation = validatePicketPhoto(file);
     if (validation) {
       setError(validation);
+      return;
+    }
+    try {
+      await ensurePicketPhotoPreviewable(file);
+    } catch (err: any) {
+      setError(err?.message || "Foto tidak dapat dibuka. Pastikan file benar-benar JPG, PNG, atau WEBP.");
       return;
     }
     if (photoPreview) URL.revokeObjectURL(photoPreview);
@@ -260,7 +267,10 @@ export default function Piket() {
                           accept="image/jpeg,image/png,image/webp"
                           className="hidden"
                           disabled={String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
-                          onChange={(event) => pickPhoto(event.target.files?.[0] || null)}
+                          onChange={(event) => {
+                            void pickPhoto(event.target.files?.[0] || null);
+                            event.currentTarget.value = "";
+                          }}
                         />
                       </label>
                     )}
@@ -281,7 +291,10 @@ export default function Piket() {
                             accept="image/jpeg,image/png,image/webp"
                             className="hidden"
                             disabled={String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
-                            onChange={(event) => pickPhoto(event.target.files?.[0] || null)}
+                            onChange={(event) => {
+                              void pickPhoto(event.target.files?.[0] || null);
+                              event.currentTarget.value = "";
+                            }}
                           />
                         </label>
                       )}

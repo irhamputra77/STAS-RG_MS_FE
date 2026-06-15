@@ -89,6 +89,16 @@ test("validatePicketPhoto rejects oversized images", () => {
   assert.match(validatePicketPhoto(file) || "", /maksimal 5 MB/);
 });
 
+test("validatePicketPhoto accepts extension fallback when mime type is empty", () => {
+  const file = { name: "bukti-piket.JPG", type: "", size: 128 } as File;
+  assert.equal(validatePicketPhoto(file), null);
+});
+
+test("validatePicketPhoto rejects unsupported image formats", () => {
+  const file = { name: "bukti-piket.heic", type: "image/heic", size: 128 } as File;
+  assert.match(validatePicketPhoto(file) || "", /JPG, PNG, atau WEBP/);
+});
+
 test("getNextWeeklyReshuffleDate returns next Monday when date is Sunday", () => {
   assert.equal(getNextWeeklyReshuffleDate("2026-06-07"), "2026-06-08");
   assert.equal(getNextWeeklyReshuffleDate("2026-06-08"), "2026-06-08");

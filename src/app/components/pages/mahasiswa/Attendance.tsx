@@ -7,6 +7,7 @@ import { ApiError, apiGet, apiPost, getStoredUser } from "../../../lib/api";
 import { HolidayItem, findHolidayForDate, normalizeHolidays } from "../../../lib/holidays";
 import {
   PicketAssignment,
+  ensurePicketPhotoPreviewable,
   fileToDataUrl,
   mapPicketAssignment,
   mapPicketSubmissionResult,
@@ -527,11 +528,17 @@ export default function Attendance() {
     navigate(`/logbook/new?date=${encodeURIComponent(todayKey)}&fromCheckout=1`);
   };
 
-  const pickPicketPhoto = (file?: File | null) => {
+  const pickPicketPhoto = async (file?: File | null) => {
     if (!file) return;
     const validation = validatePicketPhoto(file);
     if (validation) {
       setError(validation);
+      return;
+    }
+    try {
+      await ensurePicketPhotoPreviewable(file);
+    } catch (err: any) {
+      setError(err?.message || "Foto tidak dapat dibuka. Pastikan file benar-benar JPG, PNG, atau WEBP.");
       return;
     }
     if (picketPhotoPreview) URL.revokeObjectURL(picketPhotoPreview);
@@ -862,8 +869,8 @@ export default function Attendance() {
                   accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                   onChange={(event) => {
-                    pickPicketPhoto(event.target.files?.[0] || null);
-                    event.target.value = "";
+                    void pickPicketPhoto(event.target.files?.[0] || null);
+                    event.currentTarget.value = "";
                   }}
                 />
               </label>

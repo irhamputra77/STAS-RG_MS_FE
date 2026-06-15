@@ -2,6 +2,13 @@ import { resolveApiAssetUrl } from "./api";
 
 export const PICKET_BLOCK_REASON = "PICKET_SUBMISSION_INVALID";
 export const MAX_PICKET_PHOTO_BYTES = 5 * 1024 * 1024;
+const PICKET_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const PICKET_PHOTO_EXTENSION_TYPES: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
 
 export type PicketTask = {
   id: string;
@@ -88,10 +95,12 @@ function bool(value: unknown, fallback = false) {
 }
 
 export function validatePicketPhoto(file: File) {
-  const allowed = ["image/jpeg", "image/png", "image/webp"];
-  if (file.type && !allowed.includes(file.type)) {
+  const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
+  const inferredType = PICKET_PHOTO_EXTENSION_TYPES[extension] || "";
+  if (file.type && !PICKET_PHOTO_TYPES.includes(file.type)) {
     return "Foto piket harus berformat JPG, PNG, atau WEBP.";
   }
+  if (!file.type && !inferredType) return "Foto piket harus berformat JPG, PNG, atau WEBP.";
   if (file.size > MAX_PICKET_PHOTO_BYTES) {
     return "Ukuran foto piket maksimal 5 MB.";
   }
@@ -171,10 +180,57 @@ export function getManualPicketTaskPayload(input: ManualPicketTaskInput) {
 
 export function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
+    const fallbackToArrayBuffer = async () => {
+      try {
+        resolve(await fileToDataUrlFromArrayBuffer(file));
+      } catch {
+        reject(new Error("Gagal membaca foto piket. Coba pilih ulang foto dengan format JPG, PNG, atau WEBP."));
+      }
+    };
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Gagal membaca foto piket."));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      if (result.startsWith("data:")) resolve(result);
+      else void fallbackToArrayBuffer();
+    };
+    reader.onerror = () => void fallbackToArrayBuffer();
     reader.readAsDataURL(file);
+  });
+}
+
+async function fileToDataUrlFromArrayBuffer(file: File) {
+  if (typeof file.arrayBuffer !== "function" || typeof btoa !== "function") {
+    throw new Error("File reader unavailable");
+  }
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
+  const mime = file.type || PICKET_PHOTO_EXTENSION_TYPES[extension] || "image/jpeg";
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
+export function ensurePicketPhotoPreviewable(file: File) {
+  return new Promise<void>((resolve, reject) => {
+    if (typeof URL === "undefined" || typeof Image === "undefined") {
+      resolve();
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(previewUrl);
+      resolve();
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(previewUrl);
+      reject(new Error("Foto tidak dapat dibuka. Pastikan file benar-benar JPG, PNG, atau WEBP."));
+    };
+    image.src = previewUrl;
   });
 }
 

@@ -546,15 +546,23 @@ export default function PiketOperator() {
 
   const reviewSubmission = async (submission: PicketSubmission, status: "Valid" | "Bermasalah") => {
     try {
+      setSaving(true);
+      setError("");
       await apiPatch(`/picket/submissions/${encodeURIComponent(submission.id)}/review`, {
         status,
         reviewNote: null,
         reviewedBy: user?.id,
       });
       setSubmissions((prev) => prev.map((item) => item.id === submission.id ? { ...item, status } : item));
+      await loadData();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("stas:access-lock-refresh"));
+      }
       setInfo(status === "Valid" ? "Foto piket ditandai valid." : "Foto piket ditandai bermasalah.");
     } catch (err: any) {
       setError(err?.message || "Gagal review foto piket.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1036,9 +1044,9 @@ export default function PiketOperator() {
                         <div className="flex h-48 items-center justify-center rounded-[12px] border border-dashed border-border bg-slate-50 text-sm font-semibold text-muted-foreground">Foto tidak tersedia</div>
                       )}
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <button onClick={() => reviewSubmission(item, "Valid")} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-emerald-500 px-3 text-xs font-black text-white"><Check size={14} /> Valid</button>
-                        <button onClick={() => reviewSubmission(item, "Bermasalah")} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-amber-500 px-3 text-xs font-black text-white"><AlertTriangle size={14} /> Tidak Sesuai</button>
-                        <button onClick={() => markProblemAndBlock(item)} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-red-600 px-3 text-xs font-black text-white"><X size={14} /> Bermasalah & Block</button>
+                        <button disabled={saving} onClick={() => reviewSubmission(item, "Valid")} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-emerald-500 px-3 text-xs font-black text-white disabled:opacity-60"><Check size={14} /> Valid</button>
+                        <button disabled={saving} onClick={() => reviewSubmission(item, "Bermasalah")} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-amber-500 px-3 text-xs font-black text-white disabled:opacity-60"><AlertTriangle size={14} /> Tidak Sesuai</button>
+                        <button disabled={saving} onClick={() => markProblemAndBlock(item)} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-red-600 px-3 text-xs font-black text-white disabled:opacity-60"><X size={14} /> Bermasalah & Block</button>
                       </div>
                     </div>
                   ))}
