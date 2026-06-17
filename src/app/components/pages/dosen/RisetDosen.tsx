@@ -1,9 +1,41 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { DosenLayout } from "../../templates/DosenLayout";
-import { Pencil, Users, Target, X, Kanban, FileText, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Pencil, Users, Target, X, Kanban, FileText, MessageSquare, Plus, Trash2, ExternalLink } from "lucide-react";
 import { apiGet, apiPost, apiDelete, getStoredUser } from "../../../lib/api";
 import { getResearchRoleOptions, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
+
+function getResearchField(row: any, camelKey: string, snakeKey: string) {
+  return String(row?.[camelKey] || row?.[snakeKey] || "");
+}
+
+function formatResearchDate(value?: string) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatResearchPeriod(start?: string, end?: string) {
+  if (!start && !end) return "-";
+  return `${formatResearchDate(start)} - ${formatResearchDate(end)}`;
+}
+
+function ResearchDocumentLink({ label, url }: { label: string; url?: string }) {
+  return (
+    <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-border rounded-[10px]">
+      <FileText size={13} className="text-indigo-600 shrink-0" />
+      <span className="text-xs font-bold text-foreground flex-1 truncate">{label}</span>
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:text-indigo-700">
+          <ExternalLink size={13} />
+        </a>
+      ) : (
+        <span className="text-[10px] font-bold text-muted-foreground shrink-0">-</span>
+      )}
+    </div>
+  );
+}
 
 export default function RisetDosen() {
   const user = getStoredUser();
@@ -49,6 +81,13 @@ export default function RisetDosen() {
           category: item.category || "-",
           description: item.description || "-",
           funding: item.funding || "-",
+          researchType: getResearchField(item, "researchType", "research_type"),
+          agreementType: getResearchField(item, "agreementType", "agreement_type"),
+          agreementStartDate: getResearchField(item, "agreementStartDate", "agreement_start_date"),
+          agreementEndDate: getResearchField(item, "agreementEndDate", "agreement_end_date"),
+          agreementFileUrl: getResearchField(item, "agreementFileUrl", "agreement_file_url"),
+          proposalFileUrl: getResearchField(item, "proposalFileUrl", "proposal_file_url"),
+          rabFileUrl: getResearchField(item, "rabFileUrl", "rab_file_url"),
           milestones: [] as { label: string; done: boolean; date: string }[]
         }));
 
@@ -180,6 +219,21 @@ export default function RisetDosen() {
                     ))}
                   </div>
 
+                  {/* Research documents summary */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5 pb-5 border-b border-border">
+                    {[
+                      ["Jenis Riset", r.researchType || "-"],
+                      ["Jenis Dokumen", r.agreementType || "-"],
+                      ["Periode Dokumen", formatResearchPeriod(r.agreementStartDate, r.agreementEndDate)],
+                      ["File Riset", [r.agreementFileUrl, r.proposalFileUrl, r.rabFileUrl].filter(Boolean).length ? `${[r.agreementFileUrl, r.proposalFileUrl, r.rabFileUrl].filter(Boolean).length}/3 link` : "-"]
+                    ].map(([l, v]) => (
+                      <div key={l} className="bg-indigo-50/50 border border-indigo-100 rounded-[10px] p-3">
+                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-wide mb-0.5">{l}</p>
+                        <p className="text-xs font-black text-foreground">{v}</p>
+                      </div>
+                    ))}
+                  </div>
+
                   {/* Progress bar */}
                   <div className="mb-5">
                     <div className="flex items-center justify-between mb-1.5">
@@ -269,14 +323,24 @@ export default function RisetDosen() {
               )}
               {panelTab === "dokumen" && (
                 <div className="flex flex-col gap-2">
-                  <p className="text-xs font-black text-muted-foreground mb-1">Dokumen Terlampir</p>
-                  {["Proposal Penelitian v2.pdf", "Laporan Kemajuan Q1.pdf", "Data Sensor Export.xlsx"].map(d => (
-                    <div key={d} className="flex items-center gap-2 p-2.5 bg-slate-50 border border-border rounded-[10px]">
-                      <FileText size={13} className="text-indigo-600 shrink-0" />
-                      <span className="text-xs font-bold text-foreground flex-1 truncate">{d}</span>
+                  <p className="text-xs font-black text-muted-foreground mb-1">Dokumen Riset</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-[10px]">
+                      <p className="text-[10px] font-black text-indigo-500 uppercase tracking-wide">Jenis Riset</p>
+                      <p className="mt-0.5 text-xs font-black text-foreground">{selected.researchType || "-"}</p>
                     </div>
-                  ))}
-                  <button className="mt-2 h-9 border-2 border-dashed border-indigo-200 rounded-[10px] text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center justify-center gap-1"><Plus size={12} /> Upload Dokumen</button>
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-[10px]">
+                      <p className="text-[10px] font-black text-indigo-500 uppercase tracking-wide">Jenis Dokumen</p>
+                      <p className="mt-0.5 text-xs font-black text-foreground">{selected.agreementType || "-"}</p>
+                    </div>
+                  </div>
+                  <div className="p-2.5 bg-slate-50 border border-border rounded-[10px]">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide">Periode Dokumen</p>
+                    <p className="mt-0.5 text-xs font-black text-foreground">{formatResearchPeriod(selected.agreementStartDate, selected.agreementEndDate)}</p>
+                  </div>
+                  <ResearchDocumentLink label="File PKS/MoU/MoA" url={selected.agreementFileUrl} />
+                  <ResearchDocumentLink label="Proposal" url={selected.proposalFileUrl} />
+                  <ResearchDocumentLink label="RAB" url={selected.rabFileUrl} />
                 </div>
               )}
               {panelTab === "catatan" && (
