@@ -3,12 +3,14 @@ import { useNavigate } from "react-router";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../../lib/api";
-import { Search, Plus, X, Target, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ChevronRight } from "lucide-react";
+import { Search, Plus, X, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ExternalLink } from "lucide-react";
 import { getResearchRoleOptions, MAHASISWA_LEADER_ROLE, MAHASISWA_RESEARCH_ROLES, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
 
 const STEP_LABELS = ["Info Dasar", "Tim", "Periode & Mitra", "Milestone"];
 const PERAN_OPTIONS = MAHASISWA_RESEARCH_ROLES;
 const PERAN_DOSEN = ["Ketua Riset", "Pembimbing", "Co-Investigator", "Anggota Dosen"];
+const RESEARCH_TYPE_OPTIONS = ["Internal", "Eksternal"];
+const AGREEMENT_TYPE_OPTIONS = ["PKS", "MoU", "MoA"];
 
 interface ResearchProject {
   id: string;
@@ -23,10 +25,25 @@ interface ResearchProject {
   category?: string;
   description?: string;
   funding?: string;
+  researchType?: string;
+  research_type?: string;
+  agreementType?: string;
+  agreement_type?: string;
+  agreementStartDate?: string;
+  agreement_start_date?: string;
+  agreementEndDate?: string;
+  agreement_end_date?: string;
+  agreementFileUrl?: string;
+  agreement_file_url?: string;
+  proposalFileUrl?: string;
+  proposal_file_url?: string;
+  rabFileUrl?: string;
+  rab_file_url?: string;
 }
 
 interface Lecturer {
   id: string;
+  user_id?: string;
   name: string;
   nip: string;
   departemen: string;
@@ -40,6 +57,48 @@ interface Lecturer {
 
 function statusColor(s: string) {
   return s === "Aktif" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : s === "Selesai" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-red-100 text-red-600 border-red-200";
+}
+
+function getResearchField(project: ResearchProject | null | undefined, camelKey: keyof ResearchProject, snakeKey: keyof ResearchProject) {
+  return String(project?.[camelKey] || project?.[snakeKey] || "");
+}
+
+function isValidUrl(value: string) {
+  if (!value.trim()) return true;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function formatDisplayDate(value?: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatDateRange(start?: string, end?: string) {
+  if (!start && !end) return "-";
+  return `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
+}
+
+function ResearchFileLink({ label, url }: { label: string; url: string }) {
+  return (
+    <div className="flex gap-2 text-xs">
+      <span className="font-black text-muted-foreground w-24 shrink-0">{label}</span>
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer" className="min-w-0 inline-flex items-center gap-1 font-bold text-[#0AB600] hover:underline">
+          <span className="truncate">Buka file</span>
+          <ExternalLink size={11} className="shrink-0" />
+        </a>
+      ) : (
+        <span className="font-bold text-foreground">-</span>
+      )}
+    </div>
+  );
 }
 
 export default function DatabaseRiset() {
@@ -78,6 +137,13 @@ export default function DatabaseRiset() {
     endDate: "",
     mitra: "",
     funding: "",
+    researchType: "Internal",
+    agreementType: "MoU",
+    agreementStartDate: "",
+    agreementEndDate: "",
+    agreementFileUrl: "",
+    proposalFileUrl: "",
+    rabFileUrl: "",
     milestones: [] as string[]
   });
   const [editForm, setEditForm] = useState({
@@ -90,6 +156,13 @@ export default function DatabaseRiset() {
     periodText: "",
     mitra: "",
     funding: "",
+    researchType: "Internal",
+    agreementType: "MoU",
+    agreementStartDate: "",
+    agreementEndDate: "",
+    agreementFileUrl: "",
+    proposalFileUrl: "",
+    rabFileUrl: "",
     progress: 0
   });
 
@@ -279,9 +352,38 @@ export default function DatabaseRiset() {
     }
   };
 
+  const validateResearchDocumentFields = (data: {
+    researchType: string;
+    agreementType: string;
+    agreementStartDate: string;
+    agreementEndDate: string;
+    agreementFileUrl: string;
+    proposalFileUrl: string;
+    rabFileUrl: string;
+  }) => {
+    if (!RESEARCH_TYPE_OPTIONS.includes(data.researchType)) {
+      return "Jenis riset hanya boleh Internal atau Eksternal.";
+    }
+    if (!AGREEMENT_TYPE_OPTIONS.includes(data.agreementType)) {
+      return "Jenis dokumen hanya boleh PKS, MoU, atau MoA.";
+    }
+    if (data.agreementStartDate && data.agreementEndDate && data.agreementEndDate < data.agreementStartDate) {
+      return "Tanggal selesai dokumen tidak boleh lebih awal dari tanggal mulai.";
+    }
+    if (![data.agreementFileUrl, data.proposalFileUrl, data.rabFileUrl].every(isValidUrl)) {
+      return "Link file harus berupa URL http atau https.";
+    }
+    return "";
+  };
+
   const handleCreateResearch = async () => {
     if (!formData.title.trim() || !formData.supervisorId) {
       setError("Judul riset dan supervisor wajib diisi.");
+      return;
+    }
+    const validationError = validateResearchDocumentFields(formData);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -308,6 +410,13 @@ export default function DatabaseRiset() {
         periodText,
         mitra: formData.mitra.trim() || "-",
         funding: formData.funding.trim() || "-",
+        researchType: formData.researchType,
+        agreementType: formData.agreementType,
+        agreementStartDate: formData.agreementStartDate || null,
+        agreementEndDate: formData.agreementEndDate || null,
+        agreementFileUrl: formData.agreementFileUrl.trim() || null,
+        proposalFileUrl: formData.proposalFileUrl.trim() || null,
+        rabFileUrl: formData.rabFileUrl.trim() || null,
         progress: 0
       };
 
@@ -370,6 +479,13 @@ export default function DatabaseRiset() {
         endDate: "",
         mitra: "",
         funding: "",
+        researchType: "Internal",
+        agreementType: "MoU",
+        agreementStartDate: "",
+        agreementEndDate: "",
+        agreementFileUrl: "",
+        proposalFileUrl: "",
+        rabFileUrl: "",
         milestones: []
       });
       setModalOpen(false);
@@ -393,6 +509,13 @@ export default function DatabaseRiset() {
       periodText: project.period_text || "",
       mitra: project.mitra || "",
       funding: project.funding || "",
+      researchType: getResearchField(project, "researchType", "research_type") || "Internal",
+      agreementType: getResearchField(project, "agreementType", "agreement_type") || "MoU",
+      agreementStartDate: getResearchField(project, "agreementStartDate", "agreement_start_date"),
+      agreementEndDate: getResearchField(project, "agreementEndDate", "agreement_end_date"),
+      agreementFileUrl: getResearchField(project, "agreementFileUrl", "agreement_file_url"),
+      proposalFileUrl: getResearchField(project, "proposalFileUrl", "proposal_file_url"),
+      rabFileUrl: getResearchField(project, "rabFileUrl", "rab_file_url"),
       progress: Number(project.progress) || 0
     });
   };
@@ -401,6 +524,11 @@ export default function DatabaseRiset() {
     if (!editingResearch?.id) return;
     if (!editForm.title.trim()) {
       setError("Judul riset wajib diisi.");
+      return;
+    }
+    const validationError = validateResearchDocumentFields(editForm);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -417,6 +545,13 @@ export default function DatabaseRiset() {
         periodText: editForm.periodText.trim() || null,
         mitra: editForm.mitra.trim() || null,
         funding: editForm.funding.trim() || null,
+        researchType: editForm.researchType,
+        agreementType: editForm.agreementType,
+        agreementStartDate: editForm.agreementStartDate || null,
+        agreementEndDate: editForm.agreementEndDate || null,
+        agreementFileUrl: editForm.agreementFileUrl.trim() || null,
+        proposalFileUrl: editForm.proposalFileUrl.trim() || null,
+        rabFileUrl: editForm.rabFileUrl.trim() || null,
         progress: Number(editForm.progress) || 0
       });
 
@@ -497,7 +632,11 @@ export default function DatabaseRiset() {
                             </span>
                           ))}
                         </div>
-                        <p className="text-xs text-muted-foreground mb-3">{r.category} · {r.period_text}</p>
+                        <p className="text-xs text-muted-foreground mb-1.5">{r.category} · {r.period_text}</p>
+                        <div className="mb-3 flex flex-wrap gap-1">
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{getResearchField(r, "researchType", "research_type") || "Jenis riset -"}</span>
+                          <span className="rounded bg-green-50 px-2 py-0.5 text-[10px] font-black text-[#0AB600]">{getResearchField(r, "agreementType", "agreement_type") || "Dokumen -"}</span>
+                        </div>
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex -space-x-2">
                             {projectMembers.slice(0, 4).map((m: any) => <div key={m.user_id} className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black bg-indigo-600 text-white">{m.initials || m.name?.charAt(0)?.toUpperCase()}</div>)}
@@ -524,7 +663,7 @@ export default function DatabaseRiset() {
               <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
                 <table className="w-full text-sm text-left">
                   <thead><tr className="bg-slate-50 border-b border-border">
-                    {["Judul Riset", "Dosen", "Anggota", "Progress", "Status", ""].map(h => <th key={h} className="px-5 py-3 text-xs font-black text-muted-foreground uppercase tracking-wide">{h}</th>)}
+                    {["Judul Riset", "Jenis", "Dokumen", "Dosen", "Anggota", "Progress", "Status", ""].map(h => <th key={h} className="px-5 py-3 text-xs font-black text-muted-foreground uppercase tracking-wide">{h}</th>)}
                   </tr></thead>
                   <tbody className="divide-y divide-border">
                     {filteredRiset.map(r => {
@@ -532,7 +671,14 @@ export default function DatabaseRiset() {
                       const dosen = mems.filter((m: any) => m.member_type === "Dosen");
                       return (
                         <tr key={r.id} onClick={() => { setSelected(selected?.id === r.id ? null : r); setDetailTab("info"); }} className={`cursor-pointer hover:bg-slate-50 transition-colors ${selected?.id === r.id ? "bg-green-50/30" : ""}`}>
-                          <td className="px-5 py-3.5 font-black text-foreground max-w-[220px]"><p className="line-clamp-1">{r.title}</p></td>
+                          <td className="px-5 py-3.5 max-w-[220px]">
+                            <p className="line-clamp-1 font-black text-foreground">{r.title}</p>
+                          </td>
+                          <td className="px-5 py-3.5 text-xs font-bold text-muted-foreground">{getResearchField(r, "researchType", "research_type") || "-"}</td>
+                          <td className="px-5 py-3.5 text-xs">
+                            <p className="font-black text-foreground">{getResearchField(r, "agreementType", "agreement_type") || "-"}</p>
+                            <p className="text-[10px] font-semibold text-muted-foreground">{formatDateRange(getResearchField(r, "agreementStartDate", "agreement_start_date"), getResearchField(r, "agreementEndDate", "agreement_end_date"))}</p>
+                          </td>
                           <td className="px-5 py-3.5 text-xs">
                             <div className="flex flex-col gap-0.5">
                               {dosen.map((d: any) => <span key={d.user_id} className={`text-[10px] font-black ${d.peran === "Ketua Riset" || d.peran === "Pembimbing" ? "text-[#0AB600]" : "text-muted-foreground"}`}>{d.name} {d.peran === "Ketua Riset" || d.peran === "Pembimbing" ? "☆" : ""}</span>)}
@@ -585,6 +731,24 @@ export default function DatabaseRiset() {
                     {[["Supervisor Ketua", selected.supervisor_name], ["Periode", selected.period_text], ["Mitra", selected.mitra], ["Pendanaan", selected.funding], ["Kategori", selected.category]].map(([l, v]) => (
                       <div key={l} className="flex gap-2 text-xs"><span className="font-black text-muted-foreground w-24 shrink-0">{l}</span><span className="font-bold text-foreground">{v}</span></div>
                     ))}
+                    <div className="border-t border-border pt-3 mt-1 flex flex-col gap-2">
+                      {[
+                        ["Jenis Riset", getResearchField(selected, "researchType", "research_type") || "-"],
+                        ["Jenis Dokumen", getResearchField(selected, "agreementType", "agreement_type") || "-"],
+                        [
+                          "Periode Dok.",
+                          formatDateRange(
+                            getResearchField(selected, "agreementStartDate", "agreement_start_date"),
+                            getResearchField(selected, "agreementEndDate", "agreement_end_date")
+                          )
+                        ]
+                      ].map(([l, v]) => (
+                        <div key={l} className="flex gap-2 text-xs"><span className="font-black text-muted-foreground w-24 shrink-0">{l}</span><span className="font-bold text-foreground">{v}</span></div>
+                      ))}
+                      <ResearchFileLink label="File PKS" url={getResearchField(selected, "agreementFileUrl", "agreement_file_url")} />
+                      <ResearchFileLink label="Proposal" url={getResearchField(selected, "proposalFileUrl", "proposal_file_url")} />
+                      <ResearchFileLink label="RAB" url={getResearchField(selected, "rabFileUrl", "rab_file_url")} />
+                    </div>
                     <button
                       onClick={() => openProgressBoard(selected.id)}
                       className="w-full h-8 flex items-center justify-center gap-2 text-[11px] font-black text-white bg-[#0AB600] hover:bg-[#099800] rounded-[8px] transition-colors mt-2"
@@ -681,7 +845,7 @@ export default function DatabaseRiset() {
 
       {editingResearch && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditingResearch(null)}>
-          <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[560px]" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-border flex items-center justify-between">
               <div>
                 <h3 className="font-black text-foreground">Edit Riset</h3>
@@ -702,6 +866,12 @@ export default function DatabaseRiset() {
                 <label className="text-xs font-black text-foreground block mb-1.5">Status</label>
                 <select value={editForm.status} onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer">
                   {["Aktif", "Selesai", "Ditangguhkan"].map((status) => <option key={status}>{status}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Jenis Riset</label>
+                <select value={editForm.researchType} onChange={(e) => setEditForm(prev => ({ ...prev, researchType: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer">
+                  {RESEARCH_TYPE_OPTIONS.map((type) => <option key={type}>{type}</option>)}
                 </select>
               </div>
               <div className="col-span-2">
@@ -730,6 +900,35 @@ export default function DatabaseRiset() {
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">Pendanaan</label>
                 <input value={editForm.funding} onChange={(e) => setEditForm(prev => ({ ...prev, funding: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+              </div>
+              <div className="col-span-2 border-t border-border pt-4">
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide">Dokumen PKS/MoU/MoA</p>
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Jenis Dokumen</label>
+                <select value={editForm.agreementType} onChange={(e) => setEditForm(prev => ({ ...prev, agreementType: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer">
+                  {AGREEMENT_TYPE_OPTIONS.map((type) => <option key={type}>{type}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Link File PKS/MoU/MoA</label>
+                <input type="url" value={editForm.agreementFileUrl} onChange={(e) => setEditForm(prev => ({ ...prev, agreementFileUrl: e.target.value }))} placeholder="https://link-file-pks-mou-moa" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Mulai Dokumen</label>
+                <input type="date" value={editForm.agreementStartDate} onChange={(e) => setEditForm(prev => ({ ...prev, agreementStartDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Selesai Dokumen</label>
+                <input type="date" value={editForm.agreementEndDate} onChange={(e) => setEditForm(prev => ({ ...prev, agreementEndDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Link Proposal</label>
+                <input type="url" value={editForm.proposalFileUrl} onChange={(e) => setEditForm(prev => ({ ...prev, proposalFileUrl: e.target.value }))} placeholder="https://link-file-proposal" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-foreground block mb-1.5">Link RAB</label>
+                <input type="url" value={editForm.rabFileUrl} onChange={(e) => setEditForm(prev => ({ ...prev, rabFileUrl: e.target.value }))} placeholder="https://link-file-rab" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" />
               </div>
               <div className="col-span-2">
                 <div className="flex items-center justify-between mb-2">
@@ -808,6 +1007,7 @@ export default function DatabaseRiset() {
                 <div className="col-span-2"><label className="text-xs font-black text-foreground block mb-1.5">Deskripsi</label><textarea value={formData.description} onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))} rows={3} placeholder="Ringkasan penelitian..." className="w-full px-3 py-2 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all resize-none" /></div>
                 <div><label className="text-xs font-black text-foreground block mb-1.5">Kategori</label><input value={formData.category} onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))} placeholder="IoT, AI, Blockchain..." className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
                 <div><label className="text-xs font-black text-foreground block mb-1.5">Status</label><select value={formData.status} onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer"><option>Aktif</option><option>Ditangguhkan</option></select></div>
+                <div><label className="text-xs font-black text-foreground block mb-1.5">Jenis Riset</label><select value={formData.researchType} onChange={(e) => setFormData(prev => ({ ...prev, researchType: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer">{RESEARCH_TYPE_OPTIONS.map((type) => <option key={type}>{type}</option>)}</select></div>
               </>}
               {step === 1 && <>
                 <div className="col-span-2"><label className="text-xs font-black text-foreground block mb-1.5">Ketua Dosen</label><select value={formData.supervisorId} onChange={(e) => setFormData(prev => ({ ...prev, supervisorId: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer"><option value="">-- Pilih Dosen --</option>{lecturers.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
@@ -863,6 +1063,15 @@ export default function DatabaseRiset() {
                 <div><label className="text-xs font-black text-foreground block mb-1.5">Tanggal Selesai</label><input type="date" value={formData.endDate} onChange={(e) => setFormData(prev => ({ ...prev, endDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
                 <div className="col-span-2"><label className="text-xs font-black text-foreground block mb-1.5">Mitra</label><input value={formData.mitra} onChange={(e) => setFormData(prev => ({ ...prev, mitra: e.target.value }))} placeholder="Nama institusi mitra" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
                 <div className="col-span-2"><label className="text-xs font-black text-foreground block mb-1.5">Sumber Pendanaan</label><input value={formData.funding} onChange={(e) => setFormData(prev => ({ ...prev, funding: e.target.value }))} placeholder="DIKTI, Industri, dll." className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
+                <div className="col-span-2 border-t border-border pt-4">
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wide">Dokumen PKS/MoU/MoA</p>
+                </div>
+                <div><label className="text-xs font-black text-foreground block mb-1.5">Jenis Dokumen</label><select value={formData.agreementType} onChange={(e) => setFormData(prev => ({ ...prev, agreementType: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none cursor-pointer">{AGREEMENT_TYPE_OPTIONS.map((type) => <option key={type}>{type}</option>)}</select></div>
+                <div><label className="text-xs font-black text-foreground block mb-1.5">Link File PKS/MoU/MoA</label><input type="url" value={formData.agreementFileUrl} onChange={(e) => setFormData(prev => ({ ...prev, agreementFileUrl: e.target.value }))} placeholder="https://link-file-pks-mou-moa" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
+                <div><label className="text-xs font-black text-foreground block mb-1.5">Tanggal Mulai Dokumen</label><input type="date" value={formData.agreementStartDate} onChange={(e) => setFormData(prev => ({ ...prev, agreementStartDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
+                <div><label className="text-xs font-black text-foreground block mb-1.5">Tanggal Selesai Dokumen</label><input type="date" value={formData.agreementEndDate} onChange={(e) => setFormData(prev => ({ ...prev, agreementEndDate: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
+                <div><label className="text-xs font-black text-foreground block mb-1.5">Link Proposal</label><input type="url" value={formData.proposalFileUrl} onChange={(e) => setFormData(prev => ({ ...prev, proposalFileUrl: e.target.value }))} placeholder="https://link-file-proposal" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
+                <div><label className="text-xs font-black text-foreground block mb-1.5">Link RAB</label><input type="url" value={formData.rabFileUrl} onChange={(e) => setFormData(prev => ({ ...prev, rabFileUrl: e.target.value }))} placeholder="https://link-file-rab" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-green-300 transition-all" /></div>
               </>}
               {step === 3 && <>
                 <div className="col-span-2"><label className="text-xs font-black text-foreground block mb-1.5">Milestone</label>

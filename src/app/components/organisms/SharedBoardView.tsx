@@ -103,6 +103,14 @@ type ProjectView = {
   progressColor: string;
   status: string;
   ketuaInitials: string;
+  researchType?: string;
+  agreementType?: string;
+  agreementStartDate?: string;
+  agreementEndDate?: string;
+  agreementFileUrl?: string;
+  proposalFileUrl?: string;
+  rabFileUrl?: string;
+  attachment_link?: string;
 };
 
 type BoardPermissions = {
@@ -175,6 +183,22 @@ function toDateInputValue(value?: string) {
   const parsed = new Date(normalized);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+}
+
+function getResearchField(row: any, camelKey: string, snakeKey: string) {
+  return String(row?.[camelKey] || row?.[snakeKey] || "");
+}
+
+function formatBoardDate(value?: string) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatBoardDateRange(start?: string, end?: string) {
+  if (!start && !end) return "-";
+  return `${formatBoardDate(start)} - ${formatBoardDate(end)}`;
 }
 
 function normalizeTaskAttachment(item: any, index: number): TaskAttachment {
@@ -378,6 +402,27 @@ function MilestoneBanner({
   );
 }
 
+function BoardDocumentLink({ label, url }: { label: string; url?: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 rounded-xl border border-[#D8F5D0] bg-white px-3 py-2 shadow-sm">
+      <span className="text-[10px] font-black uppercase tracking-wider text-[#5CC444]">{label}</span>
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-w-0 items-center gap-1.5 text-xs font-bold text-[#0AB600] hover:underline"
+        >
+          <span className="truncate">Buka file</span>
+          <ExternalLink size={12} className="shrink-0" />
+        </a>
+      ) : (
+        <span className="text-xs font-semibold italic text-slate-400">Belum tersedia</span>
+      )}
+    </div>
+  );
+}
+
 // ─── Tag color ────────────────────────────────────────────────────────────────
 
 function getTagColor(tag: string) {
@@ -482,7 +527,15 @@ export function SharedBoardView({
             progress: Number(row.progress) || 0,
             progressColor: "bg-[#6C47FF]",
             status: row.status || "Aktif",
-            ketuaInitials: ketuaByInitial?.initials || ketuaByPeran?.initials || teamMembers[0]?.initials || "TM"
+            ketuaInitials: ketuaByInitial?.initials || ketuaByPeran?.initials || teamMembers[0]?.initials || "TM",
+            researchType: getResearchField(row, "researchType", "research_type"),
+            agreementType: getResearchField(row, "agreementType", "agreement_type"),
+            agreementStartDate: getResearchField(row, "agreementStartDate", "agreement_start_date"),
+            agreementEndDate: getResearchField(row, "agreementEndDate", "agreement_end_date"),
+            agreementFileUrl: getResearchField(row, "agreementFileUrl", "agreement_file_url"),
+            proposalFileUrl: getResearchField(row, "proposalFileUrl", "proposal_file_url"),
+            rabFileUrl: getResearchField(row, "rabFileUrl", "rab_file_url"),
+            attachment_link: row.attachment_link || row.attachmentLink || undefined
           };
         });
 
@@ -1726,6 +1779,32 @@ export function SharedBoardView({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Research documents */}
+            <div className="px-5 py-4 border-t border-[#D8F5D0]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Dokumen Riset</span>
+                <span className="rounded-full border border-[#D8F5D0] bg-white px-2.5 py-1 text-[10px] font-black text-[#4AB834]">
+                  {project.researchType || "Jenis riset -"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
+                <div className="rounded-xl border border-[#D8F5D0] bg-white px-3 py-2 shadow-sm lg:col-span-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#5CC444]">Dokumen Kerja Sama</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-black ${project.agreementType ? "bg-green-50 text-[#0AB600]" : "bg-slate-100 text-slate-400"}`}>
+                      {project.agreementType || "Belum diisi"}
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">
+                      {formatBoardDateRange(project.agreementStartDate, project.agreementEndDate)}
+                    </span>
+                  </div>
+                </div>
+                <BoardDocumentLink label="File PKS/MoU/MoA" url={project.agreementFileUrl} />
+                <BoardDocumentLink label="Proposal" url={project.proposalFileUrl} />
+                <BoardDocumentLink label="RAB" url={project.rabFileUrl} />
               </div>
             </div>
 
