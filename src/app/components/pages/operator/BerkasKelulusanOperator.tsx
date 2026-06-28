@@ -8,6 +8,7 @@ type GraduationFieldKey =
   | "productPhotoFolderUrl"
   | "manualBookUrl"
   | "demoVideoUrl"
+  | "githubUrl"
   | "repositoryUrl"
   | "deployedUrl"
   | "datasetModelUrl"
@@ -71,7 +72,8 @@ const COMMON_LINK_FIELDS: LinkField[] = [
   { key: "reportUrl", snakeKey: "report_url", label: "Link Laporan PA/Magang" },
   { key: "productPhotoFolderUrl", snakeKey: "product_photo_folder_url", label: "Link Folder Foto Produk" },
   { key: "manualBookUrl", snakeKey: "manual_book_url", label: "Link Manual Book" },
-  { key: "demoVideoUrl", snakeKey: "demo_video_url", label: "Link Video Demo Project" }
+  { key: "demoVideoUrl", snakeKey: "demo_video_url", label: "Link Video Demo Project" },
+  { key: "githubUrl", snakeKey: "github_url", label: "Link GitHub" }
 ];
 
 const SPECIAL_LINK_FIELDS: LinkField[] = [

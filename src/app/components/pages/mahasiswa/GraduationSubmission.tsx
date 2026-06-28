@@ -33,6 +33,7 @@ type GraduationFieldKey =
   | "productPhotoFolderUrl"
   | "manualBookUrl"
   | "demoVideoUrl"
+  | "githubUrl"
   | "repositoryUrl"
   | "deployedUrl"
   | "datasetModelUrl"
@@ -43,6 +44,7 @@ const allGraduationFieldKeys: GraduationFieldKey[] = [
   "productPhotoFolderUrl",
   "manualBookUrl",
   "demoVideoUrl",
+  "githubUrl",
   "repositoryUrl",
   "deployedUrl",
   "datasetModelUrl",
@@ -56,6 +58,7 @@ type GraduationProject = {
   productPhotoFolderUrl: string;
   manualBookUrl: string;
   demoVideoUrl: string;
+  githubUrl: string;
   repositoryUrl: string;
   deployedUrl: string;
   datasetModelUrl: string;
@@ -104,6 +107,14 @@ const commonFields: Array<{
     icon: <ExternalLink size={16} />,
     required: true,
   },
+  {
+    key: "githubUrl",
+    label: "Link GitHub",
+    helper: "Tambahkan link GitHub yang berkaitan dengan project/akun kontribusi kamu jika tersedia.",
+    placeholder: "https://github.com/username/repository-proyek",
+    icon: <LinkIcon size={16} />,
+    required: false,
+  },
 ];
 
 const specialFieldCopy: Record<GraduationFieldKey, {
@@ -135,6 +146,12 @@ const specialFieldCopy: Record<GraduationFieldKey, {
     helper: "",
     placeholder: "",
     required: true,
+  },
+  githubUrl: {
+    label: "Link GitHub",
+    helper: "",
+    placeholder: "",
+    required: false,
   },
   repositoryUrl: {
     label: "Link Repository GitHub / GitLab Proyek",
@@ -175,6 +192,7 @@ function normalizeProject(item: any): GraduationProject {
     productPhotoFolderUrl: String(item?.productPhotoFolderUrl || item?.product_photo_folder_url || ""),
     manualBookUrl: String(item?.manualBookUrl || item?.manual_book_url || ""),
     demoVideoUrl: String(item?.demoVideoUrl || item?.demo_video_url || ""),
+    githubUrl: String(item?.githubUrl || item?.github_url || ""),
     repositoryUrl: String(item?.repositoryUrl || item?.repository_url || ""),
     deployedUrl: String(item?.deployedUrl || item?.deployed_url || ""),
     datasetModelUrl: String(item?.datasetModelUrl || item?.dataset_model_url || ""),
@@ -422,6 +440,7 @@ export default function GraduationSubmission() {
       productPhotoFolderUrl: project.productPhotoFolderUrl.trim(),
       manualBookUrl: project.manualBookUrl.trim(),
       demoVideoUrl: project.demoVideoUrl.trim(),
+      githubUrl: project.githubUrl.trim(),
       repositoryUrl: project.repositoryUrl.trim(),
       deployedUrl: project.deployedUrl.trim(),
       datasetModelUrl: project.datasetModelUrl.trim(),
