@@ -5,8 +5,12 @@ import {
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
   getPicketScheduleGeneratePayload,
+  getPicketHolidayFromTodayResponse,
+  isPicketHolidayResponse,
   mapPicketAssignment,
+  mapPicketHoliday,
   mapPicketLeaveRequest,
+  mapPicketSubmission,
   mapPicketSubmissionResult,
   mapPicketTask,
   validatePicketPhoto,
@@ -64,7 +68,50 @@ test("mapPicketAssignment normalizes assignment and submission aliases", () => {
     reviewedAt: null,
     reviewedBy: null,
     reviewNote: null,
+    isHoliday: false,
+    isExempt: false,
+    holiday: null,
   });
+});
+
+test("mapPicketAssignment normalizes holiday and exemption aliases", () => {
+  const item = mapPicketAssignment({
+    schedule_id: "SCH-HOL-1",
+    schedule_date: "2026-08-17",
+    is_holiday: true,
+    is_exempt: true,
+    holiday: {
+      holiday_id: "PKT-HOL-1",
+      date: "2026-08-17",
+      holiday_name: "Hari Kemerdekaan",
+      notes: "Piket diliburkan",
+    },
+  });
+
+  assert.equal(item.isHoliday, true);
+  assert.equal(item.isExempt, true);
+  assert.deepEqual(item.holiday, {
+    id: "PKT-HOL-1",
+    date: "2026-08-17",
+    name: "Hari Kemerdekaan",
+    notes: "Piket diliburkan",
+  });
+});
+
+test("picket holiday helpers read top-level today response", () => {
+  const response = {
+    assignment: null,
+    isHoliday: true,
+    isExempt: true,
+    holiday: {
+      id: "PKT-HOL-2",
+      date: "2026-08-17",
+      name: "Hari Kemerdekaan",
+    },
+  };
+
+  assert.equal(isPicketHolidayResponse(response), true);
+  assert.deepEqual(getPicketHolidayFromTodayResponse(response), mapPicketHoliday(response.holiday));
 });
 
 test("mapPicketLeaveRequest reads Indonesian aliases", () => {
@@ -86,6 +133,37 @@ test("mapPicketAssignment reads submission review fields", () => {
   assert.equal(item.reviewedAt, "2026-06-15T08:21:44.488Z");
   assert.equal(item.reviewedBy, "OP1");
   assert.equal(item.reviewNote, "Foto sudah sesuai");
+});
+
+test("mapPicketSubmission reads approval endpoint response", () => {
+  assert.deepEqual(mapPicketSubmission({
+    id: "SUB-1",
+    scheduleId: "SCH-1",
+    assignmentId: "ASN-1",
+    studentId: "STD-1",
+    studentName: "Alya",
+    nim: "12345",
+    taskName: "Bersihkan lab",
+    date: "2026-08-17",
+    photoUrl: "/uploads/piket/sub-1.jpg",
+    submittedAt: "2026-08-17T01:00:00.000Z",
+    status: "Terkirim",
+    reviewNote: null,
+  }), {
+    id: "SUB-1",
+    scheduleId: "SCH-1",
+    assignmentId: "ASN-1",
+    date: "2026-08-17",
+    studentId: "STD-1",
+    studentName: "Alya",
+    studentInitials: "AL",
+    nim: "12345",
+    taskName: "Bersihkan lab",
+    photoUrl: "https://ms-api.stas-rg.com/uploads/piket/sub-1.jpg",
+    submittedAt: "2026-08-17T01:00:00.000Z",
+    status: "Terkirim",
+    reviewNote: null,
+  });
 });
 
 test("mapPicketSubmissionResult reads nested submission response", () => {

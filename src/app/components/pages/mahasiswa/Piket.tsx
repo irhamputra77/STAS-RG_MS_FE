@@ -5,11 +5,16 @@ import { Layout } from "../../templates/Layout";
 import { apiGet, apiPost, getStoredUser } from "../../../lib/api";
 import {
   PicketAssignment,
+  PicketHoliday,
   PicketLeaveRequest,
   ensurePicketPhotoPreviewable,
   fileToDataUrl,
   getJakartaDateKey,
+  getPicketHolidayFromTodayResponse,
+  isPicketHolidayResponse,
   mapPicketAssignment,
+  mapPicketHoliday,
+  mapPicketTodayAssignment,
   mapPicketLeaveRequest,
   mapPicketSubmissionResult,
   validatePicketPhoto,
@@ -23,6 +28,7 @@ const statusStyle: Record<string, string> = {
   Valid: "border-emerald-200 bg-emerald-50 text-emerald-700",
   Bermasalah: "border-red-200 bg-red-50 text-red-600",
   Dijadwalkan: "border-slate-200 bg-slate-50 text-slate-600",
+  Libur: "border-violet-200 bg-violet-50 text-violet-700",
 };
 
 function Badge({ status }: { status?: string | null }) {
@@ -43,22 +49,25 @@ export default function Piket() {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
   const [info, setInfo] = React.useState("");
+  const [todayHoliday, setTodayHoliday] = React.useState<PicketHoliday | null>(null);
+  const [holidays, setHolidays] = React.useState<PicketHoliday[]>([]);
 
   const loadData = React.useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
     setError("");
     try {
-      const [todayRes, historyRes, leaveRes, managerRes] = await Promise.allSettled([
+      const [todayRes, historyRes, leaveRes, managerRes, holidayRes] = await Promise.allSettled([
         apiGet<any>(`/picket/today?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`),
         apiGet<any>(`/picket/history?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`),
         apiGet<any>(`/picket/leave-requests?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`),
         apiGet<any>("/picket/managers/me"),
+        apiGet<any>("/picket/holidays"),
       ]);
 
       if (todayRes.status === "fulfilled") {
-        const raw = todayRes.value?.assignment || todayRes.value?.todayAssignment || todayRes.value;
-        setTodayAssignment(raw?.id || raw?.assignment_id || raw?.task_name || raw?.taskName ? mapPicketAssignment(raw) : null);
+        setTodayAssignment(mapPicketTodayAssignment(todayRes.value));
+        setTodayHoliday(isPicketHolidayResponse(todayRes.value) ? getPicketHolidayFromTodayResponse(todayRes.value) : null);
       }
 
       if (historyRes.status === "fulfilled") {
@@ -73,6 +82,10 @@ export default function Piket() {
 
       if (managerRes.status === "fulfilled") {
         setIsManager(Boolean(managerRes.value?.isManager ?? managerRes.value?.manager ?? managerRes.value?.allowed));
+      }
+      if (holidayRes.status === "fulfilled") {
+        const rows = Array.isArray(holidayRes.value) ? holidayRes.value : holidayRes.value?.holidays || holidayRes.value?.items || [];
+        setHolidays(rows.map(mapPicketHoliday).sort((a: PicketHoliday, b: PicketHoliday) => a.date.localeCompare(b.date)));
       }
     } catch (err: any) {
       setError(err?.message || "Gagal memuat data piket.");
@@ -121,6 +134,10 @@ export default function Piket() {
       setError("Bukti piket hanya dapat dikirim saat Anda punya jadwal piket hari ini.");
       return;
     }
+    if (todayAssignment.isHoliday || todayAssignment.isExempt) {
+      setError("Bukti piket tidak perlu dikirim karena jadwal hari ini berstatus Libur.");
+      return;
+    }
     if (String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui") {
       setError("Bukti piket tidak perlu dikirim karena izin piket sudah disetujui.");
       return;
@@ -166,6 +183,10 @@ export default function Piket() {
   const submitLeave = async () => {
     if (!todayAssignment) {
       setError("Izin tidak piket hanya dapat diajukan saat Anda punya jadwal piket hari ini.");
+      return;
+    }
+    if (todayAssignment.isHoliday || todayAssignment.isExempt) {
+      setError("Izin tidak perlu diajukan karena jadwal hari ini berstatus Libur.");
       return;
     }
     if (!reason.trim()) {
@@ -221,23 +242,34 @@ export default function Piket() {
           </div>
         ) : (
           <>
+            {todayHoliday && (
+              <div className="rounded-[16px] border border-violet-200 bg-violet-50 px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-violet-600 text-white"><CalendarOff size={20} /></div>
+                  <div>
+                    <p className="font-black text-violet-800">Piket diliburkan: {todayHoliday.name}</p>
+                    {todayHoliday.notes && <p className="mt-1 text-sm font-medium text-violet-700">{todayHoliday.notes}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
             <section className="rounded-[18px] border border-border bg-white shadow-sm">
               <div className="border-b border-border px-5 py-4">
                 <h2 className="text-sm font-black text-foreground">Jadwal Hari Ini</h2>
               </div>
               {todayAssignment ? (
                 <div className="grid grid-cols-1 gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_340px_320px]">
-                  <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4">
+                  <div className={`rounded-[14px] border p-4 ${todayAssignment.isHoliday || todayAssignment.isExempt ? "border-violet-200 bg-violet-50" : "border-emerald-200 bg-emerald-50"}`}>
                     <div className="flex items-start gap-3">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-emerald-500 text-white">
                         <ClipboardCheck size={22} />
                       </div>
                       <div>
-                        <p className="text-sm font-black text-emerald-800">Anda piket hari ini</p>
+                        <p className={`text-sm font-black ${todayAssignment.isHoliday || todayAssignment.isExempt ? "text-violet-800" : "text-emerald-800"}`}>{todayAssignment.isHoliday || todayAssignment.isExempt ? `Piket diliburkan: ${todayAssignment.holiday?.name || "Hari Libur Piket"}` : "Anda piket hari ini"}</p>
                         <h3 className="mt-1 text-xl font-black text-foreground">{todayAssignment.taskName}</h3>
                         {todayAssignment.taskDescription && <p className="mt-2 text-sm leading-relaxed text-emerald-800/80">{todayAssignment.taskDescription}</p>}
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <Badge status={todayAssignment.submitted ? todayAssignment.submissionStatus || "Terkirim" : todayAssignment.status || "Ditugaskan"} />
+                          <Badge status={todayAssignment.isHoliday || todayAssignment.isExempt ? "Libur" : todayAssignment.submitted ? todayAssignment.submissionStatus || "Terkirim" : todayAssignment.status || "Ditugaskan"} />
                           {todayAssignment.leaveStatus && <Badge status={`Izin ${todayAssignment.leaveStatus}`} />}
                           <span className="text-xs font-bold text-emerald-800">{todayAssignment.date}</span>
                         </div>
@@ -245,7 +277,7 @@ export default function Piket() {
                     </div>
                   </div>
 
-                  <div className="rounded-[14px] border border-border p-4">
+                  {!todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-black text-foreground">Bukti Piket</h3>
@@ -311,16 +343,16 @@ export default function Piket() {
                         {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {todayAssignment.submitted ? "Kirim Ulang" : "Kirim Bukti"}
                       </button>
                     </div>
-                  </div>
+                  </div>}
 
-                  <div className="rounded-[14px] border border-border p-4">
+                  {!todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
                     <h3 className="text-sm font-black text-foreground">Izin Tidak Piket</h3>
                     <p className="mt-1 text-xs text-muted-foreground">Ajukan izin jika Anda tidak dapat menjalankan piket hari ini.</p>
                     <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Tulis alasan izin..." className="mt-3 w-full rounded-[10px] border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
                     <button onClick={submitLeave} disabled={saving} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60">
                       {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Ajukan Izin
                     </button>
-                  </div>
+                  </div>}
                 </div>
               ) : (
                 <div className="p-8 text-center">
@@ -347,7 +379,7 @@ export default function Piket() {
                           <p className="text-xs text-muted-foreground">{item.date}</p>
                           {item.submittedAt && <p className="mt-1 text-[10px] font-bold text-emerald-600">Submit: {new Date(item.submittedAt).toLocaleString("id-ID")}</p>}
                         </div>
-                        <Badge status={item.submitted ? item.submissionStatus || item.status || "Terkirim" : item.status || "Ditugaskan"} />
+                        <Badge status={item.isHoliday || item.isExempt ? "Libur" : item.submitted ? item.submissionStatus || item.status || "Terkirim" : item.status || "Ditugaskan"} />
                       </div>
                     ))}
                   </div>
@@ -383,6 +415,27 @@ export default function Piket() {
                 )}
               </section>
             </div>
+            {holidays.length > 0 && (
+              <section className="rounded-[18px] border border-border bg-white shadow-sm">
+                <div className="border-b border-border px-5 py-4">
+                  <h2 className="text-sm font-black text-foreground">Informasi Hari Libur Piket</h2>
+                </div>
+                <div className="divide-y divide-border">
+                  {holidays.slice(0, 10).map((holiday) => (
+                    <div key={holiday.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="font-black text-foreground">{holiday.name}</p>
+                        {holiday.notes && <p className="mt-1 text-sm text-muted-foreground">{holiday.notes}</p>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge status="Libur" />
+                        <span className="text-xs font-black text-slate-600">{holiday.date}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
       </div>

@@ -22,6 +22,7 @@ const statusStyle: Record<string, string> = {
   Bermasalah: "border-red-200 bg-red-50 text-red-600",
   Ditugaskan: "border-slate-200 bg-slate-50 text-slate-600",
   Dijadwalkan: "border-slate-200 bg-slate-50 text-slate-600",
+  Libur: "border-violet-200 bg-violet-50 text-violet-700",
 };
 
 function Badge({ status }: { status?: string | null }) {
@@ -47,6 +48,7 @@ function formatDateTime(value?: string | null) {
 }
 
 function getSubmissionStatus(item: PicketAssignment) {
+  if (item.isHoliday || item.isExempt) return "Libur";
   return item.submissionStatus || (item.submitted ? "Terkirim" : item.status) || "Dijadwalkan";
 }
 
@@ -61,6 +63,7 @@ function normalizeStudent(row: any): StudentOption {
 
 export default function PicketHistory({ management = false }: PicketHistoryProps) {
   const user = getStoredUser();
+  const listRef = React.useRef<HTMLElement | null>(null);
   const [history, setHistory] = React.useState<PicketAssignment[]>([]);
   const [students, setStudents] = React.useState<StudentOption[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -132,7 +135,8 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
     void loadData();
   }, [loadData]);
 
-  const submittedHistory = history.filter((item) => item.submitted || item.submissionId || item.photoUrl || item.submittedAt);
+  const submittedHistory = history.filter((item) => item.isHoliday || item.isExempt || item.submitted || item.submissionId || item.photoUrl || item.submittedAt);
+  const waitingReviewHistory = submittedHistory.filter((item) => getSubmissionStatus(item) === "Terkirim");
   const filteredHistory = submittedHistory.filter((item) => {
     const status = getSubmissionStatus(item);
     const haystack = `${item.studentName} ${item.nim || ""} ${item.taskName} ${item.taskDescription || ""} ${item.date} ${status}`.toLowerCase();
@@ -145,8 +149,19 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
   const summary = {
     total: submittedHistory.length,
     valid: submittedHistory.filter((item) => getSubmissionStatus(item) === "Valid").length,
-    pending: submittedHistory.filter((item) => getSubmissionStatus(item) === "Terkirim").length,
+    pending: waitingReviewHistory.length,
     problem: submittedHistory.filter((item) => getSubmissionStatus(item) === "Bermasalah").length,
+  };
+  const waitingReviewNames = Array.from(new Set(waitingReviewHistory.map((item) => item.studentName).filter(Boolean))).slice(0, 3);
+  const remainingWaitingReview = Math.max(0, waitingReviewHistory.length - waitingReviewNames.length);
+
+  const focusHistoryList = (status: string) => {
+    setQuery("");
+    setStudentFilter("all");
+    setStatusFilter(status);
+    window.setTimeout(() => {
+      listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   return (
@@ -176,21 +191,27 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
 
         <div className={`grid grid-cols-2 gap-4 ${management ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
           {[
-            { label: "Total Submit", value: summary.total, icon: <History size={18} />, tone: "bg-slate-100 text-slate-700" },
-            { label: "Valid", value: summary.valid, icon: <CheckCircle2 size={18} />, tone: "bg-emerald-100 text-emerald-700" },
-            { label: "Menunggu", value: summary.pending, icon: <ImageIcon size={18} />, tone: "bg-blue-100 text-blue-700" },
-            { label: "Bermasalah", value: summary.problem, icon: <XCircle size={18} />, tone: "bg-red-100 text-red-700" },
-            ...(management ? [{ label: "Mahasiswa", value: students.length, icon: <Users size={18} />, tone: "bg-amber-100 text-amber-700" }] : []),
+            { label: "Total Submit", value: summary.total, icon: <History size={18} />, tone: "bg-slate-100 text-slate-700", filter: "all" },
+            { label: "Valid", value: summary.valid, icon: <CheckCircle2 size={18} />, tone: "bg-emerald-100 text-emerald-700", filter: "Valid" },
+            { label: "Menunggu", value: summary.pending, icon: <ImageIcon size={18} />, tone: "bg-blue-100 text-blue-700", filter: "Terkirim", helper: management && waitingReviewNames.length > 0 ? `${waitingReviewNames.join(", ")}${remainingWaitingReview > 0 ? ` +${remainingWaitingReview} lainnya` : ""}` : "Klik untuk lihat yang sudah upload" },
+            { label: "Bermasalah", value: summary.problem, icon: <XCircle size={18} />, tone: "bg-red-100 text-red-700", filter: "Bermasalah" },
+            ...(management ? [{ label: "Mahasiswa", value: students.length, icon: <Users size={18} />, tone: "bg-amber-100 text-amber-700", filter: "all" }] : []),
           ].map((item) => (
-            <div key={item.label} className="rounded-[16px] border border-border bg-white p-4 shadow-sm">
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => focusHistoryList(item.filter)}
+              className="rounded-[16px] border border-border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#0AB600]/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20"
+            >
               <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] ${item.tone}`}>{item.icon}</div>
               <p className="text-2xl font-black text-foreground">{item.value}</p>
               <p className="mt-1 text-xs font-black uppercase tracking-wide text-muted-foreground">{item.label}</p>
-            </div>
+              {"helper" in item && item.helper && <p className="mt-2 line-clamp-2 text-[11px] font-bold leading-relaxed text-slate-500">{item.helper}</p>}
+            </button>
           ))}
         </div>
 
-        <section className="rounded-[18px] border border-border bg-white shadow-sm">
+        <section ref={listRef} className="scroll-mt-24 rounded-[18px] border border-border bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-[10px] border border-border bg-white px-3 lg:max-w-md">
               <Search size={15} className="text-muted-foreground" />
@@ -210,6 +231,7 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
               <option value="Terkirim">Terkirim</option>
               <option value="Valid">Valid</option>
               <option value="Bermasalah">Bermasalah</option>
+              <option value="Libur">Libur</option>
             </select>
             {management && (
               <select
@@ -247,10 +269,16 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
                     {management && <p className="mt-1 text-xs font-black text-slate-700">{item.studentName} {item.nim ? `- ${item.nim}` : ""}</p>}
                     {item.taskDescription && <p className="mt-1 text-sm text-muted-foreground">{item.taskDescription}</p>}
                     <p className="mt-2 text-xs font-bold text-muted-foreground">Jadwal: {item.date}</p>
-                    <p className="mt-1 text-xs font-bold text-emerald-700">Submit: {formatDateTime(item.submittedAt)}</p>
-                    <p className="mt-1 text-xs font-bold text-blue-700">
-                      {item.reviewedAt ? `Direview: ${formatDateTime(item.reviewedAt)}${item.reviewedBy ? ` oleh ${item.reviewedBy}` : ""}` : "Menunggu review operator"}
-                    </p>
+                    {item.isHoliday || item.isExempt ? (
+                      <p className="mt-1 text-xs font-bold text-violet-700">Piket diliburkan: {item.holiday?.name || "Hari Libur Piket"}</p>
+                    ) : (
+                      <>
+                        <p className="mt-1 text-xs font-bold text-emerald-700">Submit: {formatDateTime(item.submittedAt)}</p>
+                        <p className="mt-1 text-xs font-bold text-blue-700">
+                          {item.reviewedAt ? `Direview: ${formatDateTime(item.reviewedAt)}${item.reviewedBy ? ` oleh ${item.reviewedBy}` : ""}` : "Menunggu review operator"}
+                        </p>
+                      </>
+                    )}
                     {item.reviewNote && (
                       <div className="mt-3 rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-700">
                         <span className="font-black text-slate-900">Catatan review:</span> {item.reviewNote}

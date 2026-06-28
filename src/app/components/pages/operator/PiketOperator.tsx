@@ -2,9 +2,10 @@ import React from "react";
 import {
   AlertTriangle,
   CalendarDays,
+  CalendarOff,
   Check,
-  ClipboardCheck,
   History,
+  ImageIcon,
   Loader2,
   Plus,
   RefreshCw,
@@ -18,8 +19,10 @@ import { Link } from "react-router";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Layout } from "../../templates/Layout";
 import { apiDelete, apiGet, apiPatch, apiPost, getStoredUser } from "../../../lib/api";
+import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import {
   PicketAssignment,
+  PicketHoliday,
   PicketLeaveRequest,
   PicketSubmission,
   PicketTask,
@@ -29,6 +32,7 @@ import {
   getNextWeeklyReshuffleDate,
   getPicketScheduleGeneratePayload,
   mapPicketAssignment,
+  mapPicketHoliday,
   mapPicketLeaveRequest,
   mapPicketSubmission,
   mapPicketTask,
@@ -99,6 +103,7 @@ const statusStyle: Record<string, string> = {
   Terkirim: "border-blue-200 bg-blue-50 text-blue-700",
   Valid: "border-emerald-200 bg-emerald-50 text-emerald-700",
   Bermasalah: "border-red-200 bg-red-50 text-red-600",
+  Libur: "border-violet-200 bg-violet-50 text-violet-700",
 };
 
 const emptyScheduleForm: ScheduleForm = {
@@ -138,6 +143,7 @@ function getPicketScheduleErrorMessage(err: any, fallback: string) {
 
 export default function PiketOperator() {
   const user = getStoredUser();
+  const reviewSectionRef = React.useRef<HTMLElement | null>(null);
   const isStudentPicShell = user?.role === "mahasiswa";
   const [date, setDate] = React.useState(getJakartaDateKey());
   const [loading, setLoading] = React.useState(true);
@@ -168,6 +174,22 @@ export default function PiketOperator() {
   const [manualScheduleTaskDescription, setManualScheduleTaskDescription] = React.useState("");
   const [allowed, setAllowed] = React.useState(user?.role === "operator");
   const [hasAutoReshuffledForDate, setHasAutoReshuffledForDate] = React.useState<string | null>(null);
+  const [holidays, setHolidays] = React.useState<PicketHoliday[]>([]);
+  const [holidayForm, setHolidayForm] = React.useState({ date: "", name: "", notes: "" });
+  const [editingHolidayId, setEditingHolidayId] = React.useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirmDialog();
+
+  const holidayRange = React.useMemo(() => {
+    const current = new Date(`${date}T00:00:00`);
+    const year = current.getFullYear();
+    const month = current.getMonth();
+    const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    const endDate = new Date(year, month + 1, 0);
+    return {
+      startDate,
+      endDate: `${year}-${String(month + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`,
+    };
+  }, [date]);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -187,7 +209,7 @@ export default function PiketOperator() {
         setAllowed(true);
       }
 
-      const [settingsRes, taskRes, studentRes, managerRes, overviewRes, schedulesRes, leaveRes] = await Promise.allSettled([
+      const [settingsRes, taskRes, studentRes, managerRes, overviewRes, schedulesRes, leaveRes, holidayRes, submissionsRes] = await Promise.allSettled([
         apiGet<any>("/picket/settings"),
         apiGet<any>("/picket/tasks?includeInactive=true"),
         apiGet<any>("/picket/students"),
@@ -195,8 +217,11 @@ export default function PiketOperator() {
         apiGet<any>(`/picket/operator/overview?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/schedules?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/leave-requests?date=${encodeURIComponent(date)}&_=${Date.now()}`),
+        apiGet<any>(`/picket/holidays?startDate=${holidayRange.startDate}&endDate=${holidayRange.endDate}&_=${Date.now()}`),
+        apiGet<any>(`/picket/submissions?date=${encodeURIComponent(date)}&status=${encodeURIComponent("Menunggu")}&_=${Date.now()}`),
       ]);
       let overviewAssignmentRowsLoaded = false;
+      let overviewSubmissions: PicketSubmission[] | null = null;
 
       if (settingsRes.status === "fulfilled") {
         const raw = settingsRes.value?.settings || settingsRes.value || {};
@@ -230,22 +255,35 @@ export default function PiketOperator() {
         overviewAssignmentRowsLoaded = rows.length > 0;
         const nextAssignments = rows.map(mapPicketAssignment);
         setAssignments(nextAssignments);
-        setSubmissions((raw.submissions || []).map(mapPicketSubmission));
+        overviewSubmissions = (raw.submissions || []).map(mapPicketSubmission);
       }
 
       if ((overviewRes.status !== "fulfilled" || !overviewAssignmentRowsLoaded) && schedulesRes.status === "fulfilled") {
         const rawSchedules = schedulesRes.value || {};
         const rows = Array.isArray(rawSchedules) ? rawSchedules : rawSchedules.items || rawSchedules.schedules || rawSchedules.assignments || [];
         setAssignments(rows.map(mapPicketAssignment));
-        if (overviewRes.status !== "fulfilled") setSubmissions([]);
       } else if (overviewRes.status !== "fulfilled") {
         setAssignments([]);
-        setSubmissions([]);
+      }
+
+      if (submissionsRes.status === "fulfilled") {
+        const rows = Array.isArray(submissionsRes.value)
+          ? submissionsRes.value
+          : submissionsRes.value?.submissions || submissionsRes.value?.items || [];
+        setSubmissions(rows.map(mapPicketSubmission));
+      } else {
+        setSubmissions(overviewSubmissions || []);
       }
 
       if (leaveRes.status === "fulfilled") {
         const rows = Array.isArray(leaveRes.value) ? leaveRes.value : leaveRes.value?.requests || [];
         setLeaveRequests(rows.map(mapPicketLeaveRequest));
+      }
+      if (holidayRes.status === "fulfilled") {
+        const rows = Array.isArray(holidayRes.value)
+          ? holidayRes.value
+          : holidayRes.value?.holidays || holidayRes.value?.items || [];
+        setHolidays(rows.map(mapPicketHoliday).sort((a: PicketHoliday, b: PicketHoliday) => a.date.localeCompare(b.date)));
       }
       return loadedSettings;
     } catch (err: any) {
@@ -254,7 +292,7 @@ export default function PiketOperator() {
     } finally {
       setLoading(false);
     }
-  }, [date, user?.role]);
+  }, [date, holidayRange.endDate, holidayRange.startDate, user?.role]);
 
   React.useEffect(() => {
     void loadData();
@@ -586,8 +624,79 @@ export default function PiketOperator() {
     }
   };
 
+  const resetHolidayForm = () => {
+    setEditingHolidayId(null);
+    setHolidayForm({ date: "", name: "", notes: "" });
+  };
+
+  const saveHoliday = async () => {
+    if (!holidayForm.date || !holidayForm.name.trim()) {
+      setError("Tanggal dan nama hari libur wajib diisi.");
+      return;
+    }
+    const day = new Date(`${holidayForm.date}T00:00:00`).getDay();
+    if (day === 0 || day === 6) {
+      setError("Hari libur piket hanya dapat dipilih pada Senin sampai Jumat.");
+      return;
+    }
+    const payload = {
+      date: holidayForm.date,
+      name: holidayForm.name.trim(),
+      notes: holidayForm.notes.trim() || null,
+    };
+    try {
+      setSaving(true);
+      setError("");
+      if (editingHolidayId) {
+        await apiPatch(`/picket/holidays/${encodeURIComponent(editingHolidayId)}`, payload);
+        setInfo("Hari libur piket berhasil diperbarui.");
+      } else {
+        await apiPost("/picket/holidays", payload);
+        setInfo("Hari libur piket berhasil ditambahkan.");
+      }
+      setDate(holidayForm.date);
+      resetHolidayForm();
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Gagal menyimpan hari libur piket.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const editHoliday = (holiday: PicketHoliday) => {
+    setEditingHolidayId(holiday.id);
+    setHolidayForm({ date: holiday.date, name: holiday.name, notes: holiday.notes || "" });
+  };
+
+  const deleteHoliday = async (holiday: PicketHoliday) => {
+    const approved = await confirm({
+      title: "Hapus hari libur piket?",
+      description: `Setelah “${holiday.name}” dihapus, jadwal pada ${holiday.date} kembali menjadi kewajiban piket normal.`,
+      confirmLabel: "Hapus Hari Libur",
+      variant: "danger",
+    });
+    if (!approved) return;
+    try {
+      setSaving(true);
+      setError("");
+      await apiDelete(`/picket/holidays/${encodeURIComponent(holiday.id)}`);
+      if (editingHolidayId === holiday.id) resetHolidayForm();
+      setInfo("Hari libur piket berhasil dihapus. Jadwal tanggal tersebut kembali aktif.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Gagal menghapus hari libur piket.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submittedAssignmentIds = new Set(submissions.flatMap((item) => [item.scheduleId, item.assignmentId].filter(Boolean).map(String)));
-  const missingAssignments = assignments.filter((item) => !item.submitted && !submittedAssignmentIds.has(item.scheduleId || item.id));
+  const selectedHoliday = holidays.find((holiday) => holiday.date === date) || assignments.find((item) => item.isHoliday)?.holiday || null;
+  const missingAssignments = assignments.filter((item) => !item.isHoliday && !item.isExempt && !item.submitted && !submittedAssignmentIds.has(item.scheduleId || item.id));
+  const waitingReviewSubmissions = submissions.filter((item) => !["valid", "bermasalah", "ditolak", "disetujui"].includes(String(item.status || "").toLowerCase()));
+  const waitingReviewNames = Array.from(new Set(waitingReviewSubmissions.map((item) => item.studentName).filter(Boolean))).slice(0, 3);
+  const remainingWaitingReview = Math.max(0, waitingReviewSubmissions.length - waitingReviewNames.length);
   const filteredSubmissions = submissions.filter((item) => {
     const haystack = `${item.studentName} ${item.nim || ""} ${item.taskName} ${item.status}`.toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
@@ -611,10 +720,15 @@ export default function PiketOperator() {
   };
 
   const Shell = isStudentPicShell ? Layout : OperatorLayout;
+  const scrollToReviewSubmissions = () => {
+    setQuery("");
+    reviewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <Shell title="Manajemen Piket">
       <div className="flex flex-col gap-5 pb-4">
+        {confirmDialog}
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</div>}
         {info && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{info}</div>}
         {!allowed && !loading ? (
@@ -641,16 +755,124 @@ export default function PiketOperator() {
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           {[
             { label: "Piket Hari Ini", value: assignments.length, icon: <CalendarDays size={18} />, tone: "blue" },
-            { label: "Sudah Submit", value: submissions.length, icon: <ClipboardCheck size={18} />, tone: "emerald" },
+            {
+              label: "Menunggu Review",
+              value: waitingReviewSubmissions.length,
+              icon: <ImageIcon size={18} />,
+              tone: "emerald",
+              onClick: scrollToReviewSubmissions,
+              helper: waitingReviewNames.length > 0 ? `${waitingReviewNames.join(", ")}${remainingWaitingReview > 0 ? ` +${remainingWaitingReview} lainnya` : ""}` : "Klik untuk buka approval foto",
+            },
             { label: "Belum Piket", value: missingAssignments.length, icon: <AlertTriangle size={18} />, tone: "red" },
             { label: "PIC Piket", value: managerIds.length, icon: <UserCog size={18} />, tone: "amber" },
           ].map((item) => (
-            <div key={item.label} className="rounded-[16px] border border-border bg-white p-4 shadow-sm">
+            <button
+              key={item.label}
+              type="button"
+              onClick={"onClick" in item ? item.onClick : undefined}
+              className={`rounded-[16px] border border-border bg-white p-4 text-left shadow-sm ${"onClick" in item ? "transition hover:-translate-y-0.5 hover:border-[#0AB600]/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20" : "cursor-default"}`}
+            >
               <div className="mb-3 flex items-center gap-2 text-muted-foreground">{item.icon}<span className="text-xs font-black uppercase tracking-wide">{item.label}</span></div>
               <p className="text-2xl font-black text-foreground">{item.value}</p>
-            </div>
+              {"helper" in item && item.helper && <p className="mt-2 line-clamp-2 text-[11px] font-bold leading-relaxed text-slate-500">{item.helper}</p>}
+            </button>
           ))}
         </div>
+
+        <section className="rounded-[16px] border border-border bg-white shadow-sm">
+          <div className="flex flex-col gap-2 border-b border-border px-5 py-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <CalendarOff size={18} className="text-violet-600" />
+                <h2 className="text-sm font-black text-foreground">Hari Libur Piket</h2>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Tanggal libur tidak menjadi kewajiban piket aktif, tetapi assignment tetap tersimpan di riwayat.</p>
+            </div>
+            <span className="w-fit rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-black text-violet-700">
+              {holidays.length} libur bulan ini
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="rounded-[14px] border border-violet-200 bg-violet-50/60 p-4">
+              <h3 className="text-sm font-black text-foreground">{editingHolidayId ? "Ubah Hari Libur" : "Tambah Hari Libur"}</h3>
+              <div className="mt-4 flex flex-col gap-3">
+                <label className="text-xs font-black text-slate-700">
+                  Tanggal Libur
+                  <input
+                    type="date"
+                    value={holidayForm.date}
+                    onChange={(event) => {
+                      const nextDate = event.target.value;
+                      const nextDay = nextDate ? new Date(`${nextDate}T00:00:00`).getDay() : -1;
+                      if (nextDate && (nextDay === 0 || nextDay === 6)) {
+                        setError("Tanggal libur piket hanya dapat dipilih pada Senin sampai Jumat.");
+                        return;
+                      }
+                      setError("");
+                      setHolidayForm((prev) => ({ ...prev, date: nextDate }));
+                    }}
+                    className="mt-1.5 h-10 w-full rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                  <span className="mt-1 block text-[10px] font-semibold text-muted-foreground">Hanya Senin–Jumat.</span>
+                </label>
+                <label className="text-xs font-black text-slate-700">
+                  Nama Hari Libur
+                  <input
+                    value={holidayForm.name}
+                    onChange={(event) => setHolidayForm((prev) => ({ ...prev, name: event.target.value }))}
+                    placeholder="Contoh: Hari Kemerdekaan"
+                    className="mt-1.5 h-10 w-full rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                </label>
+                <label className="text-xs font-black text-slate-700">
+                  Catatan
+                  <textarea
+                    value={holidayForm.notes}
+                    onChange={(event) => setHolidayForm((prev) => ({ ...prev, notes: event.target.value }))}
+                    rows={3}
+                    placeholder="Catatan opsional"
+                    className="mt-1.5 w-full rounded-[10px] border border-border bg-white px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={saveHoliday} disabled={saving} className="h-10 rounded-[10px] bg-violet-600 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-60">
+                    {saving ? "Menyimpan..." : "Simpan"}
+                  </button>
+                  <button onClick={resetHolidayForm} type="button" className="h-10 rounded-[10px] border border-border bg-white text-sm font-black text-slate-700 hover:bg-slate-50">Batal</button>
+                </div>
+              </div>
+            </div>
+            {holidays.length === 0 ? (
+              <div className="flex min-h-[220px] items-center justify-center rounded-[14px] border border-dashed border-border p-8 text-center text-sm font-semibold text-muted-foreground">
+                Belum ada hari libur piket pada bulan ini.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-[14px] border border-border">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="border-b border-border bg-slate-50 text-xs uppercase text-muted-foreground">
+                    <tr><th className="px-4 py-3">Tanggal</th><th className="px-4 py-3">Hari</th><th className="px-4 py-3">Nama Hari Libur</th><th className="px-4 py-3">Catatan</th><th className="px-4 py-3">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {holidays.map((holiday) => (
+                      <tr key={holiday.id} className={holiday.date === date ? "bg-violet-50/70" : ""}>
+                        <td className="px-4 py-3 font-black text-foreground">{holiday.date}</td>
+                        <td className="px-4 py-3 font-bold text-slate-600">{new Date(`${holiday.date}T00:00:00`).toLocaleDateString("id-ID", { weekday: "long" })}</td>
+                        <td className="px-4 py-3"><div className="flex items-center gap-2"><Badge status="Libur" /><span className="font-black text-foreground">{holiday.name}</span></div></td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{holiday.notes || "-"}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-2">
+                            <button onClick={() => editHoliday(holiday)} className="h-8 rounded-[8px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">Edit</button>
+                            <button onClick={() => void deleteHoliday(holiday)} disabled={saving} className="inline-flex h-8 items-center gap-1 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white disabled:opacity-60"><Trash2 size={13} /> Hapus</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
           <div className="flex flex-col gap-5">
@@ -900,6 +1122,10 @@ export default function PiketOperator() {
                     <h2 className="text-sm font-black text-foreground">Jadwal dan Status Hari Ini</h2>
                     <p className="mt-1 text-xs text-muted-foreground">Tambah, edit, atau hapus jadwal piket tanggal {date}; tugas bisa dipilih atau ditulis manual.</p>
                   </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-9 rounded-[9px] border border-border bg-white px-3 text-xs font-black outline-none" />
+                    {selectedHoliday && <Badge status="Libur" />}
+                  </div>
                   {editingScheduleId && (
                     <button onClick={resetScheduleForm} className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
                       <X size={14} /> Batal Edit
@@ -1004,7 +1230,7 @@ export default function PiketOperator() {
                         <tr key={item.id}>
                           <td className="px-5 py-3"><p className="font-black text-foreground">{item.studentName}</p><p className="text-xs text-muted-foreground">{item.nim || "-"}</p></td>
                           <td className="px-5 py-3"><p className="font-bold text-foreground">{item.taskName}</p>{item.taskDescription && <p className="text-xs text-muted-foreground">{item.taskDescription}</p>}{item.notes && <p className="text-xs text-muted-foreground">Catatan: {item.notes}</p>}</td>
-                          <td className="px-5 py-3"><Badge status={item.submitted ? "Terkirim" : item.status} /></td>
+                          <td className="px-5 py-3"><Badge status={item.isHoliday || item.isExempt ? "Libur" : item.submitted ? "Terkirim" : item.status} /></td>
                           <td className="px-5 py-3">{item.photoUrl ? <a href={item.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-600 hover:underline">Lihat Foto</a> : <span className="text-xs text-muted-foreground">Belum submit</span>}</td>
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap gap-2">
@@ -1020,7 +1246,7 @@ export default function PiketOperator() {
               )}
             </section>
 
-            <section className="rounded-[16px] border border-border bg-white shadow-sm">
+            <section ref={reviewSectionRef} id="review-foto-piket" className="scroll-mt-24 rounded-[16px] border border-border bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-sm font-black text-foreground">Review Foto Piket</h2>

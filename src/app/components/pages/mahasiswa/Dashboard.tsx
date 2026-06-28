@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { apiGet, getStoredUser } from "../../../lib/api";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
-import { PicketAssignment, mapPicketAssignment } from "../../../lib/picket";
+import { PicketAssignment, PicketHoliday, getPicketHolidayFromTodayResponse, isPicketHolidayResponse, mapPicketTodayAssignment } from "../../../lib/picket";
 
 function getActiveMilestone(project: any) {
   const milestones = project?.milestones || [];
@@ -147,6 +147,7 @@ export default function Dashboard() {
   const [boardProjectsData, setBoardProjectsData] = React.useState<any[]>([]);
   const [boardSprintTasks, setBoardSprintTasks] = React.useState<any[]>([]);
   const [todayPicket, setTodayPicket] = React.useState<PicketAssignment | null>(null);
+  const [todayPicketHoliday, setTodayPicketHoliday] = React.useState<PicketHoliday | null>(null);
 
   React.useEffect(() => {
     const loadDashboard = async () => {
@@ -157,11 +158,8 @@ export default function Dashboard() {
           apiGet<any>(`/picket/today?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`).catch(() => null),
         ]);
         setDashboardData(data);
-        const rawPicket = picket?.assignment || picket?.todayAssignment || picket;
-        setTodayPicket(rawPicket?.id || rawPicket?.assignment_id || rawPicket?.task_name || rawPicket?.taskName
-          ? mapPicketAssignment(rawPicket)
-          : null
-        );
+        setTodayPicket(mapPicketTodayAssignment(picket));
+        setTodayPicketHoliday(isPicketHolidayResponse(picket) ? getPicketHolidayFromTodayResponse(picket) : null);
       } catch {
       }
     };
@@ -460,10 +458,10 @@ export default function Dashboard() {
         </Link>
 
         {/* ── Main Grid 8-4 ── */}
-        {todayPicket && (
+        {(todayPicket || todayPicketHoliday) && (
           <Link
             to="/picket"
-            className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm transition-colors hover:bg-emerald-100"
+            className={`rounded-[14px] border p-4 shadow-sm transition-colors ${todayPicketHoliday || todayPicket?.isHoliday || todayPicket?.isExempt ? "border-violet-200 bg-violet-50 hover:bg-violet-100" : "border-emerald-200 bg-emerald-50 hover:bg-emerald-100"}`}
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
@@ -471,10 +469,10 @@ export default function Dashboard() {
                   <ClipboardCheck size={22} />
                 </div>
                 <div>
-                  <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Jadwal Piket Hari Ini</p>
-                  <h2 className="mt-1 text-base font-black text-foreground">{todayPicket.taskName}</h2>
+                  <p className="text-xs font-black uppercase tracking-wide text-emerald-700">{todayPicketHoliday || todayPicket?.isHoliday || todayPicket?.isExempt ? "Hari Libur Piket" : "Jadwal Piket Hari Ini"}</p>
+                  <h2 className="mt-1 text-base font-black text-foreground">{todayPicketHoliday?.name || todayPicket?.holiday?.name || todayPicket?.taskName}</h2>
                   <p className="mt-1 text-xs font-semibold text-emerald-700">
-                    {todayPicket.submitted ? "Foto piket sudah dikirim." : "Foto piket akan diminta sebelum checkout."}
+                    {todayPicketHoliday || todayPicket?.isHoliday || todayPicket?.isExempt ? "Piket diliburkan dan tidak menjadi kewajiban aktif." : todayPicket?.submitted ? "Foto piket sudah dikirim." : "Foto piket akan diminta sebelum checkout."}
                   </p>
                 </div>
               </div>

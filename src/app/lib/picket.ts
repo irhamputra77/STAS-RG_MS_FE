@@ -43,6 +43,16 @@ export type PicketAssignment = {
   reviewedAt?: string | null;
   reviewedBy?: string | null;
   reviewNote?: string | null;
+  isHoliday: boolean;
+  isExempt: boolean;
+  holiday?: PicketHoliday | null;
+};
+
+export type PicketHoliday = {
+  id: string;
+  date: string;
+  name: string;
+  notes?: string | null;
 };
 
 export type PicketSubmission = {
@@ -277,7 +287,44 @@ export function mapPicketAssignment(row: any): PicketAssignment {
     reviewedAt: row?.reviewed_at || row?.reviewedAt || row?.submission?.reviewed_at || row?.submission?.reviewedAt || null,
     reviewedBy: row?.reviewed_by || row?.reviewedBy || row?.submission?.reviewed_by || row?.submission?.reviewedBy || null,
     reviewNote: row?.review_note || row?.reviewNote || row?.submission?.review_note || row?.submission?.reviewNote || null,
+    isHoliday: bool(row?.is_holiday ?? row?.isHoliday, false),
+    isExempt: bool(row?.is_exempt ?? row?.isExempt, false),
+    holiday: row?.holiday ? mapPicketHoliday(row.holiday) : null,
   };
+}
+
+export function mapPicketHoliday(row: any): PicketHoliday {
+  const date = text(row?.date || row?.holiday_date || row?.holidayDate);
+  return {
+    id: text(row?.id || row?.holiday_id || row?.holidayId || `picket-holiday-${date || Date.now()}`),
+    date,
+    name: text(row?.name || row?.title || row?.holiday_name || row?.holidayName, "Hari Libur Piket"),
+    notes: row?.notes || row?.note || row?.description || null,
+  };
+}
+
+export function getPicketHolidayFromTodayResponse(value: any): PicketHoliday | null {
+  const holiday = value?.holiday || value?.assignment?.holiday || value?.todayAssignment?.holiday;
+  return holiday ? mapPicketHoliday(holiday) : null;
+}
+
+export function isPicketHolidayResponse(value: any) {
+  const assignment = value?.assignment || value?.todayAssignment || value;
+  return bool(
+    value?.isHoliday ?? value?.is_holiday ?? assignment?.isHoliday ?? assignment?.is_holiday,
+    Boolean(getPicketHolidayFromTodayResponse(value))
+  );
+}
+
+export function mapPicketTodayAssignment(value: any): PicketAssignment | null {
+  const raw = value?.assignment || value?.todayAssignment || value;
+  if (!raw?.id && !raw?.assignment_id && !raw?.task_name && !raw?.taskName) return null;
+  return mapPicketAssignment({
+    ...raw,
+    isHoliday: raw?.isHoliday ?? raw?.is_holiday ?? value?.isHoliday ?? value?.is_holiday,
+    isExempt: raw?.isExempt ?? raw?.is_exempt ?? value?.isExempt ?? value?.is_exempt,
+    holiday: raw?.holiday || value?.holiday || null,
+  });
 }
 
 export function mapPicketSubmission(row: any): PicketSubmission {

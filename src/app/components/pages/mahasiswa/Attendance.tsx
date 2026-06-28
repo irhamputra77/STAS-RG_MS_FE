@@ -10,6 +10,7 @@ import {
   ensurePicketPhotoPreviewable,
   fileToDataUrl,
   mapPicketAssignment,
+  mapPicketTodayAssignment,
   mapPicketSubmissionResult,
   validatePicketPhoto,
 } from "../../../lib/picket";
@@ -342,8 +343,7 @@ export default function Attendance() {
       try {
         const response = await apiGet<any>(`/picket/today?studentId=${encodeURIComponent(user.id)}&_=${Date.now()}`);
         if (!active) return;
-        const raw = response?.assignment || response?.todayAssignment || response;
-        setTodayPicket(raw?.id || raw?.assignment_id || raw?.task_name || raw?.taskName ? mapPicketAssignment(raw) : null);
+        setTodayPicket(mapPicketTodayAssignment(response));
       } catch {
         if (active) setTodayPicket(null);
       }
@@ -550,6 +550,7 @@ export default function Attendance() {
   const shouldRequirePicketPhotoBeforeCheckout = () => {
     if (todayData.status !== "Berlangsung") return false;
     if (!todayPicket) return false;
+    if (todayPicket.isHoliday || todayPicket.isExempt) return false;
     if (String(todayPicket.leaveStatus || "").toLowerCase() === "disetujui") return false;
     return !todayPicket.submitted && !todayPicket.submissionId;
   };
