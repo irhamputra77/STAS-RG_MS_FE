@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Layout } from "../../templates/Layout";
 import { apiGet, apiPost, getStoredUser, setStoredUser } from "../../../lib/api";
 import {
@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Link as LinkIcon,
   Loader2,
+  Save,
   Send,
   Sparkles,
 } from "lucide-react";
@@ -37,6 +38,16 @@ type GraduationFieldKey =
   | "datasetModelUrl"
   | "designDocumentationUrl";
 
+const allGraduationFieldKeys: GraduationFieldKey[] = [
+  "reportUrl",
+  "productPhotoFolderUrl",
+  "manualBookUrl",
+  "demoVideoUrl",
+  "repositoryUrl",
+  "deployedUrl",
+  "datasetModelUrl",
+  "designDocumentationUrl",
+];
 type GraduationProject = {
   projectId: string;
   projectTitle: string;
@@ -206,6 +217,9 @@ function FieldInput({
   project,
   field,
   onChange,
+  onSaveDraft,
+  savingDraft = false,
+  canSaveDraft = false,
   review,
   disabled = false,
 }: {
@@ -219,6 +233,9 @@ function FieldInput({
     icon?: React.ReactNode;
   };
   onChange: (projectId: string, key: GraduationFieldKey, value: string) => void;
+  onSaveDraft?: () => void;
+  savingDraft?: boolean;
+  canSaveDraft?: boolean;
   review?: FieldReview;
   disabled?: boolean;
 }) {
@@ -288,6 +305,19 @@ function FieldInput({
         placeholder={field.placeholder}
         className={`h-11 w-full rounded-[12px] border px-3 text-sm font-semibold outline-none transition-all focus:ring-2 disabled:cursor-not-allowed disabled:opacity-70 ${inputTone}`}
       />
+      {canSaveDraft && !disabled && (
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={onSaveDraft}
+            disabled={savingDraft || invalid}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-[9px] bg-slate-900 px-3 text-[11px] font-black text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {savingDraft ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+            Simpan kolom
+          </button>
+        </div>
+      )}
       {invalid && (
         <p className="mt-2 text-xs font-bold text-red-500">
           Link harus diawali http:// atau https://.
@@ -313,8 +343,10 @@ export default function GraduationSubmission() {
   const [submissionStatus, setSubmissionStatus] = useState("");
   const [submittedAt, setSubmittedAt] = useState("");
   const [graduationAllowedAt, setGraduationAllowedAt] = useState("");
+  const [lastSavedAt, setLastSavedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [becomingAlumni, setBecomingAlumni] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -338,8 +370,17 @@ export default function GraduationSubmission() {
     };
   }, [projects]);
 
+  const hasInvalidFilledUrl = useMemo(() =>
+    projects.some((project) =>
+      allGraduationFieldKeys.some((key) => {
+        const value = String(project[key] || "").trim();
+        return Boolean(value) && !isValidUrl(value, false);
+      })
+    ), [projects]);
+
   const graduationAllowed = Boolean(graduationAllowedAt) && submissionStatus === "Valid" && studentStatus !== "Alumni";
   const reviewLocked = submissionStatus === "Valid" || studentStatus === "Alumni";
+  const canSaveDraft = projects.length > 0 && !reviewLocked && !savingDraft && !hasInvalidFilledUrl;
   const canSubmit = completion.complete && !submitting && projects.length > 0 && !reviewLocked;
   const canBecomeAlumni = graduationAllowed && !becomingAlumni;
   const submitLabel = submissionStatus === "Revisi" ? "Kirim Ulang Berkas Kelulusan" : "Kirim Berkas Kelulusan";
@@ -355,6 +396,7 @@ export default function GraduationSubmission() {
         setSubmissionStatus(data?.submission?.status || "");
         setSubmittedAt(data?.submission?.submittedAt || data?.submission?.submitted_at || "");
         setGraduationAllowedAt(data?.submission?.graduationAllowedAt || data?.submission?.graduation_allowed_at || "");
+        setLastSavedAt(data?.submission?.updatedAt || data?.submission?.updated_at || data?.submission?.createdAt || data?.submission?.created_at || "");
       } catch (err: any) {
         setError(err?.message || "Gagal memuat form berkas kelulusan.");
       } finally {
@@ -373,6 +415,43 @@ export default function GraduationSubmission() {
     );
   };
 
+  const buildDraftPayload = () => ({
+    projects: projects.map((project) => ({
+      projectId: project.projectId,
+      reportUrl: project.reportUrl.trim(),
+      productPhotoFolderUrl: project.productPhotoFolderUrl.trim(),
+      manualBookUrl: project.manualBookUrl.trim(),
+      demoVideoUrl: project.demoVideoUrl.trim(),
+      repositoryUrl: project.repositoryUrl.trim(),
+      deployedUrl: project.deployedUrl.trim(),
+      datasetModelUrl: project.datasetModelUrl.trim(),
+      designDocumentationUrl: project.designDocumentationUrl.trim(),
+    })),
+  });
+
+  const handleSaveDraft = async () => {
+    if (!canSaveDraft) return;
+
+    try {
+      setSavingDraft(true);
+      setError("");
+      setMessage("");
+
+      const result = await apiPost<any>("/graduation-submissions/me/draft", buildDraftPayload());
+      setProjects((result?.projects || projects).map(normalizeProject));
+      setStudentStatus(result?.student?.status || result?.student?.studentStatus || studentStatus);
+      setSubmissionStatus(result?.submission?.status || submissionStatus || "Draft");
+      setSubmittedAt(result?.submission?.submittedAt || result?.submission?.submitted_at || submittedAt);
+      setGraduationAllowedAt(result?.submission?.graduationAllowedAt || result?.submission?.graduation_allowed_at || "");
+      setLastSavedAt(result?.submission?.updatedAt || result?.submission?.updated_at || new Date().toISOString());
+      setMessage(result?.message || "Draft berkas berhasil disimpan.");
+    } catch (err: any) {
+      setError(err?.message || "Gagal menyimpan draft berkas kelulusan.");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
 
@@ -381,19 +460,7 @@ export default function GraduationSubmission() {
       setError("");
       setMessage("");
 
-      const result = await apiPost<any>("/graduation-submissions/me", {
-        projects: projects.map((project) => ({
-          projectId: project.projectId,
-          reportUrl: project.reportUrl.trim(),
-          productPhotoFolderUrl: project.productPhotoFolderUrl.trim(),
-          manualBookUrl: project.manualBookUrl.trim(),
-          demoVideoUrl: project.demoVideoUrl.trim(),
-          repositoryUrl: project.repositoryUrl.trim(),
-          deployedUrl: project.deployedUrl.trim(),
-          datasetModelUrl: project.datasetModelUrl.trim(),
-          designDocumentationUrl: project.designDocumentationUrl.trim(),
-        })),
-      });
+      const result = await apiPost<any>("/graduation-submissions/me", buildDraftPayload());
 
       const nextStudentStatus = result?.student?.status || result?.student?.studentStatus || studentStatus;
 
@@ -402,6 +469,7 @@ export default function GraduationSubmission() {
       setSubmissionStatus(result?.submission?.status || "Dikirim");
       setSubmittedAt(result?.submission?.submittedAt || result?.submission?.submitted_at || new Date().toISOString());
       setGraduationAllowedAt(result?.submission?.graduationAllowedAt || result?.submission?.graduation_allowed_at || "");
+      setLastSavedAt(result?.submission?.updatedAt || result?.submission?.updated_at || new Date().toISOString());
       setMessage(result?.message || "Berkas kelulusan berhasil dikirim.");
 
       const currentUser = getStoredUser();
@@ -452,6 +520,16 @@ export default function GraduationSubmission() {
       setBecomingAlumni(false);
     }
   };
+  const savedLabel = lastSavedAt
+    ? new Date(lastSavedAt).toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
   const submittedLabel = submittedAt
     ? new Date(submittedAt).toLocaleDateString("id-ID", {
         day: "2-digit",
@@ -500,6 +578,11 @@ export default function GraduationSubmission() {
                 {submissionStatus && (
                   <span className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-black">
                     Pengajuan: {submissionStatus}{submittedLabel ? `, ${submittedLabel}` : ""}
+                  </span>
+                )}
+                {savedLabel && (
+                  <span className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-black">
+                    Draft tersimpan: {savedLabel}
                   </span>
                 )}
               </div>
@@ -616,6 +699,9 @@ export default function GraduationSubmission() {
                       project={project}
                       field={field}
                       onChange={handleChange}
+                      onSaveDraft={handleSaveDraft}
+                      savingDraft={savingDraft}
+                      canSaveDraft={canSaveDraft}
                       review={getFieldReview(project, field.key)}
                       disabled={reviewLocked}
                     />
@@ -665,6 +751,18 @@ export default function GraduationSubmission() {
             </div>
           </div>
         </div>
+
+        {!reviewLocked && projects.length > 0 && (
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={!canSaveDraft}
+            className="flex h-[48px] items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+          >
+            {savingDraft ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            {savingDraft ? "Menyimpan Draft..." : "Simpan Draft Semua"}
+          </button>
+        )}
 
         {!reviewLocked && (
           <button

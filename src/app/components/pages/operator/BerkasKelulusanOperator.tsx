@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, ExternalLink, Eye, FileCheck, Loader2, Search, X } from "lucide-react";
 import { apiGet, apiPatch, apiPost } from "../../../lib/api";
 import { OperatorLayout } from "../../templates/OperatorLayout";
@@ -27,6 +27,8 @@ type GraduationSubmission = {
   submitted_at?: string | null;
   createdAt?: string | null;
   created_at?: string | null;
+  updatedAt?: string | null;
+  updated_at?: string | null;
   projectCount?: number;
   project_count?: number;
   projectSummary?: string;
@@ -117,7 +119,11 @@ function getStudentInitials(item: GraduationSubmission) {
 }
 
 function getSubmittedAt(item: GraduationSubmission) {
-  return item.submittedAt || item.submitted_at || item.createdAt || item.created_at || null;
+  return item.submittedAt || item.submitted_at || null;
+}
+
+function getSavedAt(item: GraduationSubmission) {
+  return item.submittedAt || item.submitted_at || item.updatedAt || item.updated_at || item.createdAt || item.created_at || null;
 }
 
 function getProjectCount(item: GraduationSubmission) {
@@ -169,11 +175,13 @@ function LinkRow({
   project,
   field,
   reviewingKey,
-  onReview
+  onReview,
+  canReview = true
 }: {
   project: any;
   field: LinkField;
   reviewingKey: string | null;
+  canReview?: boolean;
   onReview: (projectRowId: string, fieldKey: GraduationFieldKey, status: "accepted" | "rejected", currentReview: FieldReview) => void;
 }) {
   const value = getFieldValue(project, field);
@@ -182,7 +190,7 @@ function LinkRow({
   const projectRowId = String(project?.id || "");
   const accKey = `${projectRowId}:${field.key}:accepted`;
   const rejectKey = `${projectRowId}:${field.key}:rejected`;
-  const disabled = !value || !projectRowId || Boolean(reviewingKey);
+  const disabled = !canReview || !value || !projectRowId || Boolean(reviewingKey);
 
   return (
     <div className="rounded-[12px] border border-slate-200 bg-white p-3">
@@ -200,6 +208,11 @@ function LinkRow({
           {reviewStatus === "rejected" && review.note && (
             <p className="rounded-[10px] bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
               Catatan: {review.note}
+            </p>
+          )}
+          {!canReview && (
+            <p className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
+              Draft tersimpan. Review ACC/Tolak aktif setelah mahasiswa menekan kirim berkas.
             </p>
           )}
           <div className="flex flex-wrap gap-2">
@@ -290,6 +303,7 @@ export default function BerkasKelulusanOperator() {
 
   const summary = useMemo(() => ({
     total: items.length,
+    draft: items.filter((item) => item.status === "Draft").length,
     dikirim: items.filter((item) => item.status === "Dikirim").length,
     valid: items.filter((item) => item.status === "Valid").length,
     revisi: items.filter((item) => item.status === "Revisi").length
@@ -396,9 +410,10 @@ export default function BerkasKelulusanOperator() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
           {[
-            { label: "Total Submit", value: summary.total, color: "bg-slate-100 text-slate-700" },
+            { label: "Total Data", value: summary.total, color: "bg-slate-100 text-slate-700" },
+            { label: "Draft", value: summary.draft, color: "bg-slate-100 text-slate-700" },
             { label: "Dikirim", value: summary.dikirim, color: "bg-blue-100 text-blue-700" },
             { label: "Valid", value: summary.valid, color: "bg-emerald-100 text-emerald-700" },
             { label: "Revisi", value: summary.revisi, color: "bg-amber-100 text-amber-700" }
@@ -434,7 +449,7 @@ export default function BerkasKelulusanOperator() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border bg-slate-50">
-                  {["Mahasiswa", "Status Mhs", "Riset", "Waktu Submit", "Status Berkas", "Aksi"].map((header) => (
+                  {["Mahasiswa", "Status Mhs", "Riset", "Waktu Simpan/Kirim", "Status Berkas", "Aksi"].map((header) => (
                     <th key={header} className="whitespace-nowrap px-5 py-3 text-xs font-black uppercase tracking-wide text-muted-foreground">{header}</th>
                   ))}
                 </tr>
@@ -448,7 +463,7 @@ export default function BerkasKelulusanOperator() {
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-sm font-bold text-muted-foreground">Belum ada berkas kelulusan yang dikirim.</td>
+                    <td colSpan={6} className="px-5 py-10 text-center text-sm font-bold text-muted-foreground">Belum ada draft atau berkas kelulusan yang tersimpan.</td>
                   </tr>
                 ) : filtered.map((item) => {
                   const student = item.student || {};
@@ -475,7 +490,7 @@ export default function BerkasKelulusanOperator() {
                         <p className="text-xs font-black text-foreground">{getProjectCount(item)} riset</p>
                         <p className="max-w-[280px] truncate text-[10px] font-semibold text-muted-foreground">{getProjectSummary(item)}</p>
                       </td>
-                      <td className="whitespace-nowrap px-5 py-3.5 text-xs font-bold text-muted-foreground">{formatDateTimeJakarta(getSubmittedAt(item))}</td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-xs font-bold text-muted-foreground">{formatDateTimeJakarta(getSavedAt(item))}</td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black ${STATUS_STYLE[item.status] || STATUS_STYLE.Dikirim}`}>{text(item.status, "Dikirim")}</span>
                       </td>
@@ -503,7 +518,7 @@ export default function BerkasKelulusanOperator() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">Detail Berkas Kelulusan</p>
                 <h3 className="mt-1 text-xl font-black text-foreground">{text(selected.student?.name, "Mahasiswa")}</h3>
-                <p className="text-xs font-semibold text-muted-foreground">{text(selected.student?.nim)} - {formatDateTimeJakarta(getSubmittedAt(selected))}</p>
+                <p className="text-xs font-semibold text-muted-foreground">{text(selected.student?.nim)} - {formatDateTimeJakarta(getSavedAt(selected))}</p>
               </div>
               <button onClick={() => setSelected(null)} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200">
                 <X size={17} />
@@ -571,6 +586,7 @@ export default function BerkasKelulusanOperator() {
                             field={field}
                             reviewingKey={reviewingKey}
                             onReview={handleReview}
+                            canReview={selected.status !== "Draft"}
                           />
                         ))}
                         {specialFields.map((field) => (
@@ -580,6 +596,7 @@ export default function BerkasKelulusanOperator() {
                             field={field}
                             reviewingKey={reviewingKey}
                             onReview={handleReview}
+                            canReview={selected.status !== "Draft"}
                           />
                         ))}
                       </div>

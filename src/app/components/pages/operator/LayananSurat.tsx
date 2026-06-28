@@ -20,6 +20,12 @@ type LetterArchiveItem = {
   source: "request" | "operator";
 };
 type ArchiveMode = "create" | "edit";
+type LetterNumberHistory = {
+  id: string;
+  generatedNumber: string;
+  generatedAt?: string | null;
+  generatedByName?: string | null;
+};
 type LetterCategory = {
   id: string;
   name: string;
@@ -50,6 +56,9 @@ export default function LayananSurat() {
   const [uploadModal, setUploadModal] = useState<LetterRequestAll | null>(null);
   const [nomorSurat, setNomorSurat] = useState("");
   const [tanggalTerbit, setTanggalTerbit] = useState("");
+  const [generatingNumber, setGeneratingNumber] = useState(false);
+  const [numberHistoryLoading, setNumberHistoryLoading] = useState(false);
+  const [numberHistory, setNumberHistory] = useState<LetterNumberHistory[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -86,6 +95,7 @@ export default function LayananSurat() {
           status: item.status,
           estimasi: item.estimasi ? formatDateYmd(item.estimasi) : undefined,
           nomorSurat: item.nomor_surat,
+          tanggalTerbit: item.tanggal_terbit || item.tanggalTerbit || null,
           fileUrl: item.file_url || null,
         }));
         setLetters(mapped);
@@ -160,6 +170,50 @@ export default function LayananSurat() {
     return matchKeyword && matchCategory;
   });
 
+  const formatDateTimeJakarta = (value?: string | null) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Jakarta"
+    }).replace(",", "");
+  };
+
+  const normalizeNumberHistory = (rows: Array<any> = []): LetterNumberHistory[] => rows.map((item) => ({
+    id: String(item.id),
+    generatedNumber: item.generatedNumber || item.generated_number || "-",
+    generatedAt: item.generatedAt || item.generated_at || null,
+    generatedByName: item.generatedByName || item.generated_by_name || null,
+  }));
+
+  const loadNumberHistory = async (letterRequestId: string) => {
+    if (!letterRequestId) return;
+    setNumberHistoryLoading(true);
+    try {
+      const rows = await apiGet<Array<any>>(`/letter-requests/number-history?letterRequestId=${encodeURIComponent(letterRequestId)}`);
+      setNumberHistory(normalizeNumberHistory(rows));
+    } catch (err: any) {
+      setError(err?.message || "Gagal memuat riwayat nomor surat.");
+      setNumberHistory([]);
+    } finally {
+      setNumberHistoryLoading(false);
+    }
+  };
+
+  const openUploadModal = (letter: LetterRequestAll) => {
+    setUploadModal(letter);
+    setNomorSurat(letter.nomorSurat || "");
+    setTanggalTerbit(letter.tanggalTerbit ? String(letter.tanggalTerbit).slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setUploadedFileDataUrl("");
+    setUploadedFileName("");
+    setNumberHistory([]);
+    void loadNumberHistory(letter.id);
+  };
   const showToast = (msg: string) => {
     setToast({ msg, type: "success" });
     setTimeout(() => setToast(null), 3000);
@@ -213,6 +267,39 @@ export default function LayananSurat() {
     }
   };
 
+  const handleGenerateNumber = async () => {
+    if (!uploadModal || generatingNumber) return;
+
+    try {
+      setGeneratingNumber(true);
+      setError("");
+      const response = await apiPost<any>(`/letter-requests/${encodeURIComponent(uploadModal.id)}/generate-number`, {
+        tanggalTerbit: tanggalTerbit || new Date().toISOString().slice(0, 10)
+      });
+      const generated = response?.nomorSurat || response?.nomor_surat || response?.data?.nomor_surat || "";
+      if (generated) {
+        setNomorSurat(generated);
+      }
+      const nextTanggalTerbit = response?.data?.tanggal_terbit || response?.data?.tanggalTerbit || tanggalTerbit;
+      setTanggalTerbit(nextTanggalTerbit ? String(nextTanggalTerbit).slice(0, 10) : tanggalTerbit);
+      setNumberHistory(normalizeNumberHistory(response?.history || []));
+      setLetters((prev) => prev.map((letter) => letter.id === uploadModal.id ? {
+        ...letter,
+        nomorSurat: generated || letter.nomorSurat,
+        tanggalTerbit: nextTanggalTerbit || letter.tanggalTerbit
+      } : letter));
+      setUploadModal((prev) => prev ? {
+        ...prev,
+        nomorSurat: generated || prev.nomorSurat,
+        tanggalTerbit: nextTanggalTerbit || prev.tanggalTerbit
+      } : prev);
+      showToast("Nomor surat berhasil digenerate.");
+    } catch (err: any) {
+      setError(err?.message || "Gagal generate nomor surat.");
+    } finally {
+      setGeneratingNumber(false);
+    }
+  };
   const handleUpload = async () => {
     if (!uploadModal) return;
     if (!nomorSurat.trim()) {
@@ -233,10 +320,11 @@ export default function LayananSurat() {
         fileName: uploadedFileName || null,
       });
 
-      setLetters((prev) => prev.map((letter) => letter.id === uploadModal.id ? { ...letter, status: "Siap Unduh" as const, nomorSurat } : letter));
+      setLetters((prev) => prev.map((letter) => letter.id === uploadModal.id ? { ...letter, status: "Siap Unduh" as const, nomorSurat, tanggalTerbit } : letter));
       setUploadModal(null);
       setNomorSurat("");
       setTanggalTerbit("");
+      setNumberHistory([]);
       setUploadedFileDataUrl("");
       setUploadedFileName("");
       showToast("Dokumen surat berhasil diupload dan siap diunduh mahasiswa.");
@@ -497,7 +585,7 @@ export default function LayananSurat() {
                           </button>
                         )}
                         {l.status === "Diproses" && (
-                          <button onClick={() => { setUploadModal(l); setNomorSurat(l.nomorSurat || ""); setUploadedFileDataUrl(""); setUploadedFileName(""); }} className="h-7 px-2 rounded-[8px] text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1">
+                          <button onClick={() => { openUploadModal(l); }} className="h-7 px-2 rounded-[8px] text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1">
                             <Upload size={11} /> Upload
                           </button>
                         )}
@@ -616,7 +704,7 @@ export default function LayananSurat() {
                 </a>
               )}
               {detail.status === "Menunggu" && <button onClick={() => { handleProses(detail.id); setDetail(null); }} className="h-10 bg-blue-500 hover:bg-blue-600 text-white font-black text-sm rounded-[10px] transition-colors">Proses Sekarang</button>}
-              {detail.status === "Diproses" && <button onClick={() => { setUploadModal(detail); setNomorSurat(detail.nomorSurat || ""); setUploadedFileDataUrl(""); setUploadedFileName(""); setDetail(null); }} className="flex items-center justify-center gap-2 h-10 bg-amber-500 hover:bg-amber-600 text-white font-black text-sm rounded-[10px] transition-colors"><Upload size={15} /> Upload Dokumen</button>}
+              {detail.status === "Diproses" && <button onClick={() => { openUploadModal(detail); setDetail(null); }} className="flex items-center justify-center gap-2 h-10 bg-amber-500 hover:bg-amber-600 text-white font-black text-sm rounded-[10px] transition-colors"><Upload size={15} /> Upload Dokumen</button>}
               <button onClick={() => handleDelete(detail)} disabled={deletingId === detail.id} className="flex items-center justify-center gap-2 h-10 bg-slate-100 hover:bg-red-50 disabled:opacity-60 text-slate-600 hover:text-red-600 font-black text-sm rounded-[10px] border border-slate-200 transition-colors">
                 <Trash2 size={15} /> {deletingId === detail.id ? "Menghapus..." : "Hapus Pengajuan"}
               </button>
@@ -635,12 +723,38 @@ export default function LayananSurat() {
             <div className="p-6 flex flex-col gap-4">
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">Nomor Surat</label>
-                <input value={nomorSurat} onChange={(e) => setNomorSurat(e.target.value)} placeholder="SK/2026/03/xxxx" className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all" />
+                <div className="flex gap-2">
+                  <input value={nomorSurat} onChange={(e) => setNomorSurat(e.target.value)} placeholder="001/STAS-RG/VI/2026" className="min-w-0 flex-1 h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all" />
+                  <button type="button" onClick={handleGenerateNumber} disabled={generatingNumber} className="h-10 shrink-0 rounded-[10px] bg-slate-900 px-3 text-[11px] font-black text-white transition-colors hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-300">
+                    {generatingNumber ? "Generate..." : "Generate"}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">Tanggal Terbit</label>
                 <input type="date" value={tanggalTerbit} onChange={(e) => setTanggalTerbit(e.target.value)} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 transition-all" />
               </div>
+              <div className="rounded-[12px] border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-black text-foreground">Riwayat Generate Nomor</p>
+                  {numberHistoryLoading && <span className="text-[10px] font-bold text-muted-foreground">Memuat...</span>}
+                </div>
+                {numberHistory.length === 0 && !numberHistoryLoading ? (
+                  <p className="text-xs font-semibold text-muted-foreground">Belum ada riwayat generate untuk pengajuan ini.</p>
+                ) : (
+                  <div className="max-h-28 overflow-y-auto divide-y divide-slate-200">
+                    {numberHistory.map((item) => (
+                      <div key={item.id} className="py-2">
+                        <p className="text-xs font-black text-foreground">{item.generatedNumber}</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground">
+                          {formatDateTimeJakarta(item.generatedAt)}{item.generatedByName ? ` oleh ${item.generatedByName}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <label className="border-2 border-dashed border-amber-200 rounded-[12px] p-8 text-center hover:bg-amber-50 transition-colors cursor-pointer block" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); handlePickedFile(event.dataTransfer.files?.[0]); }}>
                 <Upload size={24} className="text-amber-400 mx-auto mb-2" />
                 <p className="text-sm font-bold text-foreground">Klik untuk upload atau seret file</p>

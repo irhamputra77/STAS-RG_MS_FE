@@ -53,6 +53,8 @@ type AttendanceMonitorToday = {
   holidays?: HolidayItem[];
   excludeHolidaysFromWorkdays?: boolean;
   presentIds?: string[];
+  attendanceStatusByStudentId?: Record<string, AttendanceStatus>;
+  attendanceModeByStudentId?: Record<string, string>;
   leaveIds?: string[];
   leaveTypesByStudentId?: Record<string, LeaveRequestType>;
   absentIds?: string[];
@@ -462,7 +464,7 @@ export default function KehadiranMahasiswa() {
       let todayStatus: AttendanceStatus = "Belum Ada Info";
 
       if (presentSet.has(student.id)) {
-        todayStatus = "Hadir";
+        todayStatus = monitor?.attendanceStatusByStudentId?.[student.id] === "WFH" ? "WFH" : "Hadir";
       } else if (leaveSet.has(student.id)) {
         todayStatus = getLeaveAttendanceStatus(monitor?.leaveTypesByStudentId?.[student.id]);
       } else if (isHolidayToday) {
@@ -481,6 +483,7 @@ export default function KehadiranMahasiswa() {
   }, [
     leaveSet,
     lockedAbsentSet,
+    monitor?.attendanceStatusByStudentId,
     monitor?.leaveTypesByStudentId,
     monitor?.lockWindowOpen,
     noInformationSet,
@@ -522,8 +525,8 @@ export default function KehadiranMahasiswa() {
   }, [filteredStudents, selectedStudent]);
 
   const summary = React.useMemo(() => {
-    const presentCount = studentsWithStatus.filter((student) => student.todayStatus === "Hadir").length;
-    const leaveCount = studentsWithStatus.filter((student) => ["Cuti", "Izin", "Sakit", "WFH"].includes(student.todayStatus)).length;
+    const presentCount = studentsWithStatus.filter((student) => ["Hadir", "WFH"].includes(student.todayStatus)).length;
+    const leaveCount = studentsWithStatus.filter((student) => ["Cuti", "Izin", "Sakit"].includes(student.todayStatus)).length;
     const absentCount = studentsWithStatus.filter((student) => student.todayStatus === "Tidak Hadir").length;
     const noInformationCount = studentsWithStatus.filter((student) => student.todayStatus === "Belum Ada Info").length;
     const holidayCount = studentsWithStatus.filter((student) => student.todayStatus === "Libur").length;
@@ -752,7 +755,7 @@ export default function KehadiranMahasiswa() {
           <div className="rounded-[16px] border border-amber-200 bg-amber-50 p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-amber-600">
               <CalendarCheck size={18} />
-              <span className="text-xs font-black uppercase tracking-wide">Izin / Cuti / WFH</span>
+              <span className="text-xs font-black uppercase tracking-wide">Izin / Cuti / Sakit</span>
             </div>
             <p className="text-2xl font-black text-foreground">{summary.leaveCount}</p>
           </div>

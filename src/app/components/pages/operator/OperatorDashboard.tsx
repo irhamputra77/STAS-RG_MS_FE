@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import {
@@ -56,6 +56,8 @@ type AttendanceMonitorToday = {
   risetWeeklyHoursLockAfter?: string;
   risetWeeklyHoursLockWindowOpen?: boolean;
   presentIds?: string[];
+  attendanceStatusByStudentId?: Record<string, string>;
+  attendanceModeByStudentId?: Record<string, string>;
   leaveIds?: string[];
   absentIds?: string[];
   reportedAbsentIds?: string[];
@@ -602,18 +604,7 @@ export default function OperatorDashboard() {
             lockedAt: item.locked_at || item.lockedAt || null,
           }));
 
-        const mappedAudit: AuditLogEntry[] = auditRes.map((item: any) => ({
-          id: item.id,
-          timestamp: new Date(item.logged_at).toLocaleString("id-ID"),
-          userName: item.user_name || "System",
-          userInitials: item.user_initials || "SY",
-          userColor: "bg-amber-500 text-white",
-          userRole: item.user_role === "operator" ? "Admin" : item.user_role === "dosen" ? "Dosen" : "Mahasiswa",
-          action: item.action,
-          target: item.target,
-          ip: item.ip,
-          detail: item.detail || "{}"
-        }));
+        const mappedAudit: AuditLogEntry[] = auditRes.map(mapAuditLogEntry);
 
         const mappedResearch: ResearchFull[] = researchRes.map((item: any) => ({
           id: item.id,
@@ -681,6 +672,32 @@ export default function OperatorDashboard() {
   const showWarningInfo = (message: string, tone: "success" | "warning") => {
     setWarningInfo({ message, tone });
     window.setTimeout(() => setWarningInfo(null), 3000);
+  };
+
+  const mapAuditLogEntry = (item: any): AuditLogEntry => {
+    const role = String(item.user_role || item.userRole || "").toLowerCase();
+    const loggedAt = item.logged_at || item.loggedAt || item.timestamp || null;
+    const parsedDate = loggedAt ? new Date(loggedAt) : null;
+
+    return {
+      id: item.id,
+      timestamp: parsedDate && !Number.isNaN(parsedDate.getTime())
+        ? parsedDate.toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })
+        : "-",
+      userName: item.user_name || item.userName || "System",
+      userInitials: item.user_initials || item.userInitials || "SY",
+      userColor: "bg-amber-500 text-white",
+      userRole: role === "operator" ? "Admin" : role === "dosen" ? "Dosen" : role === "mahasiswa" ? "Mahasiswa" : item.user_role || "System",
+      action: item.action || "-",
+      target: item.target || "-",
+      ip: item.ip || "-",
+      detail: item.detail || "{}"
+    };
+  };
+
+  const refreshRecentAuditLogs = async () => {
+    const response = await apiGet<Array<any>>("/audit-logs?limit=5");
+    setAuditLogs(response.map(mapAuditLogEntry));
   };
 
   const handleSendWarning = async (warning: WarningItem) => {
@@ -776,7 +793,15 @@ export default function OperatorDashboard() {
   const getAttendanceReadId = (item: WarningItem) => `${item.studentId}:${item.referenceDate || getJakartaDateKey()}`;
 
   const presentIdSet = new Set((attendanceMonitor?.presentIds || []).map(String));
+  const getAttendanceModeForStudent = (studentId: string) => {
+    const normalizedId = String(studentId || "");
+    const mode = attendanceMonitor?.attendanceModeByStudentId?.[normalizedId];
+    const status = attendanceMonitor?.attendanceStatusByStudentId?.[normalizedId];
+    return mode || (status === "WFH" ? "wfh" : "onsite");
+  };
   const hadirHariIniMhs = students.filter((item) => presentIdSet.has(String(item.id)));
+  const onsitePresentCount = hadirHariIniMhs.filter((item) => getAttendanceModeForStudent(item.id) !== "wfh").length;
+  const wfhPresentCount = hadirHariIniMhs.filter((item) => getAttendanceModeForStudent(item.id) === "wfh").length;
   const getStudentById = (studentId: string) =>
     students.find((item) => String(item.id) === String(studentId));
   const getAccessLockForStudent = (studentId: string) =>
@@ -894,6 +919,7 @@ export default function OperatorDashboard() {
       }
       setAccessLocks((prev) => prev.filter((item) => item.id !== lock.id && item.studentId !== lock.studentId));
       showWarningInfo(`Akses ${lock.studentName} berhasil dibuka.`, "success");
+      void refreshRecentAuditLogs().catch(() => null);
     } catch (err: any) {
       setError(err?.message || "Gagal membuka akses mahasiswa.");
     }
@@ -912,6 +938,7 @@ export default function OperatorDashboard() {
     try {
       await apiPatch<{ message: string }>(`/leave-requests/${id}/status`, { status });
       setPendingCuti(p => p.filter(l => l.id !== id));
+      void refreshRecentAuditLogs().catch(() => null);
     } catch (err: any) {
       setError(err?.message || "Gagal memproses pengajuan.");
     }
@@ -935,6 +962,7 @@ export default function OperatorDashboard() {
         finalStatus: status === "Diteruskan" ? "Menunggu Dosen" : "Ditolak Operator",
         operatorNote: note
       } : item));
+      void refreshRecentAuditLogs().catch(() => null);
     } catch (err: any) {
       setError(err?.message || "Gagal memproses pengunduran diri.");
     }
@@ -995,7 +1023,7 @@ export default function OperatorDashboard() {
           {/* Hadir Hari Ini */}
           <div className="bg-white border border-emerald-200 rounded-[14px] shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/50 flex items-center justify-between gap-3">
-              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><UserCheck size={13} className="text-emerald-500 shrink-0" /> Hadir Hari Ini<span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{hadirHariIniMhs.length}</span></h3>
+              <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2"><UserCheck size={13} className="text-emerald-500 shrink-0" /> Hadir Hari Ini<span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{hadirHariIniMhs.length}</span><span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black text-emerald-700">Onsite {onsitePresentCount}</span><span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-black text-sky-700">WFH {wfhPresentCount}</span></h3>
             </div>
             {hadirHariIniMhs.length === 0 ? (
               <div className="px-4 py-8 text-center">
@@ -1004,18 +1032,23 @@ export default function OperatorDashboard() {
               </div>
             ) : (
               <div className="max-h-[360px] overflow-y-auto">
-                {hadirHariIniMhs.map(m => (
-                  <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-black text-foreground truncate">{m.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{m.nim}</p>
+                {hadirHariIniMhs.map(m => {
+                  const mode = getAttendanceModeForStudent(m.id);
+                  const isWfh = mode === "wfh";
+
+                  return (
+                    <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-foreground truncate">{m.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{m.nim}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black ${isWfh ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700"}`}>
+                        {isWfh ? "WFH" : "Onsite"}
+                      </span>
                     </div>
-                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-700">
-                      Hadir
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1380,7 +1413,7 @@ export default function OperatorDashboard() {
                       </td>
                       <td className="px-5 py-2.5"><span className={`px-2 py-0.5 rounded-md font-black text-[10px] ${log.action === "Login" ? "bg-blue-100 text-blue-700" : log.action === "Create" ? "bg-emerald-100 text-emerald-700" : log.action === "Update" ? "bg-amber-100 text-amber-700" : log.action === "Delete" ? "bg-red-100 text-red-600" : log.action === "Approve" ? "bg-emerald-100 text-emerald-700" : "bg-purple-100 text-purple-700"}`}>{log.action}</span></td>
                       <td className="px-5 py-2.5 text-muted-foreground truncate max-w-[160px]">{log.target}</td>
-                      <td className="px-5 py-2.5 font-mono text-[10px] text-muted-foreground">{log.timestamp.split(" ")[1]}</td>
+                      <td className="px-5 py-2.5 text-[10px] font-semibold text-muted-foreground">{log.timestamp}</td>
                     </tr>
                   ))}
                 </tbody>
