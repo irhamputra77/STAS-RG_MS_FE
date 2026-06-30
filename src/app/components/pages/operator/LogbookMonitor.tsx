@@ -39,6 +39,24 @@ function formatFullDate(value: string) {
   });
 }
 
+function normalizeAttendanceMode(value: unknown) {
+  const mode = String(value || "").trim().toLowerCase();
+  if (mode === "wfh") return "wfh";
+  if (mode === "onsite" || mode === "hadir") return "onsite";
+  return "unknown";
+}
+
+function getAttendanceModeMeta(modeValue: unknown) {
+  const mode = normalizeAttendanceMode(modeValue);
+  if (mode === "wfh") {
+    return { label: "WFH", className: "bg-sky-100 text-sky-700 border border-sky-200" };
+  }
+  if (mode === "onsite") {
+    return { label: "Onsite", className: "bg-emerald-100 text-emerald-700 border border-emerald-200" };
+  }
+  return { label: "Belum Absen", className: "bg-slate-100 text-slate-600 border border-slate-200" };
+}
+
 export default function LogbookMonitor() {
   const { confirm, confirmDialog } = useConfirmDialog();
   const user = getStoredUser();
@@ -118,6 +136,8 @@ export default function LogbookMonitor() {
         const normalizedEntries = logRows.map((item) => {
           const attachment = mapLogbookAttachment(item);
           const relatedStudent = studentById[item.student_id];
+          const attendanceMode = item.attendance_mode || item.attendanceMode || null;
+          const attendanceModeMeta = getAttendanceModeMeta(attendanceMode);
 
           return {
             id: item.id,
@@ -128,6 +148,10 @@ export default function LogbookMonitor() {
             mahasiswa_photo_url: item.student_photo_url || item.photoUrl || item.photo_url || relatedStudent?.photo_url || null,
             mahasiswaColor: relatedStudent?.color || "bg-[#8B6FFF] text-white",
             riset: item.project_name || item.projectName || "Logbook Umum",
+            attendanceStatus: item.attendance_status || item.attendanceStatus || null,
+            attendanceMode: normalizeAttendanceMode(attendanceMode),
+            attendanceModeLabel: attendanceModeMeta.label,
+            attendanceModeClassName: attendanceModeMeta.className,
             date: formatShortDate(item.date),
             fullDate: formatFullDate(item.date),
             rawDate: item.date,
@@ -453,6 +477,10 @@ export default function LogbookMonitor() {
                                 {entry.riset}
                               </span>
 
+                              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${entry.attendanceModeClassName}`}>
+                                {entry.attendanceModeLabel}
+                              </span>
+
                               {entry.hasAttachment && (
                                 <span className="flex items-center gap-0.5 text-[10px] font-bold text-muted-foreground">
                                   <Paperclip size={9} /> {entry.attachment?.name || "Lampiran"}
@@ -522,6 +550,9 @@ export default function LogbookMonitor() {
                     }`}
                   >
                     {selectedEntry.riset}
+                  </span>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded ${selectedEntry.attendanceModeClassName}`}>
+                    {selectedEntry.attendanceModeLabel}
                   </span>
                   <span className="text-xs text-muted-foreground font-medium">{selectedEntry.fullDate}</span>
                 </div>

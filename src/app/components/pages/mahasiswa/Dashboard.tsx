@@ -56,6 +56,13 @@ function isRisetStudentType(tipe?: string | null) {
   return String(tipe || "").trim().toLowerCase() === "riset";
 }
 
+function formatHourValue(value: unknown) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return "0";
+  const formatted = number.toFixed(1);
+  return formatted.endsWith(".0") ? formatted.slice(0, -2) : formatted;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -298,6 +305,21 @@ export default function Dashboard() {
   const studentStatus = String(dashboardData?.student?.status || dashboardData?.header?.studentStatus || user?.studentStatus || user?.status || "");
   const isAlumni = studentStatus.toLowerCase() === "alumni";
   const isRisetStudent = isRisetStudentType(user?.tipe || dashboardData?.header?.tipe || dashboardData?.student?.tipe);
+  const risetWeeklyHours = Number(dashboardData?.stats?.risetWeeklyHours ?? dashboardData?.student?.jamMingguIni ?? dashboardData?.student?.jam_minggu_ini ?? 0);
+  const risetWeeklyTargetHours = Number(dashboardData?.stats?.risetWeeklyTargetHours ?? dashboardData?.student?.jamMingguTarget ?? dashboardData?.student?.jam_minggu_target ?? 0);
+  const risetWeeklyMinHours = Number(dashboardData?.stats?.risetWeeklyMinHours ?? 0);
+  const risetWeeklyRemainingTarget = Math.max(0, risetWeeklyTargetHours - risetWeeklyHours);
+  const risetWeeklyRemainingMin = Math.max(0, risetWeeklyMinHours - risetWeeklyHours);
+  const risetWeeklyPct = risetWeeklyTargetHours > 0 ? Math.min(100, Math.round((risetWeeklyHours / risetWeeklyTargetHours) * 100)) : 0;
+  const risetWeeklySub = risetWeeklyTargetHours <= 0
+    ? "Target mingguan belum diatur"
+    : risetWeeklyRemainingTarget <= 0
+      ? `Target ${formatHourValue(risetWeeklyTargetHours)} jam terpenuhi`
+      : risetWeeklyMinHours > 0 && risetWeeklyRemainingMin <= 0
+        ? `Aman minimal, kurang ${formatHourValue(risetWeeklyRemainingTarget)} jam ke target`
+        : risetWeeklyMinHours > 0
+          ? `Kurang ${formatHourValue(risetWeeklyRemainingMin)} jam dari minimal`
+          : `Kurang ${formatHourValue(risetWeeklyRemainingTarget)} jam ke target`;
   const cutiRecent = isRisetStudent
     ? rawLeaveRecent.filter((item: any) => getLeaveTypeLabel(item) !== "Cuti")
     : rawLeaveRecent;
@@ -383,6 +405,17 @@ export default function Dashboard() {
             barColor="bg-[#6C47FF]"
             href="/attendance"
           />
+          {isRisetStudent && (
+            <StatCard
+              icon={<Hourglass size={20} className="md:w-[22px] md:h-[22px] text-emerald-500" />}
+              label="Jam Riset Minggu Ini"
+              value={<><span>{formatHourValue(risetWeeklyHours)}</span><span className="text-sm md:text-base text-muted-foreground font-bold">/{formatHourValue(risetWeeklyTargetHours)} jam</span></>}
+              sub={risetWeeklySub}
+              barPct={risetWeeklyPct}
+              barColor={risetWeeklyRemainingTarget <= 0 ? "bg-emerald-500" : risetWeeklyRemainingMin <= 0 ? "bg-sky-500" : "bg-amber-500"}
+              href="/attendance"
+            />
+          )}
           <StatCard
             icon={<BookOpen size={20} className="md:w-[22px] md:h-[22px] text-indigo-500" />}
             label="Entri Logbook"

@@ -59,6 +59,16 @@ type AttendanceToday = {
   autoCheckoutReason?: string | null;
 };
 
+type WeeklyAttendanceSummary = {
+  currentHours: number;
+  targetHours: number;
+  minHours: number;
+  remainingHours: number;
+  pct: number;
+  meetsTarget: boolean;
+  meetsMin: boolean;
+};
+
 const DEFAULT_GPS_POLICY: GpsPolicy = {
   targetLatitude: 0,
   targetLongitude: 0,
@@ -83,6 +93,12 @@ const isAfterCheckInCutoff = () => {
 const normalizeNumber = (value: unknown, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const formatHourValue = (value: unknown) => {
+  const number = normalizeNumber(value, 0);
+  const formatted = number.toFixed(1);
+  return formatted.endsWith(".0") ? formatted.slice(0, -2) : formatted;
 };
 
 const getJakartaDateKey = (date = new Date()) =>
@@ -182,12 +198,23 @@ export default function Attendance() {
   const [gpsInfo, setGpsInfo] = useState<GpsInfo | null>(null);
   const [gpsPolicy, setGpsPolicy] = useState<GpsPolicy | null>(null);
   const [attendanceRules, setAttendanceRules] = useState({
+    risetMinWeeklyHours: 4,
+    risetTargetWeeklyHours: 6,
     magangMinCheckoutHours: 8,
     earlyCheckoutWarning: true,
     autoCheckoutEnabled: true,
     autoCheckoutTime: "22:00",
     excludeHolidaysFromWorkdays: true,
     holidays: [] as HolidayItem[]
+  });
+  const [weeklyAttendance, setWeeklyAttendance] = useState<WeeklyAttendanceSummary>({
+    currentHours: 0,
+    targetHours: 6,
+    minHours: 4,
+    remainingHours: 6,
+    pct: 0,
+    meetsTarget: false,
+    meetsMin: false
   });
   const [todayHoliday, setTodayHoliday] = useState<HolidayItem | null>(null);
   const [studentType, setStudentType] = useState<string>(String(user?.tipe || ""));
@@ -229,6 +256,19 @@ export default function Attendance() {
       if (data?.student?.tipe || data?.studentType) {
         setStudentType(String(data?.student?.tipe || data?.studentType));
       }
+      const weekly = data?.weeklyAttendance || {};
+      const weeklyTarget = normalizeNumber(weekly.targetHours, normalizeNumber(data?.attendanceRules?.risetTargetWeeklyHours, 6));
+      const weeklyMin = normalizeNumber(weekly.minHours, normalizeNumber(data?.attendanceRules?.risetMinWeeklyHours, 4));
+      const weeklyCurrent = normalizeNumber(weekly.currentHours, 0);
+      setWeeklyAttendance({
+        currentHours: weeklyCurrent,
+        targetHours: weeklyTarget,
+        minHours: weeklyMin,
+        remainingHours: Math.max(0, normalizeNumber(weekly.remainingHours, weeklyTarget - weeklyCurrent)),
+        pct: Math.min(100, Math.max(0, normalizeNumber(weekly.pct, weeklyTarget > 0 ? Math.round((weeklyCurrent / weeklyTarget) * 100) : 0))),
+        meetsTarget: Boolean(weekly.meetsTarget ?? (weeklyTarget > 0 && weeklyCurrent >= weeklyTarget)),
+        meetsMin: Boolean(weekly.meetsMin ?? (weeklyMin > 0 && weeklyCurrent >= weeklyMin))
+      });
       const rawPicket = data?.picketToday || data?.todayPicket || data?.picketAssignment || data?.picket?.assignment;
       if (rawPicket?.id || rawPicket?.assignment_id || rawPicket?.task_name || rawPicket?.taskName) {
         setTodayPicket(mapPicketAssignment(rawPicket));
@@ -243,6 +283,8 @@ export default function Attendance() {
             : normalizeHolidays(data.todayHoliday ? [data.todayHoliday] : [])
               .find((holiday) => holiday.active !== false) || null;
         setAttendanceRules({
+          risetMinWeeklyHours: Number(data.attendanceRules.risetMinWeeklyHours) || 4,
+          risetTargetWeeklyHours: Number(data.attendanceRules.risetTargetWeeklyHours) || 6,
           magangMinCheckoutHours: Number(data.attendanceRules.magangMinCheckoutHours) || 8,
           earlyCheckoutWarning: Boolean(data.attendanceRules.earlyCheckoutWarning ?? true),
           autoCheckoutEnabled: Boolean(data.attendanceRules.autoCheckoutEnabled ?? true),
@@ -313,6 +355,8 @@ export default function Attendance() {
         if (!active) return;
         const holidays = normalizeHolidays(settings?.attendanceRules?.holidays || settings?.holidays);
         setAttendanceRules({
+          risetMinWeeklyHours: Number(settings?.attendanceRules?.risetMinWeeklyHours) || 4,
+          risetTargetWeeklyHours: Number(settings?.attendanceRules?.risetTargetWeeklyHours) || 6,
           magangMinCheckoutHours: Number(settings?.attendanceRules?.magangMinCheckoutHours) || 8,
           earlyCheckoutWarning: Boolean(settings?.attendanceRules?.earlyCheckoutWarning ?? true),
           autoCheckoutEnabled: Boolean(settings?.attendanceRules?.autoCheckoutEnabled ?? true),
@@ -807,6 +851,28 @@ export default function Attendance() {
     ? todayHoliday || findHolidayForDate(attendanceRules.holidays)
     : null;
   const holidayCheckInBlocked = Boolean(currentHoliday && todayData.status !== "Berlangsung");
+  const isRisetStudent = String(studentType || "").trim().toLowerCase() === "riset";
+  const weeklyRemainingTarget = Math.max(0, weeklyAttendance.targetHours - weeklyAttendance.currentHours);
+  const weeklyRemainingMin = Math.max(0, weeklyAttendance.minHours - weeklyAttendance.currentHours);
+  const weeklyStatusText = weeklyAttendance.targetHours <= 0
+    ? "Target mingguan belum diatur"
+    : weeklyRemainingTarget <= 0
+      ? `Target ${formatHourValue(weeklyAttendance.targetHours)} jam sudah terpenuhi`
+      : weeklyAttendance.minHours > 0 && weeklyRemainingMin <= 0
+        ? `Sudah aman minimal, kurang ${formatHourValue(weeklyRemainingTarget)} jam ke target`
+        : weeklyAttendance.minHours > 0
+          ? `Kurang ${formatHourValue(weeklyRemainingMin)} jam dari minimal`
+          : `Kurang ${formatHourValue(weeklyRemainingTarget)} jam ke target`;
+  const weeklyStatusClass = weeklyRemainingTarget <= 0
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : weeklyRemainingMin <= 0
+      ? "border-sky-200 bg-sky-50 text-sky-700"
+      : "border-amber-200 bg-amber-50 text-amber-700";
+  const weeklyProgressClass = weeklyRemainingTarget <= 0
+    ? "bg-emerald-500"
+    : weeklyRemainingMin <= 0
+      ? "bg-sky-500"
+      : "bg-amber-500";
 
   return (
     <Layout title="Kehadiran (GPS)">
@@ -951,6 +1017,36 @@ export default function Attendance() {
         {todayPicket && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
             Jadwal piket hari ini: {todayPicket.taskName}. {todayPicket.submitted ? "Foto piket sudah dikirim." : "Foto bukti piket akan diminta sebelum check-out."}
+          </div>
+        )}
+
+        {isRisetStudent && (
+          <div className={`rounded-[14px] border px-4 py-4 shadow-sm md:px-5 ${weeklyStatusClass}`}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-white/70">
+                  <Clock size={22} />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em]">Jam Riset Minggu Ini</p>
+                  <h2 className="mt-1 text-2xl font-black text-foreground">
+                    {formatHourValue(weeklyAttendance.currentHours)}
+                    <span className="text-base font-black text-muted-foreground">/{formatHourValue(weeklyAttendance.targetHours)} jam</span>
+                  </h2>
+                  <p className="mt-1 text-sm font-bold">{weeklyStatusText}</p>
+                </div>
+              </div>
+              <div className="min-w-[180px]">
+                <div className="mb-1 flex items-center justify-between text-xs font-black">
+                  <span>Progress</span>
+                  <span>{weeklyAttendance.pct}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-white/70">
+                  <div className={`h-2 rounded-full ${weeklyProgressClass}`} style={{ width: `${weeklyAttendance.pct}%` }} />
+                </div>
+                <p className="mt-2 text-[11px] font-semibold opacity-80">Minimal {formatHourValue(weeklyAttendance.minHours)} jam, target {formatHourValue(weeklyAttendance.targetHours)} jam per minggu.</p>
+              </div>
+            </div>
           </div>
         )}
 
