@@ -95,6 +95,11 @@ const normalizeNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const normalizePositiveNumber = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 const formatHourValue = (value: unknown) => {
   const number = normalizeNumber(value, 0);
   const formatted = number.toFixed(1);
@@ -257,8 +262,8 @@ export default function Attendance() {
         setStudentType(String(data?.student?.tipe || data?.studentType));
       }
       const weekly = data?.weeklyAttendance || {};
-      const weeklyTarget = normalizeNumber(weekly.targetHours, normalizeNumber(data?.attendanceRules?.risetTargetWeeklyHours, 6));
-      const weeklyMin = normalizeNumber(weekly.minHours, normalizeNumber(data?.attendanceRules?.risetMinWeeklyHours, 4));
+      const weeklyTarget = normalizePositiveNumber(weekly.targetHours, normalizePositiveNumber(data?.attendanceRules?.risetTargetWeeklyHours, 6));
+      const weeklyMin = normalizePositiveNumber(weekly.minHours, normalizePositiveNumber(data?.attendanceRules?.risetMinWeeklyHours, 4));
       const weeklyCurrent = normalizeNumber(weekly.currentHours, 0);
       setWeeklyAttendance({
         currentHours: weeklyCurrent,

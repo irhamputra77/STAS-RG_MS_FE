@@ -63,6 +63,11 @@ function formatHourValue(value: unknown) {
   return formatted.endsWith(".0") ? formatted.slice(0, -2) : formatted;
 }
 
+function getPositiveHourValue(value: unknown, fallback: number) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,8 +311,8 @@ export default function Dashboard() {
   const isAlumni = studentStatus.toLowerCase() === "alumni";
   const isRisetStudent = isRisetStudentType(user?.tipe || dashboardData?.header?.tipe || dashboardData?.student?.tipe);
   const risetWeeklyHours = Number(dashboardData?.stats?.risetWeeklyHours ?? dashboardData?.student?.jamMingguIni ?? dashboardData?.student?.jam_minggu_ini ?? 0);
-  const risetWeeklyTargetHours = Number(dashboardData?.stats?.risetWeeklyTargetHours ?? dashboardData?.student?.jamMingguTarget ?? dashboardData?.student?.jam_minggu_target ?? 0);
-  const risetWeeklyMinHours = Number(dashboardData?.stats?.risetWeeklyMinHours ?? 0);
+  const risetWeeklyTargetHours = getPositiveHourValue(dashboardData?.stats?.risetWeeklyTargetHours ?? dashboardData?.student?.jamMingguTarget ?? dashboardData?.student?.jam_minggu_target, 6);
+  const risetWeeklyMinHours = getPositiveHourValue(dashboardData?.stats?.risetWeeklyMinHours, 4);
   const risetWeeklyRemainingTarget = Math.max(0, risetWeeklyTargetHours - risetWeeklyHours);
   const risetWeeklyRemainingMin = Math.max(0, risetWeeklyMinHours - risetWeeklyHours);
   const risetWeeklyPct = risetWeeklyTargetHours > 0 ? Math.min(100, Math.round((risetWeeklyHours / risetWeeklyTargetHours) * 100)) : 0;
