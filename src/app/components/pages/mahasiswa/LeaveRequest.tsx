@@ -128,7 +128,7 @@ export default function LeaveRequest() {
   const wfhSourceMeta = getWfhSourceMeta(wfhSummary.wfhQuotaSource);
 
   const requestTypeOptions = isRisetStudent
-    ? REQUEST_TYPE_OPTIONS.filter((option) => option.value !== "cuti" && option.value !== "wfh")
+    ? REQUEST_TYPE_OPTIONS.filter((option) => option.value !== "cuti")
     : REQUEST_TYPE_OPTIONS;
 
   const loadStudentProfileContext = async () => {
@@ -202,19 +202,19 @@ export default function LeaveRequest() {
 
   useEffect(() => {
     if (!isRisetStudent) return;
-    if (formData.jenis === "cuti" || formData.jenis === "wfh") {
+    if (formData.jenis === "cuti") {
       setFormData((prev) => ({ ...prev, jenis: "izin" }));
     }
   }, [formData.jenis, isRisetStudent]);
 
   useEffect(() => {
-    if (formData.jenis !== "wfh" || !formData.periodeMulai) return;
+    if (isRisetStudent || formData.jenis !== "wfh" || !formData.periodeMulai) return;
 
     setFormData((prev) => ({
       ...prev,
       periodeSelesai: prev.periodeMulai,
     }));
-  }, [formData.jenis, formData.periodeMulai]);
+  }, [formData.jenis, formData.periodeMulai, isRisetStudent]);
 
   useEffect(() => {
     if (!studentId) return;
@@ -244,7 +244,8 @@ export default function LeaveRequest() {
     [formData.periodeMulai, formData.periodeSelesai]
   );
 
-  const effectiveDuration = formData.jenis === "wfh" && formData.periodeMulai ? 1 : duration;
+  const isSingleDayWfh = formData.jenis === "wfh" && !isRisetStudent;
+  const effectiveDuration = isSingleDayWfh && formData.periodeMulai ? 1 : duration;
 
   const visibleLeaveData = isRisetStudent
     ? leaveData.filter((item) => item.jenis !== "cuti")
@@ -274,7 +275,7 @@ export default function LeaveRequest() {
   const handleSubmitLeaveRequest = async () => {
     setError("");
 
-    const effectiveEndDate = formData.jenis === "wfh"
+    const effectiveEndDate = isSingleDayWfh
       ? formData.periodeMulai
       : formData.periodeSelesai;
 
@@ -288,16 +289,11 @@ export default function LeaveRequest() {
     }
 
     if (isRisetStudent && formData.jenis === "cuti") {
-      setError("Mahasiswa Riset tidak dapat mengajukan cuti. Silakan pilih Izin atau Sakit.");
+      setError("Mahasiswa Riset tidak dapat mengajukan cuti. Silakan pilih Izin, Sakit, atau WFH.");
       return;
     }
 
-    if (isRisetStudent && formData.jenis === "wfh") {
-      setError("Mahasiswa Riset tidak mendapat jatah WFH.");
-      return;
-    }
-
-    if (formData.jenis === "wfh" && wfhSummary.wfhRemaining <= 0) {
+    if (isSingleDayWfh && wfhSummary.wfhRemaining <= 0) {
       setError("Anda tidak punya jatah WFH.");
       return;
     }
@@ -307,7 +303,7 @@ export default function LeaveRequest() {
       return;
     }
 
-    if (formData.jenis === "wfh" && effectiveDuration !== 1) {
+    if (isSingleDayWfh && effectiveDuration !== 1) {
       setError("Pengajuan WFH hanya berlaku untuk satu hari.");
       return;
     }
@@ -338,7 +334,7 @@ export default function LeaveRequest() {
         jenis: formData.jenis,
         jenisPengajuan: formData.jenis,
         countsAgainstLeaveQuota: formData.jenis === "cuti",
-        countsAgainstWfhQuota: formData.jenis === "wfh",
+        countsAgainstWfhQuota: isSingleDayWfh,
         periodeStart: formData.periodeMulai,
         periodeEnd: effectiveEndDate,
         durasi: effectiveDuration,
@@ -417,7 +413,7 @@ export default function LeaveRequest() {
             <h2 className="text-lg sm:text-xl font-bold">Riwayat Pengajuan</h2>
             <p className="text-sm text-muted-foreground mt-1">
               {isRisetStudent
-                ? "Mahasiswa Riset dapat mengajukan izin atau sakit tanpa kuota cuti."
+                ? "Mahasiswa Riset dapat mengajukan izin, sakit, dan WFH tanpa kuota awal. WFH tetap menunggu ACC admin."
                 : "Form pengajuan kini mendukung cuti, izin, sakit, dan WFH."}
             </p>
           </div>
@@ -536,9 +532,11 @@ export default function LeaveRequest() {
                   {formData.jenis === "wfh" && (
                     <div className="mt-1.5 flex flex-col gap-1">
                       <p className="text-[11px] font-semibold text-sky-700">
-                        {wfhSummary.wfhQuota > 0
-                          ? `Jatah WFH ${wfhSummary.wfhQuota} hari, terpakai ${wfhSummary.wfhUsed} hari, sisa ${wfhSummary.wfhRemaining} hari.`
-                          : "Anda tidak punya jatah WFH."}
+                        {isRisetStudent
+                          ? "WFH Riset bisa diajukan untuk rentang tanggal dan tetap perlu ACC admin/operator."
+                          : wfhSummary.wfhQuota > 0
+                            ? `Jatah WFH ${wfhSummary.wfhQuota} hari, terpakai ${wfhSummary.wfhUsed} hari, sisa ${wfhSummary.wfhRemaining} hari.`
+                            : "Anda tidak punya jatah WFH."}
                       </p>
                     </div>
                   )}
@@ -557,7 +555,7 @@ export default function LeaveRequest() {
                         setFormData((prev) => ({
                           ...prev,
                           periodeMulai: e.target.value,
-                          periodeSelesai: prev.jenis === "wfh" ? e.target.value : prev.periodeSelesai,
+                          periodeSelesai: prev.jenis === "wfh" && !isRisetStudent ? e.target.value : prev.periodeSelesai,
                         }))
                       }
                       className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
@@ -578,13 +576,15 @@ export default function LeaveRequest() {
                           periodeSelesai: e.target.value,
                         }))
                       }
-                      disabled={formData.jenis === "wfh"}
+                      disabled={isSingleDayWfh}
                       className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
                     />
 
                     {formData.jenis === "wfh" && (
                       <p className="mt-1.5 text-[11px] font-semibold text-muted-foreground">
-                        WFH hanya berlaku pada tanggal mulai.
+                        {isRisetStudent
+                          ? "WFH Riset boleh memakai rentang tanggal dan akan aktif setelah admin/operator menyetujui."
+                          : "WFH hanya berlaku pada tanggal mulai."}
                       </p>
                     )}
                   </div>
@@ -664,7 +664,7 @@ export default function LeaveRequest() {
 
                 <button
                   onClick={handleSubmitLeaveRequest}
-                  disabled={submitting || (formData.jenis === "wfh" && wfhSummary.wfhRemaining <= 0)}
+                  disabled={submitting || (isSingleDayWfh && wfhSummary.wfhRemaining <= 0)}
                   className="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-black rounded-[10px] transition-colors flex items-center justify-center gap-2"
                 >
                   <Check size={14} strokeWidth={3} />

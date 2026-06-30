@@ -31,6 +31,7 @@ export default function LogbookForm() {
   const fromCheckout = searchParams.get("fromCheckout") === "1";
 
   const [researchOptions, setResearchOptions] = useState<Array<{ id: string; title: string }>>([]);
+  const [researchOptionsLoaded, setResearchOptionsLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [loadingEntry, setLoadingEntry] = useState(Boolean(editId));
@@ -69,6 +70,8 @@ export default function LogbookForm() {
         );
       } catch {
         setResearchOptions([]);
+      } finally {
+        setResearchOptionsLoaded(true);
       }
     };
     loadResearch();
@@ -81,7 +84,7 @@ export default function LogbookForm() {
         try {
           const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`);
           if (profile && profile.nim && profile.id) {
-            setStudentId(profile.id); // id mahasiswa (students.id)
+            setStudentId(profile.id); // user id; backend akan resolve ke students.id
           } else if (profile && profile.student_id) {
             setStudentId(profile.student_id);
           } else {
@@ -287,6 +290,16 @@ export default function LogbookForm() {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </div>
                 </div>
+                {researchOptionsLoaded && researchOptions.length === 0 && (
+                  <p className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                    Belum ada riset yang ditentukan. Logbook tetap bisa disimpan sebagai Logbook Umum.
+                  </p>
+                )}
+                {research === "" && researchOptions.length > 0 && (
+                  <p className="text-[11px] font-semibold text-muted-foreground">
+                    Pilih Logbook Umum jika kegiatan hari ini belum terikat ke riset tertentu.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
