@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { Layout } from "../../templates/Layout";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { apiGet, getStoredUser } from "../../../lib/api";
-import { PicketAssignment, mapPicketAssignment } from "../../../lib/picket";
+import { PicketAssignment, isPicketAssignmentSubmitted, mapPicketAssignment } from "../../../lib/picket";
 
 type PicketHistoryProps = {
   management?: boolean;
@@ -49,7 +49,7 @@ function formatDateTime(value?: string | null) {
 
 function getSubmissionStatus(item: PicketAssignment) {
   if (item.isHoliday || item.isExempt) return "Libur";
-  return item.submissionStatus || (item.submitted ? "Terkirim" : item.status) || "Dijadwalkan";
+  return item.submissionStatus || (isPicketAssignmentSubmitted(item) ? "Terkirim" : item.status) || "Dijadwalkan";
 }
 
 function normalizeStudent(row: any): StudentOption {
@@ -135,7 +135,7 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
     void loadData();
   }, [loadData]);
 
-  const submittedHistory = history.filter((item) => item.isHoliday || item.isExempt || item.submitted || item.submissionId || item.photoUrl || item.submittedAt);
+  const submittedHistory = history.filter((item) => item.isHoliday || item.isExempt || isPicketAssignmentSubmitted(item));
   const waitingReviewHistory = submittedHistory.filter((item) => getSubmissionStatus(item) === "Terkirim");
   const filteredHistory = submittedHistory.filter((item) => {
     const status = getSubmissionStatus(item);

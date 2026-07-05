@@ -19,6 +19,7 @@ import { Link } from "react-router";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Layout } from "../../templates/Layout";
 import { apiDelete, apiGet, apiPatch, apiPost, getStoredUser } from "../../../lib/api";
+import { getPicketRevisionDummyData, isPicketRevisionDummyEnabled } from "../../../data/picketDummyData";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import {
   PicketAssignment,
@@ -31,11 +32,13 @@ import {
   getManualPicketTaskPayload,
   getNextWeeklyReshuffleDate,
   getPicketScheduleGeneratePayload,
+  isPicketAssignmentSubmitted,
   mapPicketAssignment,
   mapPicketHoliday,
   mapPicketLeaveRequest,
   mapPicketSubmission,
   mapPicketTask,
+  mergePicketAssignmentsWithSubmissions,
 } from "../../../lib/picket";
 
 type StudentOption = {
@@ -178,6 +181,7 @@ export default function PiketOperator() {
   const [holidayForm, setHolidayForm] = React.useState({ date: "", name: "", notes: "" });
   const [editingHolidayId, setEditingHolidayId] = React.useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirmDialog();
+  const dummyMode = isPicketRevisionDummyEnabled();
 
   const holidayRange = React.useMemo(() => {
     const current = new Date(`${date}T00:00:00`);
@@ -209,19 +213,21 @@ export default function PiketOperator() {
         setAllowed(true);
       }
 
+      const dummyData = dummyMode ? getPicketRevisionDummyData(date) : null;
       const [settingsRes, taskRes, studentRes, managerRes, overviewRes, schedulesRes, leaveRes, holidayRes, submissionsRes] = await Promise.allSettled([
         apiGet<any>("/picket/settings"),
         apiGet<any>("/picket/tasks?includeInactive=true"),
         apiGet<any>("/picket/students"),
         apiGet<any>("/picket/managers"),
-        apiGet<any>(`/picket/operator/overview?date=${encodeURIComponent(date)}&_=${Date.now()}`),
+        dummyData ? Promise.resolve(dummyData.overview) : apiGet<any>(`/picket/operator/overview?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/schedules?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/leave-requests?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/holidays?startDate=${holidayRange.startDate}&endDate=${holidayRange.endDate}&_=${Date.now()}`),
-        apiGet<any>(`/picket/submissions?date=${encodeURIComponent(date)}&status=${encodeURIComponent("Menunggu")}&_=${Date.now()}`),
+        dummyData ? Promise.resolve(dummyData.submissions) : apiGet<any>(`/picket/submissions?date=${encodeURIComponent(date)}&status=${encodeURIComponent("Menunggu")}&_=${Date.now()}`),
       ]);
       let overviewAssignmentRowsLoaded = false;
       let overviewSubmissions: PicketSubmission[] | null = null;
+      let overviewAssignments: PicketAssignment[] | null = null;
 
       if (settingsRes.status === "fulfilled") {
         const raw = settingsRes.value?.settings || settingsRes.value || {};
@@ -253,9 +259,9 @@ export default function PiketOperator() {
         const raw = overviewRes.value || {};
         const rows = raw.schedules || raw.assignments || [];
         overviewAssignmentRowsLoaded = rows.length > 0;
-        const nextAssignments = rows.map(mapPicketAssignment);
-        setAssignments(nextAssignments);
+        overviewAssignments = rows.map(mapPicketAssignment);
         overviewSubmissions = (raw.submissions || []).map(mapPicketSubmission);
+        setAssignments(mergePicketAssignmentsWithSubmissions(overviewAssignments, overviewSubmissions));
       }
 
       if ((overviewRes.status !== "fulfilled" || !overviewAssignmentRowsLoaded) && schedulesRes.status === "fulfilled") {
@@ -270,7 +276,11 @@ export default function PiketOperator() {
         const rows = Array.isArray(submissionsRes.value)
           ? submissionsRes.value
           : submissionsRes.value?.submissions || submissionsRes.value?.items || [];
-        setSubmissions(rows.map(mapPicketSubmission));
+        const reviewSubmissions = rows.map(mapPicketSubmission);
+        setSubmissions(reviewSubmissions);
+        if (overviewAssignments) {
+          setAssignments(mergePicketAssignmentsWithSubmissions(overviewAssignments, overviewSubmissions || reviewSubmissions));
+        }
       } else {
         setSubmissions(overviewSubmissions || []);
       }
@@ -292,10 +302,16 @@ export default function PiketOperator() {
     } finally {
       setLoading(false);
     }
-  }, [date, holidayRange.endDate, holidayRange.startDate, user?.role]);
+  }, [date, dummyMode, holidayRange.endDate, holidayRange.startDate, user?.role]);
 
   React.useEffect(() => {
     void loadData();
+  }, [loadData]);
+
+  React.useEffect(() => {
+    const refresh = () => void loadData();
+    window.addEventListener("stas:picket-refresh", refresh);
+    return () => window.removeEventListener("stas:picket-refresh", refresh);
   }, [loadData]);
 
   React.useEffect(() => {
@@ -691,9 +707,8 @@ export default function PiketOperator() {
     }
   };
 
-  const submittedAssignmentIds = new Set(submissions.flatMap((item) => [item.scheduleId, item.assignmentId].filter(Boolean).map(String)));
   const selectedHoliday = holidays.find((holiday) => holiday.date === date) || assignments.find((item) => item.isHoliday)?.holiday || null;
-  const missingAssignments = assignments.filter((item) => !item.isHoliday && !item.isExempt && !item.submitted && !submittedAssignmentIds.has(item.scheduleId || item.id));
+  const missingAssignments = assignments.filter((item) => !item.isHoliday && !item.isExempt && !isPicketAssignmentSubmitted(item));
   const waitingReviewSubmissions = submissions.filter((item) => !["valid", "bermasalah", "ditolak", "disetujui"].includes(String(item.status || "").toLowerCase()));
   const waitingReviewNames = Array.from(new Set(waitingReviewSubmissions.map((item) => item.studentName).filter(Boolean))).slice(0, 3);
   const remainingWaitingReview = Math.max(0, waitingReviewSubmissions.length - waitingReviewNames.length);
@@ -729,6 +744,11 @@ export default function PiketOperator() {
     <Shell title="Manajemen Piket">
       <div className="flex flex-col gap-5 pb-4">
         {confirmDialog}
+        {dummyMode && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+            Mode dummy Piket aktif. Pilih tanggal 2026-06-30 untuk mengecek Alya Putri Ramadhani dan Mahasiswa Seed 3 tampil sebagai sudah upload walau status jadwal masih Ditugaskan.
+          </div>
+        )}
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</div>}
         {info && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{info}</div>}
         {!allowed && !loading ? (
@@ -1230,7 +1250,7 @@ export default function PiketOperator() {
                         <tr key={item.id}>
                           <td className="px-5 py-3"><p className="font-black text-foreground">{item.studentName}</p><p className="text-xs text-muted-foreground">{item.nim || "-"}</p></td>
                           <td className="px-5 py-3"><p className="font-bold text-foreground">{item.taskName}</p>{item.taskDescription && <p className="text-xs text-muted-foreground">{item.taskDescription}</p>}{item.notes && <p className="text-xs text-muted-foreground">Catatan: {item.notes}</p>}</td>
-                          <td className="px-5 py-3"><Badge status={item.isHoliday || item.isExempt ? "Libur" : item.submitted ? "Terkirim" : item.status} /></td>
+                          <td className="px-5 py-3"><Badge status={item.isHoliday || item.isExempt ? "Libur" : isPicketAssignmentSubmitted(item) ? item.submissionStatus || "Terkirim" : item.status} /></td>
                           <td className="px-5 py-3">{item.photoUrl ? <a href={item.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-600 hover:underline">Lihat Foto</a> : <span className="text-xs text-muted-foreground">Belum submit</span>}</td>
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap gap-2">

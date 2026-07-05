@@ -9,6 +9,7 @@ import {
   PicketAssignment,
   ensurePicketPhotoPreviewable,
   fileToDataUrl,
+  isPicketAssignmentSubmitted,
   mapPicketAssignment,
   mapPicketTodayAssignment,
   mapPicketSubmissionResult,
@@ -601,7 +602,7 @@ export default function Attendance() {
     if (!todayPicket) return false;
     if (todayPicket.isHoliday || todayPicket.isExempt) return false;
     if (String(todayPicket.leaveStatus || "").toLowerCase() === "disetujui") return false;
-    return !todayPicket.submitted && !todayPicket.submissionId;
+    return !isPicketAssignmentSubmitted(todayPicket);
   };
 
   const submitPicketPhotoIfNeeded = async () => {
@@ -628,11 +629,13 @@ export default function Attendance() {
       submitted: true,
       submissionId: submission.id || prev.submissionId,
       submissionStatus: submission.status || prev.submissionStatus || "Terkirim",
+      status: submission.assignmentStatus || "Selesai",
       photoUrl: submission.photoUrl || prev.photoUrl,
       submittedAt: submission.submittedAt || prev.submittedAt || new Date().toISOString(),
     } : prev);
     setPicketModalOpen(false);
     window.dispatchEvent(new Event("stas:access-lock-refresh"));
+    window.dispatchEvent(new Event("stas:picket-refresh"));
   };
 
   const handleAttendanceAction = async (forceEarlyCheckout = false) => {

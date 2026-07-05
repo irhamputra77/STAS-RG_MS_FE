@@ -11,6 +11,7 @@ import {
   fileToDataUrl,
   getJakartaDateKey,
   getPicketHolidayFromTodayResponse,
+  isPicketAssignmentSubmitted,
   isPicketHolidayResponse,
   mapPicketAssignment,
   mapPicketHoliday,
@@ -166,12 +167,14 @@ export default function Piket() {
         submitted: true,
         submissionId: submission.id || prev.submissionId,
         submissionStatus: submission.status || "Terkirim",
+        status: submission.assignmentStatus || "Selesai",
         photoUrl: submission.photoUrl || prev.photoUrl,
         submittedAt: submission.submittedAt || new Date().toISOString(),
       } : prev);
       clearPhoto();
       setInfo("Bukti piket berhasil dikirim.");
       window.dispatchEvent(new Event("stas:access-lock-refresh"));
+      window.dispatchEvent(new Event("stas:picket-refresh"));
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Gagal mengirim bukti piket.");
@@ -269,7 +272,7 @@ export default function Piket() {
                         <h3 className="mt-1 text-xl font-black text-foreground">{todayAssignment.taskName}</h3>
                         {todayAssignment.taskDescription && <p className="mt-2 text-sm leading-relaxed text-emerald-800/80">{todayAssignment.taskDescription}</p>}
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <Badge status={todayAssignment.isHoliday || todayAssignment.isExempt ? "Libur" : todayAssignment.submitted ? todayAssignment.submissionStatus || "Terkirim" : todayAssignment.status || "Ditugaskan"} />
+                          <Badge status={todayAssignment.isHoliday || todayAssignment.isExempt ? "Libur" : isPicketAssignmentSubmitted(todayAssignment) ? todayAssignment.submissionStatus || "Terkirim" : todayAssignment.status || "Ditugaskan"} />
                           {todayAssignment.leaveStatus && <Badge status={`Izin ${todayAssignment.leaveStatus}`} />}
                           <span className="text-xs font-bold text-emerald-800">{todayAssignment.date}</span>
                         </div>
@@ -283,7 +286,7 @@ export default function Piket() {
                         <h3 className="text-sm font-black text-foreground">Bukti Piket</h3>
                         <p className="mt-1 text-xs text-muted-foreground">Kirim foto setelah tugas piket selesai.</p>
                       </div>
-                      {todayAssignment.submitted && <Badge status={todayAssignment.submissionStatus || "Terkirim"} />}
+                      {isPicketAssignmentSubmitted(todayAssignment) && <Badge status={todayAssignment.submissionStatus || "Terkirim"} />}
                     </div>
 
                     {todayAssignment.photoUrl && !photoPreview ? (
@@ -322,7 +325,7 @@ export default function Piket() {
                     <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
                       {(todayAssignment.submitted || photoPreview) && (
                         <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-border bg-white px-3 text-sm font-black text-slate-700 hover:bg-slate-50">
-                          <ImagePlus size={15} /> {todayAssignment.submitted ? "Upload Ulang Foto" : "Ganti Foto"}
+                          <ImagePlus size={15} /> {isPicketAssignmentSubmitted(todayAssignment) ? "Upload Ulang Foto" : "Ganti Foto"}
                           <input
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
@@ -340,7 +343,7 @@ export default function Piket() {
                         disabled={saving || !photoFile || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
                       >
-                        {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {todayAssignment.submitted ? "Kirim Ulang" : "Kirim Bukti"}
+                        {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {isPicketAssignmentSubmitted(todayAssignment) ? "Kirim Ulang" : "Kirim Bukti"}
                       </button>
                     </div>
                   </div>}
@@ -379,7 +382,7 @@ export default function Piket() {
                           <p className="text-xs text-muted-foreground">{item.date}</p>
                           {item.submittedAt && <p className="mt-1 text-[10px] font-bold text-emerald-600">Submit: {new Date(item.submittedAt).toLocaleString("id-ID")}</p>}
                         </div>
-                        <Badge status={item.isHoliday || item.isExempt ? "Libur" : item.submitted ? item.submissionStatus || item.status || "Terkirim" : item.status || "Ditugaskan"} />
+                        <Badge status={item.isHoliday || item.isExempt ? "Libur" : isPicketAssignmentSubmitted(item) ? item.submissionStatus || item.status || "Terkirim" : item.status || "Ditugaskan"} />
                       </div>
                     ))}
                   </div>

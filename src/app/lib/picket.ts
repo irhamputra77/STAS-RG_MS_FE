@@ -74,6 +74,7 @@ export type PicketSubmission = {
 export type PicketSubmissionResult = {
   id?: string | null;
   status?: string | null;
+  assignmentStatus?: string | null;
   photoUrl?: string | null;
   submittedAt?: string | null;
 };
@@ -261,6 +262,23 @@ export function mapPicketAssignment(row: any): PicketAssignment {
   const scheduleId = text(row?.schedule_id || row?.scheduleId || row?.id || row?.assignment_id || row?.assignmentId || `schedule-${row?.date || Date.now()}`);
   const assignmentId = text(row?.assignment_id || row?.assignmentId || scheduleId);
   const date = text(row?.schedule_date || row?.scheduleDate || row?.date || row?.tanggal || row?.assignment_date || row?.assignmentDate, getJakartaDateKey());
+  const submission = row?.submission || null;
+  const submissionId = row?.submission_id || row?.submissionId || submission?.id || submission?.submission_id || submission?.submissionId || null;
+  const submissionStatus = row?.submission_status || row?.submissionStatus || submission?.status || submission?.review_status || submission?.reviewStatus || null;
+  const photoUrl = resolveApiAssetUrl(
+    row?.photo_url ||
+    row?.photoUrl ||
+    row?.submission_photo_url ||
+    row?.submissionPhotoUrl ||
+    row?.file_url ||
+    row?.fileUrl ||
+    submission?.photo_url ||
+    submission?.photoUrl ||
+    submission?.file_url ||
+    submission?.fileUrl ||
+    null
+  );
+  const submittedAt = row?.submitted_at || row?.submittedAt || submission?.submitted_at || submission?.submittedAt || submission?.created_at || submission?.createdAt || null;
   return {
     id: scheduleId,
     scheduleId,
@@ -278,12 +296,12 @@ export function mapPicketAssignment(row: any): PicketAssignment {
     taskDescription: row?.task_description || row?.taskDescription || row?.task?.description || null,
     status: text(row?.status, "Dijadwalkan"),
     notes: row?.notes || null,
-    submissionStatus: row?.submission_status || row?.submissionStatus || null,
+    submissionStatus,
     leaveStatus: row?.leave_status || row?.leaveStatus || row?.picket_leave_status || row?.picketLeaveStatus || null,
-    submitted: bool(row?.submitted ?? row?.has_submission ?? row?.hasSubmission, Boolean(row?.submission_id || row?.submissionId)),
-    submissionId: row?.submission_id || row?.submissionId || null,
-    photoUrl: resolveApiAssetUrl(row?.photo_url || row?.photoUrl || row?.submission_photo_url || row?.submissionPhotoUrl || null),
-    submittedAt: row?.submitted_at || row?.submittedAt || null,
+    submitted: bool(row?.submitted ?? row?.has_submission ?? row?.hasSubmission, Boolean(submissionId || submission)),
+    submissionId,
+    photoUrl,
+    submittedAt,
     reviewedAt: row?.reviewed_at || row?.reviewedAt || row?.submission?.reviewed_at || row?.submission?.reviewedAt || null,
     reviewedBy: row?.reviewed_by || row?.reviewedBy || row?.submission?.reviewed_by || row?.submission?.reviewedBy || null,
     reviewNote: row?.review_note || row?.reviewNote || row?.submission?.review_note || row?.submission?.reviewNote || null,
@@ -347,13 +365,41 @@ export function mapPicketSubmission(row: any): PicketSubmission {
   };
 }
 
+export function isPicketAssignmentSubmitted(item: Pick<PicketAssignment, "submitted" | "submissionId" | "photoUrl" | "submittedAt"> | null | undefined) {
+  return Boolean(item?.submitted || item?.submissionId || item?.photoUrl || item?.submittedAt);
+}
+
+function submissionMatchesAssignment(submission: PicketSubmission, assignment: PicketAssignment) {
+  const submissionKeys = [submission.scheduleId, submission.assignmentId].filter(Boolean).map(String);
+  const assignmentKeys = [assignment.scheduleId, assignment.assignmentId, assignment.id].filter(Boolean).map(String);
+  return submissionKeys.some((key) => assignmentKeys.includes(key));
+}
+
+export function mergePicketAssignmentsWithSubmissions(assignments: PicketAssignment[], submissions: PicketSubmission[]) {
+  return assignments.map((assignment) => {
+    if (isPicketAssignmentSubmitted(assignment)) return assignment;
+    const submission = submissions.find((item) => submissionMatchesAssignment(item, assignment));
+    if (!submission) return assignment;
+    return {
+      ...assignment,
+      submitted: true,
+      submissionId: submission.id || assignment.submissionId,
+      submissionStatus: submission.status || assignment.submissionStatus || "Terkirim",
+      photoUrl: submission.photoUrl || assignment.photoUrl,
+      submittedAt: submission.submittedAt || assignment.submittedAt,
+    };
+  });
+}
+
 export function mapPicketSubmissionResult(value: any): PicketSubmissionResult {
   const row = value?.submission || value?.item || value?.data || value || {};
+  const assignment = value?.assignment || row?.assignment || {};
   return {
-    id: row?.id || row?.submission_id || row?.submissionId || null,
-    status: row?.status || row?.review_status || row?.reviewStatus || null,
-    photoUrl: resolveApiAssetUrl(row?.photo_url || row?.photoUrl || row?.file_url || row?.fileUrl || null),
-    submittedAt: row?.submitted_at || row?.submittedAt || row?.created_at || row?.createdAt || null,
+    id: value?.submissionId || value?.submission_id || row?.id || row?.submission_id || row?.submissionId || null,
+    status: value?.submissionStatus || value?.submission_status || row?.status || row?.review_status || row?.reviewStatus || null,
+    assignmentStatus: assignment?.status || value?.assignmentStatus || value?.assignment_status || null,
+    photoUrl: resolveApiAssetUrl(value?.photoUrl || value?.photo_url || row?.photo_url || row?.photoUrl || row?.file_url || row?.fileUrl || null),
+    submittedAt: value?.submittedAt || value?.submitted_at || row?.submitted_at || row?.submittedAt || row?.created_at || row?.createdAt || null,
   };
 }
 

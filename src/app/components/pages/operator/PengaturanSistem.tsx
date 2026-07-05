@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
-import { Globe, MapPin, CalendarOff, Bell, Save, Check, AlertTriangle, Crosshair } from "lucide-react";
+import { Globe, MapPin, CalendarOff, Bell, Save, Check, AlertTriangle, Crosshair, Loader2, ShieldAlert } from "lucide-react";
 import { apiGet, apiPatch } from "../../../lib/api";
 import { HolidayItem, normalizeHolidays } from "../../../lib/holidays";
 
@@ -51,9 +51,14 @@ const normalizeNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
+function Toggle({ enabled, onChange, disabled = false }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onChange} className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? "bg-[#0AB600]" : "bg-slate-200"}`}>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative w-10 h-5 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? "bg-[#0AB600]" : "bg-slate-200"}`}
+    >
       <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all" style={{ left: enabled ? "calc(100% - 18px)" : "2px" }} />
     </button>
   );
@@ -90,6 +95,8 @@ function SaveRow({ onSave }: { onSave: () => Promise<void> }) {
 export default function PengaturanSistem() {
   const { confirm, confirmDialog } = useConfirmDialog();
   const [tab, setTab] = useState("umum");
+  const [settings, setSettings] = useState<any>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   const [umum, setUmum] = useState({
     appName: "STAS-RG MS",
@@ -132,6 +139,7 @@ export default function PengaturanSistem() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [gpsUpdating, setGpsUpdating] = useState(false);
+  const [accessLocksSaving, setAccessLocksSaving] = useState(false);
   const [liveCalibrating, setLiveCalibrating] = useState(false);
   const [liveUpdatedAt, setLiveUpdatedAt] = useState<Date | null>(null);
   const [lastGpsAccuracy, setLastGpsAccuracy] = useState<number | null>(null);
@@ -146,6 +154,7 @@ export default function PengaturanSistem() {
     const loadSettings = async () => {
       try {
         const data = await apiGet<any>("/system-settings");
+        setSettings(data);
         setUmum({
           appName: data?.umum?.appName || "STAS-RG MS",
           universityName: data?.umum?.universityName || "Telkom University",
@@ -201,6 +210,12 @@ export default function PengaturanSistem() {
 
     loadSettings();
   }, []);
+
+  React.useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   React.useEffect(() => {
     return () => {
@@ -455,6 +470,7 @@ export default function PengaturanSistem() {
         ? settingsRefresh.value
         : result?.settings;
       if (latest) {
+        setSettings(latest);
         setUmum({
           appName: latest?.umum?.appName || umum.appName,
           universityName: latest?.umum?.universityName || umum.universityName,
@@ -504,6 +520,45 @@ export default function PengaturanSistem() {
       const message = err?.message || "Gagal menyimpan pengaturan sistem";
       setError(message);
       throw err;
+    }
+  };
+
+  const accessLocksEnabled = settings?.accessLocks?.enabled !== false;
+
+  const handleAccessLocksToggle = async (nextValue: boolean) => {
+    const previousSettings = settings;
+    setError("");
+    setToast(null);
+    setAccessLocksSaving(true);
+    setSettings((prev: any) => ({
+      ...(prev || {}),
+      accessLocks: {
+        ...(prev?.accessLocks || {}),
+        enabled: nextValue
+      }
+    }));
+
+    try {
+      const result = await apiPatch<any>("/system-settings", {
+        accessLocks: { enabled: nextValue }
+      });
+      const latest = result?.settings || result;
+      setSettings(latest);
+      setToast({
+        type: "success",
+        msg: nextValue ? "Block mahasiswa diaktifkan." : "Block mahasiswa dimatikan."
+      });
+      window.dispatchEvent(new CustomEvent("stas:settings-updated", { detail: latest }));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("stas:access-lock-refresh"));
+      }
+    } catch (err: any) {
+      setSettings(previousSettings);
+      const message = err?.message || "Gagal menyimpan pengaturan block mahasiswa";
+      setError(message);
+      setToast({ type: "error", msg: message });
+    } finally {
+      setAccessLocksSaving(false);
     }
   };
 
@@ -613,6 +668,16 @@ export default function PengaturanSistem() {
   return (
     <OperatorLayout title="Pengaturan Sistem">
       <div className="flex flex-col gap-4 pb-4">
+        {toast && (
+          <div className={`fixed top-6 right-6 z-[400] flex items-center gap-3 rounded-[14px] border px-5 py-3.5 text-sm font-bold shadow-xl ${
+            toast.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-600"
+          }`}>
+            {toast.type === "success" ? <Check size={16} strokeWidth={3} /> : <AlertTriangle size={16} strokeWidth={2.5} />}
+            {toast.msg}
+          </div>
+        )}
         {error && (
           <div className="w-full px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
             {error}
@@ -642,6 +707,30 @@ export default function PengaturanSistem() {
             {tab === "umum" && (
               <div className="p-6 flex flex-col gap-5 max-w-[560px]">
                 <div><h2 className="font-black text-foreground mb-1">Pengaturan Umum</h2><p className="text-xs text-muted-foreground">Informasi dasar sistem dan institusi.</p></div>
+                <div className="rounded-[12px] border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-amber-100 text-amber-700">
+                        <ShieldAlert size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-foreground">Block Mahasiswa</p>
+                        <p className="mt-1 text-xs font-bold text-foreground">Aktifkan Block Mahasiswa</p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                          Jika dimatikan, seluruh mahasiswa tidak akan terkena pembatasan akses walaupun data block aktif tetap tersimpan.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 pt-1">
+                      {accessLocksSaving && <Loader2 size={15} className="animate-spin text-amber-700" />}
+                      <Toggle
+                        enabled={accessLocksEnabled}
+                        disabled={accessLocksSaving}
+                        onChange={() => void handleAccessLocksToggle(!accessLocksEnabled)}
+                      />
+                    </div>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="text-xs font-black text-foreground block mb-1.5">Nama Aplikasi</label><input value={umum.appName} onChange={(e) => setUmum((prev) => ({ ...prev, appName: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/30 transition-all" /></div>
                   <div><label className="text-xs font-black text-foreground block mb-1.5">Nama Universitas</label><input value={umum.universityName} onChange={(e) => setUmum((prev) => ({ ...prev, universityName: e.target.value }))} className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[#0AB600]/30 transition-all" /></div>
