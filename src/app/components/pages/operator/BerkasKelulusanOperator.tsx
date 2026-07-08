@@ -253,7 +253,7 @@ function LinkRow({
           )}
           {!canReview && (
             <p className="rounded-[10px] bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
-              Draft tersimpan. Review ACC/Tolak aktif setelah mahasiswa menekan kirim berkas.
+              Link sudah tersimpan. Admin bisa ACC/Tolak kolom ini selama link sudah diisi.
             </p>
           )}
           <div className="flex flex-wrap gap-2">
@@ -403,8 +403,23 @@ export default function BerkasKelulusanOperator() {
 
   const handleAllowGraduation = async () => {
     if (!selected?.id || allowing) return;
+    if (selected.student?.status === "Alumni") {
+      setError("Mahasiswa ini sudah menjadi Alumni STAS-RG.");
+      return;
+    }
+
+    if (getGraduationAllowedAt(selected)) {
+      setError("Mahasiswa ini sudah diberi izin lulus.");
+      return;
+    }
+
     if (!isSubmissionFullyAccepted(selected)) {
       setError("Semua link wajib harus terisi dan ACC dulu sebelum izin lulus diberikan.");
+      return;
+    }
+
+    if (selected.status === "Draft") {
+      setError("Berkas masih draft. Pastikan semua link sudah ACC lalu refresh data sebelum memberi izin lulus.");
       return;
     }
 
@@ -426,6 +441,20 @@ export default function BerkasKelulusanOperator() {
   const graduationAlreadyAllowed = Boolean(getGraduationAllowedAt(selected));
   const selectedFullyAccepted = isSubmissionFullyAccepted(selected);
   const canAllowSelected = selectedFullyAccepted && selected?.status !== "Draft" && selected.student?.status !== "Alumni" && !graduationAlreadyAllowed;
+  const allowGraduationLabel = selected.student?.status === "Alumni"
+    ? "Sudah Alumni"
+    : graduationAlreadyAllowed
+      ? "Sudah Diizinkan"
+      : !selectedFullyAccepted
+        ? "Belum Lengkap"
+        : selected?.status === "Draft"
+          ? "Masih Draft"
+          : "Izinkan Lulus";
+  const allowGraduationHint = !selectedFullyAccepted
+    ? "Semua link wajib harus terisi dan ACC dulu."
+    : selected?.status === "Draft"
+      ? "Berkas masih draft, refresh setelah semua review tersimpan."
+      : undefined;
 
   return (
     <OperatorLayout title="Berkas Kelulusan Mahasiswa">
@@ -603,11 +632,11 @@ export default function BerkasKelulusanOperator() {
                     type="button"
                     onClick={() => void handleAllowGraduation()}
                     disabled={!canAllowSelected || allowing}
-                    title={!selectedFullyAccepted && selected.student?.status !== "Alumni" ? "Semua link wajib harus terisi dan ACC dulu." : undefined}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-emerald-600 px-4 text-xs font-black text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    title={allowGraduationHint}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-emerald-600 px-4 text-xs font-black text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white/90 disabled:hover:bg-slate-300"
                   >
                     {allowing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-                    {selected.student?.status === "Alumni" ? "Sudah Alumni" : graduationAlreadyAllowed ? "Sudah Diizinkan" : "Izinkan Lulus"}
+                    {allowGraduationLabel}
                   </button>
                 </div>
               </div>
@@ -633,7 +662,7 @@ export default function BerkasKelulusanOperator() {
                             field={field}
                             reviewingKey={reviewingKey}
                             onReview={handleReview}
-                            canReview={selected.status !== "Draft"}
+                            canReview={selected.student?.status !== "Alumni"}
                           />
                         ))}
                         {specialFields.map((field) => (
@@ -643,7 +672,7 @@ export default function BerkasKelulusanOperator() {
                             field={field}
                             reviewingKey={reviewingKey}
                             onReview={handleReview}
-                            canReview={selected.status !== "Draft"}
+                            canReview={selected.student?.status !== "Alumni"}
                           />
                         ))}
                       </div>
