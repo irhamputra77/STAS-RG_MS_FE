@@ -403,7 +403,7 @@ export default function BerkasKelulusanOperator() {
 
   const handleAllowGraduation = async () => {
     if (!selected?.id || allowing) return;
-    if (selected.student?.status === "Alumni") {
+    if (selected?.student?.status === "Alumni") {
       setError("Mahasiswa ini sudah menjadi Alumni STAS-RG.");
       return;
     }
@@ -440,8 +440,8 @@ export default function BerkasKelulusanOperator() {
 
   const graduationAlreadyAllowed = Boolean(getGraduationAllowedAt(selected));
   const selectedFullyAccepted = isSubmissionFullyAccepted(selected);
-  const canAllowSelected = selectedFullyAccepted && selected?.status !== "Draft" && selected.student?.status !== "Alumni" && !graduationAlreadyAllowed;
-  const allowGraduationLabel = selected.student?.status === "Alumni"
+  const canAllowSelected = selectedFullyAccepted && selected?.status !== "Draft" && selected?.student?.status !== "Alumni" && !graduationAlreadyAllowed;
+  const allowGraduationLabel = selected?.student?.status === "Alumni"
     ? "Sudah Alumni"
     : graduationAlreadyAllowed
       ? "Sudah Diizinkan"
@@ -608,7 +608,7 @@ export default function BerkasKelulusanOperator() {
                 </div>
                 <div className="rounded-[14px] border border-border bg-slate-50 p-3">
                   <p className="text-[10px] font-black uppercase text-muted-foreground">Status Mahasiswa</p>
-                  <p className="mt-1 font-black text-foreground">{text(selected.student?.status)}</p>
+                  <p className="mt-1 font-black text-foreground">{text(selected?.student?.status)}</p>
                 </div>
                 <div className="rounded-[14px] border border-border bg-slate-50 p-3">
                   <p className="text-[10px] font-black uppercase text-muted-foreground">Tipe</p>
@@ -662,7 +662,7 @@ export default function BerkasKelulusanOperator() {
                             field={field}
                             reviewingKey={reviewingKey}
                             onReview={handleReview}
-                            canReview={selected.student?.status !== "Alumni"}
+                            canReview={selected?.student?.status !== "Alumni"}
                           />
                         ))}
                         {specialFields.map((field) => (
@@ -672,7 +672,7 @@ export default function BerkasKelulusanOperator() {
                             field={field}
                             reviewingKey={reviewingKey}
                             onReview={handleReview}
-                            canReview={selected.student?.status !== "Alumni"}
+                            canReview={selected?.student?.status !== "Alumni"}
                           />
                         ))}
                       </div>
