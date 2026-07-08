@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
-import { Check, X, Eye, CalendarCheck, AlertTriangle, Download, Clock } from "lucide-react";
+import { Check, X, Eye, CalendarCheck, AlertTriangle, Download, Clock, Search } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, getStoredUser, resolveApiAssetUrl } from "../../../lib/api";
 import { formatDateYmd } from "../../../lib/date";
 
@@ -157,6 +157,7 @@ export default function PersetujuanCuti() {
   const [note, setNote] = useState("");
   const [toast, setToast] = useState<ToastState>(null);
   const [filterStatus, setFilterStatus] = useState("Semua");
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -179,7 +180,20 @@ export default function PersetujuanCuti() {
     disetujui: leaves.filter((l) => l.status === "Disetujui").length,
     ditolak: leaves.filter((l) => l.status === "Ditolak").length,
   };
-  const filtered = filterStatus === "Semua" ? leaves : leaves.filter((l) => l.status === filterStatus);
+  const filtered = leaves.filter((l) => {
+    const matchesStatus = filterStatus === "Semua" || l.status === filterStatus;
+    const keyword = search.trim().toLowerCase();
+    const matchesSearch = !keyword || [
+      l.mahasiswaNama,
+      l.nim,
+      l.riset,
+      l.alasan,
+      l.status,
+      REQUEST_TYPE_LABEL[l.jenis as RequestType],
+      l.jenis
+    ].some((value) => String(value || "").toLowerCase().includes(keyword));
+    return matchesStatus && matchesSearch;
+  });
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -283,13 +297,24 @@ export default function PersetujuanCuti() {
 
         <div className="flex gap-5 items-start">
           <div className="flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex items-center gap-3">
-              <div className="flex gap-1 bg-slate-100 p-0.5 rounded-[10px]">
+            <div className="px-5 py-4 border-b border-border flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex gap-1 bg-slate-100 p-0.5 rounded-[10px] overflow-x-auto">
                 {["Semua", "Menunggu", "Disetujui", "Ditolak"].map((f) => (
-                  <button key={f} onClick={() => setFilterStatus(f)} className={`px-3 py-1.5 rounded-[8px] text-xs font-black transition-all ${filterStatus === f ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  <button key={f} onClick={() => setFilterStatus(f)} className={`px-3 py-1.5 rounded-[8px] text-xs font-black transition-all whitespace-nowrap ${filterStatus === f ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                     {f} {f === "Menunggu" && counts.menunggu > 0 && <span className="ml-1 text-amber-600">({counts.menunggu})</span>}
                   </button>
                 ))}
+              </div>
+
+              <div className="relative w-full lg:w-[320px]">
+                <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Cari nama atau NIM mahasiswa..."
+                  className="h-10 w-full rounded-[12px] border border-border bg-white pl-9 pr-3 text-xs font-semibold text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-[#0AB600] focus:ring-2 focus:ring-[#0AB600]/15"
+                />
               </div>
             </div>
             <div className="overflow-x-auto">

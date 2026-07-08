@@ -99,6 +99,7 @@ type AttendanceStatus =
   | "Belum Ada Info";
 
 type EditableAttendanceStatus = "" | AttendanceStatus;
+type StudentTypeFilter = "Semua" | "Riset" | "Magang";
 type AttendanceEditorMode = "add" | "edit";
 
 type AttendanceRecordDetail = {
@@ -320,6 +321,7 @@ export default function KehadiranMahasiswa() {
   const [detail, setDetail] = React.useState<AttendanceDetail | null>(null);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<"Semua" | AttendanceStatus>("Semua");
+  const [typeFilter, setTypeFilter] = React.useState<StudentTypeFilter>("Semua");
   const [overviewLoading, setOverviewLoading] = React.useState(true);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -499,15 +501,16 @@ export default function KehadiranMahasiswa() {
 
     return studentsWithStatus.filter((student) => {
       const matchesStatus = statusFilter === "Semua" || student.todayStatus === statusFilter;
+      const matchesType = typeFilter === "Semua" || String(student.tipe || "").trim().toLowerCase() === typeFilter.toLowerCase();
       const matchesQuery =
         !normalizedQuery ||
         student.name.toLowerCase().includes(normalizedQuery) ||
         student.nim.toLowerCase().includes(normalizedQuery) ||
         student.prodi.toLowerCase().includes(normalizedQuery);
 
-      return matchesStatus && matchesQuery;
+      return matchesStatus && matchesType && matchesQuery;
     });
-  }, [search, statusFilter, studentsWithStatus]);
+  }, [search, statusFilter, studentsWithStatus, typeFilter]);
 
   const selectedStudent =
     studentsWithStatus.find((student) => student.id === selectedStudentId) || filteredStudents[0] || null;
@@ -801,6 +804,16 @@ export default function KehadiranMahasiswa() {
                   className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
+
+              <select
+                value={typeFilter}
+                onChange={(event) => setTypeFilter(event.target.value as StudentTypeFilter)}
+                className="mb-3 h-10 w-full rounded-[12px] border border-border bg-white px-3 text-xs font-black text-foreground outline-none transition-colors focus:border-[#0AB600] focus:ring-2 focus:ring-[#0AB600]/15"
+              >
+                <option value="Semua">Semua tipe mahasiswa</option>
+                <option value="Riset">Mahasiswa Riset</option>
+                <option value="Magang">Mahasiswa Magang</option>
+              </select>
 
               <div className="flex flex-wrap gap-2">
                 {(isHolidayToday

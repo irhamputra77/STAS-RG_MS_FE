@@ -83,6 +83,13 @@ const SPECIAL_LINK_FIELDS: LinkField[] = [
   { key: "designDocumentationUrl", snakeKey: "design_documentation_url", label: "Link Master Desain & Dokumentasi Konten" }
 ];
 
+const REQUIRED_COMMON_GRADUATION_FIELD_KEYS = new Set<GraduationFieldKey>([
+  "reportUrl",
+  "productPhotoFolderUrl",
+  "manualBookUrl",
+  "demoVideoUrl"
+]);
+
 function text(value: unknown, fallback = "-") {
   const normalized = String(value ?? "").trim();
   return normalized || fallback;
@@ -162,15 +169,47 @@ function getReviewLabel(review: FieldReview) {
   return "Menunggu";
 }
 
-function getSpecialFields(project: any) {
+function getRequiredSpecialFieldKeys(project: any) {
   const required = Array.isArray(project?.requiredSpecialFields)
     ? project.requiredSpecialFields
     : Array.isArray(project?.required_special_fields)
       ? project.required_special_fields
       : [];
-  const requiredKeys = new Set(required.map((field: any) => field?.key).filter(Boolean));
+
+  return new Set(
+    required
+      .filter((field: any) => field?.key && field.required !== false)
+      .map((field: any) => field.key)
+  );
+}
+
+function getSpecialFields(project: any) {
+  const requiredKeys = getRequiredSpecialFieldKeys(project);
 
   return SPECIAL_LINK_FIELDS.filter((field) => requiredKeys.has(field.key) || Boolean(getFieldValue(project, field)));
+}
+
+function getProjectRowId(project: any) {
+  return String(project?.id || project?.projectRowId || project?.project_row_id || "");
+}
+
+function getFieldsRequiredForGraduation(project: any) {
+  const commonFields = COMMON_LINK_FIELDS.filter((field) => REQUIRED_COMMON_GRADUATION_FIELD_KEYS.has(field.key) || Boolean(getFieldValue(project, field)));
+  return [...commonFields, ...getSpecialFields(project)];
+}
+
+function isProjectFullyAccepted(project: any) {
+  const fields = getFieldsRequiredForGraduation(project);
+  return fields.length > 0 && fields.every((field) => {
+    const value = getFieldValue(project, field);
+    const review = getFieldReview(project, field);
+    return Boolean(value) && getReviewStatus(review) === "accepted";
+  });
+}
+
+function isSubmissionFullyAccepted(item?: GraduationSubmission | null) {
+  const projects = item?.projects || [];
+  return projects.length > 0 && projects.every(isProjectFullyAccepted);
 }
 
 function LinkRow({
@@ -189,7 +228,7 @@ function LinkRow({
   const value = getFieldValue(project, field);
   const review = getFieldReview(project, field);
   const reviewStatus = getReviewStatus(review);
-  const projectRowId = String(project?.id || "");
+  const projectRowId = getProjectRowId(project);
   const accKey = `${projectRowId}:${field.key}:accepted`;
   const rejectKey = `${projectRowId}:${field.key}:rejected`;
   const disabled = !canReview || !value || !projectRowId || Boolean(reviewingKey);
@@ -364,6 +403,10 @@ export default function BerkasKelulusanOperator() {
 
   const handleAllowGraduation = async () => {
     if (!selected?.id || allowing) return;
+    if (!isSubmissionFullyAccepted(selected)) {
+      setError("Semua link wajib harus terisi dan ACC dulu sebelum izin lulus diberikan.");
+      return;
+    }
 
     const confirmed = window.confirm("Beri izin lulus untuk mahasiswa ini? Setelah diizinkan, mahasiswa bisa klik Jadi Alumni STAS-RG sendiri.");
     if (!confirmed) return;
@@ -381,7 +424,8 @@ export default function BerkasKelulusanOperator() {
   };
 
   const graduationAlreadyAllowed = Boolean(getGraduationAllowedAt(selected));
-  const canAllowSelected = selected?.status === "Valid" && selected.student?.status !== "Alumni" && !graduationAlreadyAllowed;
+  const selectedFullyAccepted = isSubmissionFullyAccepted(selected);
+  const canAllowSelected = selectedFullyAccepted && selected?.status !== "Draft" && selected.student?.status !== "Alumni" && !graduationAlreadyAllowed;
 
   return (
     <OperatorLayout title="Berkas Kelulusan Mahasiswa">
@@ -552,13 +596,14 @@ export default function BerkasKelulusanOperator() {
                   <div>
                     <p className="text-sm font-black text-emerald-900">Izin Lulus Mahasiswa</p>
                     <p className="mt-1 text-xs font-semibold text-emerald-800">
-                      Setelah seluruh link ACC, admin memberi izin lulus. Mahasiswa tetap harus klik Jadi Alumni STAS-RG sendiri.
+                      Setelah seluruh link wajib terisi dan ACC, admin memberi izin lulus. Mahasiswa tetap harus klik Jadi Alumni STAS-RG sendiri.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => void handleAllowGraduation()}
                     disabled={!canAllowSelected || allowing}
+                    title={!selectedFullyAccepted && selected.student?.status !== "Alumni" ? "Semua link wajib harus terisi dan ACC dulu." : undefined}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-emerald-600 px-4 text-xs font-black text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {allowing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
