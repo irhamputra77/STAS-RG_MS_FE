@@ -41,6 +41,14 @@ type ToastState = {
   msg: string;
 } | null;
 
+type StudentTypeFilter = "all" | "Riset" | "Magang";
+
+const STUDENT_TYPE_OPTIONS: Array<{ value: StudentTypeFilter; label: string }> = [
+  { value: "all", label: "Semua" },
+  { value: "Riset", label: "Riset" },
+  { value: "Magang", label: "Magang" }
+];
+
 const FORMAT_META: Record<ExportFormat, { label: string; icon: React.ReactNode }> = {
   xlsx: { label: "XLSX", icon: <FileSpreadsheet size={14} /> },
   csv: { label: "CSV", icon: <FileSpreadsheet size={14} /> },
@@ -164,6 +172,7 @@ export default function EksporLaporan() {
   const [selectedType, setSelectedType] = React.useState("");
   const [selectedFormat, setSelectedFormat] = React.useState<ExportFormat | "">("");
   const [studentId, setStudentId] = React.useState("");
+  const [studentType, setStudentType] = React.useState<StudentTypeFilter>("all");
   const [projectId, setProjectId] = React.useState("");
   const [angkatan, setAngkatan] = React.useState("");
   const [startDate, setStartDate] = React.useState("");
@@ -235,6 +244,7 @@ export default function EksporLaporan() {
     if (!selectedTemplate) {
       setSelectedFormat("");
       setStudentId("");
+      setStudentType("all");
       setProjectId("");
       setStartDate("");
       setEndDate("");
@@ -246,6 +256,7 @@ export default function EksporLaporan() {
     ));
 
     if (!selectedTemplate.filters.student) setStudentId("");
+    if (!selectedTemplate.filters.studentType) setStudentType("all");
     if (!selectedTemplate.filters.project) setProjectId("");
     if (!selectedTemplate.filters.dateRange || selectedTemplate.id === "database-mahasiswa") {
       setStartDate("");
@@ -276,6 +287,7 @@ export default function EksporLaporan() {
           type: selectedTemplate.id,
           format: selectedFormat,
           studentId: selectedTemplate.filters.student ? studentId || undefined : undefined,
+          studentType: selectedTemplate.filters.studentType && studentType !== "all" ? studentType : undefined,
           projectId: selectedTemplate.filters.project ? projectId || undefined : undefined,
           angkatan: isStudentDatabaseExport ? angkatan || undefined : undefined,
           startDate: selectedTemplate.filters.dateRange && !isStudentDatabaseExport ? startDate || undefined : undefined,
@@ -405,7 +417,7 @@ export default function EksporLaporan() {
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {isAttendanceExport
-                    ? "Export kehadiran mengikuti histori harian pada page attendance, termasuk status sintetis untuk hari tanpa absensi real."
+                    ? "Export kehadiran dikirim sebagai satu request rentang tanggal. Backend menyiapkan matriks tanggal kerja untuk CSV, XLSX, dan PDF."
                     : isStudentDatabaseExport
                       ? "Export database mahasiswa sekarang difilter berdasarkan angkatan, tanpa perlu memasukkan rentang tanggal."
                       : isLecturerDatabaseExport
@@ -422,10 +434,10 @@ export default function EksporLaporan() {
                         <Calendar size={18} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-black text-blue-900">Histori harian sintetis</p>
+                        <p className="text-sm font-black text-blue-900">Matriks tanggal kerja</p>
                         <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                          File export akan berisi status per hari sesuai page kehadiran mahasiswa. Rentang tanggal tetap bisa menghasilkan
-                          data meskipun tidak ada `attendance_records` real pada setiap hari.
+                          File export kehadiran mengikuti matriks tanggal kerja dari tanggal mulai sampai tanggal selesai. Frontend hanya
+                          mengirim filter, lalu backend menyusun CSV, XLSX, atau PDF.
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {ATTENDANCE_STATUS_META.map((status) => (
@@ -536,6 +548,33 @@ export default function EksporLaporan() {
                   </FieldShell>
                 )}
 
+                {selectedTemplate?.filters.studentType && (
+                  <FieldShell
+                    label="Tipe Mahasiswa"
+                    caption="Pilih Semua untuk tidak mengirim filter studentType."
+                  >
+                    <div className="grid grid-cols-3 gap-2">
+                      {STUDENT_TYPE_OPTIONS.map((option) => {
+                        const isActive = studentType === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setStudentType(option.value)}
+                            className={`flex h-11 items-center justify-center rounded-[12px] border text-xs font-black transition-all ${
+                              isActive
+                                ? "border-[#0AB600] bg-[#0AB600] text-white"
+                                : "border-border bg-white text-muted-foreground hover:bg-slate-100"
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </FieldShell>
+                )}
+
                 {selectedTemplate?.filters.project && (
                   <FieldShell
                     label="Riset"
@@ -592,7 +631,7 @@ export default function EksporLaporan() {
                       label="Tanggal Dari"
                       caption={
                         isAttendanceExport
-                          ? "Rentang tanggal dipakai untuk membentuk histori harian dengan format kirim YYYY-MM-DD."
+                          ? "Backend memakai tanggal ini sebagai awal matriks tanggal kerja."
                           : "Frontend mengirim format YYYY-MM-DD."
                       }
                     >
@@ -607,7 +646,7 @@ export default function EksporLaporan() {
                       label="Tanggal Sampai"
                       caption={
                         isAttendanceExport
-                          ? "Hari dalam rentang bisa berstatus Hadir, Cuti, Libur, atau Tidak Hadir."
+                          ? "Backend memakai tanggal ini sebagai akhir matriks tanggal kerja."
                           : "Boleh dikosongkan jika backend mengizinkan."
                       }
                     >

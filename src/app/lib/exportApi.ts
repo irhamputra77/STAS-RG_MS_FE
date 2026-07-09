@@ -12,6 +12,7 @@ export type ExportTemplate = {
     student: boolean;
     project: boolean;
     dateRange: boolean;
+    studentType?: boolean;
   };
   endpoint?: string;
 };
@@ -21,6 +22,7 @@ export type ExportCustomParams = {
   format: ExportFormat;
   studentId?: string;
   projectId?: string;
+  studentType?: "Riset" | "Magang";
   angkatan?: string;
   startDate?: string;
   endDate?: string;
@@ -47,6 +49,7 @@ export function buildExportCustomQuery(params: ExportCustomParams) {
 
   if (params.studentId) query.set("studentId", params.studentId);
   if (params.projectId) query.set("projectId", params.projectId);
+  if (params.studentType) query.set("studentType", params.studentType);
   if (params.angkatan) query.set("angkatan", params.angkatan);
   if (params.startDate) query.set("startDate", params.startDate);
   if (params.endDate) query.set("endDate", params.endDate);
