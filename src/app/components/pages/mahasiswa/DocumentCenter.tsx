@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Layout } from "../../templates/Layout";
 import { Badge } from "../../atoms/badge";
 import { Button } from "../../atoms/button";
@@ -10,9 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../atoms/dialog";
+import { Input } from "../../atoms/input";
+import { Textarea } from "../../atoms/textarea";
 import {
   apiGet,
   apiGetBlob,
+  apiPost,
   buildQueryPath,
   downloadBlob,
   encodePathSegment,
@@ -43,7 +46,10 @@ type RequestDefinition = {
   id: string;
   name: string;
   typeCode?: string | null;
+  typeName?: string | null;
   documentPurpose?: string | null;
+  requiresProject?: boolean;
+  requiresPeriod?: boolean;
 };
 
 type RequestPeriod = {
@@ -54,9 +60,28 @@ type RequestPeriod = {
 };
 
 type RequestProject = {
+  id?: string | null;
+  legacyProjectId?: string | null;
   projectName?: string | null;
   title?: string | null;
+  shortTitle?: string | null;
   name?: string | null;
+  projectStatus?: string | null;
+  membershipStatus?: string | null;
+};
+
+type RequestContext = {
+  definition: RequestDefinition;
+  student: {
+    name?: string | null;
+    nim?: string | null;
+    prodi?: string | null;
+    activityType?: string | null;
+  };
+  periods: RequestPeriod[];
+  projects: RequestProject[];
+  canSubmit: boolean;
+  blockingReason?: string | null;
 };
 
 type RequestOfficialDocument = {
@@ -121,7 +146,22 @@ const periodText = (period?: RequestPeriod | null, fallbackActivityType?: string
 
 const projectText = (project?: RequestProject | null) => {
   if (!project) return "-";
-  return project.projectName || project.title || project.name || "-";
+  return project.projectName || project.title || project.shortTitle || project.name || "-";
+};
+
+const projectId = (project?: RequestProject | null) => {
+  return project?.legacyProjectId || project?.id || "";
+};
+
+const safeErrorMessage = (err: any) => {
+  if (err?.status === 403) return "Anda tidak memiliki akses untuk mengajukan permintaan surat.";
+  if (err?.status === 404) return "Data pengajuan tidak tersedia.";
+  if (err?.status === 409) {
+    return err?.message || "Permintaan tidak dapat diproses karena data atau statusnya telah berubah. Periksa kembali data pengajuan.";
+  }
+  if (err?.status === 400) return err?.message || "Periksa kembali data pengajuan.";
+  if (err?.status >= 500) return "Permintaan belum dapat diproses. Coba lagi nanti.";
+  return err?.message || "Gagal memproses permintaan.";
 };
 
 export default function DocumentCenter() {
@@ -132,11 +172,32 @@ export default function DocumentCenter() {
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestsLoaded, setRequestsLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
   const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [documentDetailLoading, setDocumentDetailLoading] = useState(false);
   const [requestDetailLoading, setRequestDetailLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const [requestFormOpen, setRequestFormOpen] = useState(false);
+  const [definitions, setDefinitions] = useState<RequestDefinition[]>([]);
+  const [definitionsLoading, setDefinitionsLoading] = useState(false);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [requestContext, setRequestContext] = useState<RequestContext | null>(null);
+  const [formDefinitionId, setFormDefinitionId] = useState("");
+  const [subject, setSubject] = useState("");
+  const [studentNote, setStudentNote] = useState("");
+  const [selectedPeriodIndex, setSelectedPeriodIndex] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [formError, setFormError] = useState("");
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+
+  const selectedDefinition = useMemo(
+    () => definitions.find((definition) => definition.id === formDefinitionId) || requestContext?.definition || null,
+    [definitions, formDefinitionId, requestContext],
+  );
+  const availableProjects = requestContext?.projects || [];
+  const projectsWithId = availableProjects.filter((project) => projectId(project));
 
   const loadDocuments = async () => {
     setDocumentsLoading(true);
@@ -171,6 +232,62 @@ export default function DocumentCenter() {
     }
   };
 
+  const resetRequestForm = () => {
+    setDefinitions([]);
+    setRequestContext(null);
+    setFormDefinitionId("");
+    setSubject("");
+    setStudentNote("");
+    setSelectedPeriodIndex("");
+    setSelectedProjectId("");
+    setFormError("");
+    setDefinitionsLoading(false);
+    setContextLoading(false);
+    setSubmittingRequest(false);
+  };
+
+  const loadRequestContext = async (definitionId: string) => {
+    if (!definitionId) {
+      setRequestContext(null);
+      return;
+    }
+
+    setContextLoading(true);
+    setFormError("");
+    try {
+      const context = await apiGet<RequestContext>(
+        buildQueryPath("/document-center/my/request-context", { definitionId }),
+      );
+      setRequestContext(context);
+      setSelectedPeriodIndex("");
+      setSelectedProjectId("");
+    } catch (err: any) {
+      setRequestContext(null);
+      setFormError(safeErrorMessage(err));
+    } finally {
+      setContextLoading(false);
+    }
+  };
+
+  const openRequestForm = async () => {
+    resetRequestForm();
+    setRequestFormOpen(true);
+    setDefinitionsLoading(true);
+    try {
+      const response = await apiGet<{ items: RequestDefinition[] }>("/document-center/my/request-definitions");
+      const items = response.items || [];
+      setDefinitions(items);
+      if (items.length === 1) {
+        setFormDefinitionId(items[0].id);
+        await loadRequestContext(items[0].id);
+      }
+    } catch (err: any) {
+      setFormError(safeErrorMessage(err));
+    } finally {
+      setDefinitionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadDocuments();
   }, []);
@@ -180,6 +297,12 @@ export default function DocumentCenter() {
       void loadRequests();
     }
   }, [activeTab, requestsLoaded]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(""), 3200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const openDocumentDetail = async (id: string) => {
     setDocumentDetailLoading(true);
@@ -234,9 +357,92 @@ export default function DocumentCenter() {
     void loadDocuments();
   };
 
+  const submitRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (submittingRequest) return;
+
+    const normalizedSubject = subject.trim();
+    const normalizedNote = studentNote.trim();
+    if (!formDefinitionId || !selectedDefinition || !requestContext) {
+      setFormError("Pilih jenis surat terlebih dahulu.");
+      return;
+    }
+    if (!normalizedSubject || normalizedSubject.length > 255) {
+      setFormError("Subject wajib diisi dan maksimal 255 karakter.");
+      return;
+    }
+    if (normalizedNote.length > 2000) {
+      setFormError("Catatan mahasiswa maksimal 2.000 karakter.");
+      return;
+    }
+    if (!requestContext.canSubmit) {
+      setFormError(requestContext.blockingReason || "Permintaan belum dapat diajukan.");
+      return;
+    }
+
+    const payload: {
+      documentDefinitionId: string;
+      subject: string;
+      studentNote?: string;
+      period?: { activityType: string; startDate: string; endDate: string };
+      legacyProjectId?: string;
+    } = {
+      documentDefinitionId: formDefinitionId,
+      subject: normalizedSubject,
+    };
+
+    if (normalizedNote) payload.studentNote = normalizedNote;
+
+    if ((requestContext.periods || []).length > 1) {
+      const selected = requestContext.periods[Number(selectedPeriodIndex)];
+      if (!selected || !selected.activityType || !selected.startDate || !selected.endDate) {
+        setFormError("Pilih periode kegiatan yang valid.");
+        return;
+      }
+      payload.period = {
+        activityType: selected.activityType,
+        startDate: selected.startDate,
+        endDate: selected.endDate,
+      };
+    }
+
+    if (selectedDefinition.requiresProject) {
+      if (!projectsWithId.length) {
+        setFormError("Data proyek belum lengkap. Hubungi operator.");
+        return;
+      }
+      if (!selectedProjectId) {
+        setFormError("Pilih proyek terlebih dahulu.");
+        return;
+      }
+      payload.legacyProjectId = selectedProjectId;
+    }
+
+    setSubmittingRequest(true);
+    setFormError("");
+    try {
+      await apiPost<RequestItem>("/document-center/my/requests", payload);
+      setRequestFormOpen(false);
+      resetRequestForm();
+      setActiveTab("requests");
+      await loadRequests();
+      setToast("Permintaan surat berhasil diajukan.");
+    } catch (err: any) {
+      setFormError(safeErrorMessage(err));
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
   return (
     <Layout title="Pusat Dokumen Saya">
       <div className="mx-auto flex max-w-[1060px] flex-col gap-5 pb-6">
+        {toast && (
+          <div className="fixed right-5 top-5 z-50 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 shadow-lg">
+            {toast}
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
@@ -258,23 +464,30 @@ export default function DocumentCenter() {
           </Button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={activeTab === "documents" ? "default" : "outline"}
-            onClick={() => setActiveTab("documents")}
-          >
-            Dokumen Saya
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={activeTab === "requests" ? "default" : "outline"}
-            onClick={() => setActiveTab("requests")}
-          >
-            Permintaan Surat
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={activeTab === "documents" ? "default" : "outline"}
+              onClick={() => setActiveTab("documents")}
+            >
+              Dokumen Saya
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={activeTab === "requests" ? "default" : "outline"}
+              onClick={() => setActiveTab("requests")}
+            >
+              Permintaan Surat
+            </Button>
+          </div>
+          {activeTab === "requests" && (
+            <Button type="button" size="sm" onClick={() => void openRequestForm()}>
+              Ajukan Permintaan
+            </Button>
+          )}
         </div>
 
         {error && (
@@ -399,6 +612,183 @@ export default function DocumentCenter() {
             )}
           </div>
         )}
+
+        <Dialog
+          open={requestFormOpen}
+          onOpenChange={(open) => {
+            setRequestFormOpen(open);
+            if (!open) resetRequestForm();
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Ajukan Permintaan Surat</DialogTitle>
+              <DialogDescription>Pengajuan akan diteruskan ke operator untuk ditinjau.</DialogDescription>
+            </DialogHeader>
+
+            <form className="grid gap-4" onSubmit={submitRequest}>
+              {formError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+                  {formError}
+                </div>
+              )}
+
+              <div className="grid gap-1.5">
+                <label className="text-xs font-black text-foreground">Jenis Surat</label>
+                <select
+                  value={formDefinitionId}
+                  disabled={definitionsLoading || submittingRequest}
+                  onChange={(event) => {
+                    const definitionId = event.target.value;
+                    setFormDefinitionId(definitionId);
+                    void loadRequestContext(definitionId);
+                  }}
+                  className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20"
+                >
+                  <option value="">
+                    {definitionsLoading ? "Memuat jenis surat..." : "Pilih jenis surat"}
+                  </option>
+                  {definitions.map((definition) => (
+                    <option key={definition.id} value={definition.id}>
+                      {definition.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {contextLoading && (
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-4 py-3 text-sm text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin" />
+                  Memuat konteks mahasiswa...
+                </div>
+              )}
+
+              {requestContext && (
+                <div className="rounded-[12px] border border-border bg-slate-50 p-3 text-sm">
+                  <p>
+                    <b>Nama:</b> {requestContext.student.name || "-"}
+                  </p>
+                  <p>
+                    <b>NIM:</b> {requestContext.student.nim || "-"}
+                  </p>
+                  <p>
+                    <b>Prodi:</b> {requestContext.student.prodi || "-"}
+                  </p>
+                  <p>
+                    <b>Activity type:</b> {requestContext.student.activityType || "-"}
+                  </p>
+                </div>
+              )}
+
+              {requestContext?.blockingReason && !requestContext.canSubmit && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                  {requestContext.blockingReason}
+                </div>
+              )}
+
+              <div className="grid gap-1.5">
+                <label className="text-xs font-black text-foreground">Subject / Keperluan</label>
+                <Input
+                  value={subject}
+                  maxLength={255}
+                  disabled={submittingRequest}
+                  onChange={(event) => setSubject(event.target.value)}
+                  placeholder="Tuliskan keperluan surat"
+                />
+                <p className="text-[11px] text-muted-foreground">{subject.trim().length}/255 karakter</p>
+              </div>
+
+              <div className="grid gap-1.5">
+                <label className="text-xs font-black text-foreground">Catatan Mahasiswa</label>
+                <Textarea
+                  rows={3}
+                  value={studentNote}
+                  maxLength={2000}
+                  disabled={submittingRequest}
+                  onChange={(event) => setStudentNote(event.target.value)}
+                  placeholder="Catatan opsional untuk operator"
+                />
+                <p className="text-[11px] text-muted-foreground">{studentNote.trim().length}/2000 karakter</p>
+              </div>
+
+              {requestContext && requestContext.periods.length === 1 && (
+                <div className="rounded-[12px] border border-border bg-slate-50 p-3 text-sm">
+                  <p className="text-xs font-black text-foreground">Periode</p>
+                  <p className="text-muted-foreground">{periodText(requestContext.periods[0])}</p>
+                </div>
+              )}
+
+              {requestContext && requestContext.periods.length > 1 && (
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-black text-foreground">Periode</label>
+                  <select
+                    value={selectedPeriodIndex}
+                    disabled={submittingRequest}
+                    onChange={(event) => setSelectedPeriodIndex(event.target.value)}
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20"
+                  >
+                    <option value="">Pilih periode</option>
+                    {requestContext.periods.map((period, index) => (
+                      <option key={`${period.activityType}-${period.startDate}-${period.endDate}-${index}`} value={index}>
+                        {periodText(period)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {selectedDefinition?.requiresProject && (
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-black text-foreground">Project</label>
+                  <select
+                    value={selectedProjectId}
+                    disabled={submittingRequest || projectsWithId.length === 0}
+                    onChange={(event) => setSelectedProjectId(event.target.value)}
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20"
+                  >
+                    <option value="">
+                      {projectsWithId.length === 0 ? "Data project belum tersedia" : "Pilih project"}
+                    </option>
+                    {projectsWithId.map((project) => (
+                      <option key={projectId(project)} value={projectId(project)}>
+                        {projectText(project)}
+                      </option>
+                    ))}
+                  </select>
+                  {availableProjects.length > 0 && projectsWithId.length === 0 && (
+                    <p className="text-[11px] font-semibold text-amber-700">
+                      Data project dari server belum memuat ID yang dapat dikirim.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={submittingRequest}
+                  onClick={() => setRequestFormOpen(false)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    definitionsLoading ||
+                    contextLoading ||
+                    submittingRequest ||
+                    !requestContext ||
+                    requestContext.canSubmit === false
+                  }
+                >
+                  {submittingRequest ? <Loader2 size={15} className="animate-spin" /> : null}
+                  Ajukan
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={Boolean(selectedDocument) || documentDetailLoading}
