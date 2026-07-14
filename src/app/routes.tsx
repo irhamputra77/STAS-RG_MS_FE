@@ -9,6 +9,7 @@ import Logbook from "./components/pages/mahasiswa/Logbook";
 import LogbookForm from "./components/pages/mahasiswa/LogbookForm";
 import LeaveRequest from "./components/pages/mahasiswa/LeaveRequest";
 import Documents from "./components/pages/mahasiswa/Documents";
+import DocumentCenterMahasiswa from "./components/pages/mahasiswa/DocumentCenter";
 import DraftReport from "./components/pages/mahasiswa/DraftReport";
 import MyResearch from "./components/pages/mahasiswa/MyResearch";
 import ScrumBoard from "./components/pages/mahasiswa/ScrumBoard";
@@ -32,6 +33,7 @@ import PengaturanSistem from "./components/pages/operator/PengaturanSistem";
 import AuditLog from "./components/pages/operator/AuditLog";
 import ProgressBoard from "./components/pages/operator/ProgressBoard";
 import SertifikatOperator from "./components/pages/operator/SertifikatOperator";
+import DocumentCenterOperator from "./components/pages/operator/DocumentCenter";
 import ReviewDraftOperator from "./components/pages/operator/ReviewDraftOperator";
 import PengunduranDiriOperator from "./components/pages/operator/PengunduranDiriOperator";
 import PiketOperator from "./components/pages/operator/PiketOperator";
@@ -111,6 +113,7 @@ export const router = createBrowserRouter([
                   { path: "logbook/new", element: <LogbookForm /> },
                   { path: "leave", element: <LeaveRequest /> },
                   { path: "documents", element: <Documents /> },
+                  { path: "document-center", element: <DocumentCenterMahasiswa /> },
                   { path: "graduation", element: <GraduationSubmission /> },
                   { path: "draft", element: <DraftReport /> },
                   { path: "research", element: <MyResearch /> },
@@ -153,6 +156,7 @@ export const router = createBrowserRouter([
               { path: "draft", element: <ReviewDraftOperator /> },
               { path: "kelulusan", element: <BerkasKelulusanOperator /> },
               { path: "sertifikat", element: <SertifikatOperator /> },
+              { path: "document-center", element: <DocumentCenterOperator /> },
             ],
           },
 
