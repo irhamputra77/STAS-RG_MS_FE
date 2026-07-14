@@ -33,9 +33,6 @@ type StudentProfileForm = {
   angkatan: string;
   fakultas: string;
   pembimbing: string;
-  status: string;
-  tipe: string;
-  bergabung: string;
 };
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -119,10 +116,7 @@ function TabProfil({
     prodi: "",
     angkatan: "",
     fakultas: "",
-    pembimbing: "",
-    status: "Aktif",
-    tipe: "Riset",
-    bergabung: ""
+    pembimbing: ""
   });
   const [photoUrl, setPhotoUrl] = useState(user?.photoUrl || user?.photo_url || "");
   const [photoPreview, setPhotoPreview] = useState("");
@@ -135,13 +129,6 @@ function TabProfil({
     setStudentForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const normalizeDateInput = (value: unknown) => {
-    const raw = String(value || "").trim();
-    if (!raw || raw === "-") return "";
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-    const parsed = new Date(raw);
-    return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
-  };
 
   React.useEffect(() => {
     const loadProfile = async () => {
@@ -158,10 +145,7 @@ function TabProfil({
           prodi: profile.prodi || "",
           angkatan: String(profile.angkatan || ""),
           fakultas: profile.fakultas || "",
-          pembimbing: profile.pembimbing || "",
-          status: profile.status || "Aktif",
-          tipe: profile.tipe || "Riset",
-          bergabung: normalizeDateInput(profile.bergabung)
+          pembimbing: profile.pembimbing || ""
         });
         setPhotoUrl(profile.photoUrl || profile.photo_url || "");
         setBio(profile.bio || profile.bioText || profile.bio_text || "");
@@ -272,9 +256,6 @@ function TabProfil({
         angkatan: studentForm.angkatan,
         fakultas: studentForm.fakultas,
         pembimbing: studentForm.pembimbing,
-        status: studentForm.status,
-        tipe: studentForm.tipe,
-        bergabung: studentForm.bergabung || null,
         bio,
         photoUrl: nextPhotoUrl || null,
       });
@@ -478,39 +459,6 @@ function TabProfil({
                 onChange={(event) => setStudentField("pembimbing", event.target.value)}
                 placeholder="Nama dosen pembimbing"
               />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div>
-              <Label>Tanggal Bergabung</Label>
-              <Input
-                value={studentForm.bergabung}
-                onChange={(event) => setStudentField("bergabung", event.target.value)}
-                type="date"
-              />
-            </div>
-
-            <div>
-              <Label>Status Mahasiswa</Label>
-              <select
-                value={studentForm.status}
-                onChange={(event) => setStudentField("status", event.target.value)}
-                className="w-full px-4 py-3 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
-              >
-                {["Aktif", "Cuti", "Alumni", "Mengundurkan Diri"].map((item) => <option key={item}>{item}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <Label>Tipe Mahasiswa</Label>
-              <select
-                value={studentForm.tipe}
-                onChange={(event) => setStudentField("tipe", event.target.value)}
-                className="w-full px-4 py-3 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
-              >
-                {["Riset", "Magang"].map((item) => <option key={item}>{item}</option>)}
-              </select>
             </div>
           </div>
 
