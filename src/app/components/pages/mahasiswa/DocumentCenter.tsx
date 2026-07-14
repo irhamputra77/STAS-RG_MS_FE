@@ -15,6 +15,7 @@ import { Textarea } from "../../atoms/textarea";
 import {
   apiGet,
   apiGetBlob,
+  apiPatch,
   apiPost,
   buildQueryPath,
   downloadBlob,
@@ -22,6 +23,7 @@ import {
 } from "../../../lib/api";
 import { formatDateReadable } from "../../../lib/date";
 import { Download, Eye, FileText, Loader2, RefreshCw } from "lucide-react";
+import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 
 type DocumentItem = {
   id: string;
@@ -109,6 +111,8 @@ type RequestItem = {
   cancelledAt?: string | null;
   completedAt?: string | null;
   createdAt?: string | null;
+  canEdit?: boolean;
+  canCancel?: boolean;
   officialDocument?: RequestOfficialDocument | null;
 };
 
@@ -154,17 +158,27 @@ const projectId = (project?: RequestProject | null) => {
 };
 
 const safeErrorMessage = (err: any) => {
-  if (err?.status === 403) return "Anda tidak memiliki akses untuk mengajukan permintaan surat.";
+  if (err?.status === 403) return "Anda tidak memiliki akses untuk memproses permintaan surat.";
   if (err?.status === 404) return "Data pengajuan tidak tersedia.";
   if (err?.status === 409) {
-    return err?.message || "Permintaan tidak dapat diproses karena data atau statusnya telah berubah. Periksa kembali data pengajuan.";
+    return err?.message || "Permintaan tidak dapat diproses karena status atau datanya telah berubah. Muat ulang dan periksa kembali.";
   }
   if (err?.status === 400) return err?.message || "Periksa kembali data pengajuan.";
   if (err?.status >= 500) return "Permintaan belum dapat diproses. Coba lagi nanti.";
   return err?.message || "Gagal memproses permintaan.";
 };
 
+const periodMatches = (left?: RequestPeriod | null, right?: RequestPeriod | null) => {
+  if (!left || !right) return false;
+  return (
+    left.activityType === right.activityType &&
+    left.startDate === right.startDate &&
+    (left.endDate || null) === (right.endDate || null)
+  );
+};
+
 export default function DocumentCenter() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [activeTab, setActiveTab] = useState<"documents" | "requests">("documents");
   const [documents, setDocuments] = useState<DocumentListResponse>(emptyDocumentList);
   const [documentsLoading, setDocumentsLoading] = useState(true);
@@ -191,6 +205,17 @@ export default function DocumentCenter() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [formError, setFormError] = useState("");
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<RequestItem | null>(null);
+  const [editContext, setEditContext] = useState<RequestContext | null>(null);
+  const [editContextLoading, setEditContextLoading] = useState(false);
+  const [editSubject, setEditSubject] = useState("");
+  const [editStudentNote, setEditStudentNote] = useState("");
+  const [editPeriodIndex, setEditPeriodIndex] = useState("");
+  const [editProjectId, setEditProjectId] = useState("");
+  const [editError, setEditError] = useState("");
+  const [updatingRequest, setUpdatingRequest] = useState(false);
+  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
 
   const selectedDefinition = useMemo(
     () => definitions.find((definition) => definition.id === formDefinitionId) || requestContext?.definition || null,
@@ -198,6 +223,8 @@ export default function DocumentCenter() {
   );
   const availableProjects = requestContext?.projects || [];
   const projectsWithId = availableProjects.filter((project) => projectId(project));
+  const editProjects = editContext?.projects || [];
+  const editProjectsWithId = editProjects.filter((project) => projectId(project));
 
   const loadDocuments = async () => {
     setDocumentsLoading(true);
@@ -246,6 +273,18 @@ export default function DocumentCenter() {
     setSubmittingRequest(false);
   };
 
+  const resetEditForm = () => {
+    setEditingRequest(null);
+    setEditContext(null);
+    setEditSubject("");
+    setEditStudentNote("");
+    setEditPeriodIndex("");
+    setEditProjectId("");
+    setEditError("");
+    setEditContextLoading(false);
+    setUpdatingRequest(false);
+  };
+
   const loadRequestContext = async (definitionId: string) => {
     if (!definitionId) {
       setRequestContext(null);
@@ -269,6 +308,17 @@ export default function DocumentCenter() {
     }
   };
 
+  const refreshSelectedRequest = async (id: string) => {
+    try {
+      const detail = await apiGet<RequestItem>(`/document-center/my/requests/${encodePathSegment(id)}`);
+      setSelectedRequest(detail);
+      return detail;
+    } catch (err: any) {
+      if (err?.status === 404) setSelectedRequest(null);
+      throw err;
+    }
+  };
+
   const openRequestForm = async () => {
     resetRequestForm();
     setRequestFormOpen(true);
@@ -285,6 +335,56 @@ export default function DocumentCenter() {
       setFormError(safeErrorMessage(err));
     } finally {
       setDefinitionsLoading(false);
+    }
+  };
+
+  const openEditRequest = async (request: RequestItem) => {
+    setEditOpen(true);
+    setEditContextLoading(true);
+    setEditError("");
+    setEditingRequest(null);
+    setEditContext(null);
+    try {
+      const detail = await apiGet<RequestItem>(
+        `/document-center/my/requests/${encodePathSegment(request.id)}`,
+      );
+      setSelectedRequest(detail);
+      if (!detail.canEdit) {
+        setEditError("Permintaan ini tidak dapat diperbaiki lagi.");
+        await loadRequests();
+        return;
+      }
+
+      const context = await apiGet<RequestContext>(
+        buildQueryPath("/document-center/my/request-context", { definitionId: detail.definition.id }),
+      );
+      setEditingRequest(detail);
+      setEditContext(context);
+      setEditSubject(detail.subject || "");
+      setEditStudentNote(detail.studentNote || "");
+      setEditPeriodIndex("");
+      setEditProjectId("");
+
+      if (context.periods.length > 1 && detail.period) {
+        const matchIndex = context.periods.findIndex((period) => periodMatches(period, detail.period));
+        setEditPeriodIndex(matchIndex >= 0 ? String(matchIndex) : "");
+      }
+
+      if (context.definition.requiresProject && detail.project) {
+        const currentProjectId = projectId(detail.project);
+        const match = context.projects.find((project) => projectId(project) === currentProjectId);
+        setEditProjectId(match ? projectId(match) : "");
+      }
+    } catch (err: any) {
+      setEditError(safeErrorMessage(err));
+      if (err?.status === 404) {
+        setEditOpen(false);
+        resetEditForm();
+        setSelectedRequest(null);
+        await loadRequests();
+      }
+    } finally {
+      setEditContextLoading(false);
     }
   };
 
@@ -434,9 +534,130 @@ export default function DocumentCenter() {
     }
   };
 
+  const submitEditRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (updatingRequest || !editingRequest || !editContext) return;
+
+    const normalizedSubject = editSubject.trim();
+    const normalizedNote = editStudentNote.trim();
+    if (!normalizedSubject || normalizedSubject.length > 255) {
+      setEditError("Subject wajib diisi dan maksimal 255 karakter.");
+      return;
+    }
+    if (normalizedNote.length > 2000) {
+      setEditError("Catatan mahasiswa maksimal 2.000 karakter.");
+      return;
+    }
+    if (!editContext.canSubmit) {
+      setEditError(editContext.blockingReason || "Permintaan belum dapat diperbaiki.");
+      return;
+    }
+
+    const payload: {
+      subject: string;
+      studentNote?: string;
+      period?: { activityType: string; startDate: string; endDate: string };
+      legacyProjectId?: string;
+    } = {
+      subject: normalizedSubject,
+    };
+
+    if (normalizedNote) payload.studentNote = normalizedNote;
+
+    if (editContext.periods.length > 1) {
+      const selected = editContext.periods[Number(editPeriodIndex)];
+      if (!selected || !selected.activityType || !selected.startDate || !selected.endDate) {
+        setEditError("Pilih periode kegiatan yang valid.");
+        return;
+      }
+      payload.period = {
+        activityType: selected.activityType,
+        startDate: selected.startDate,
+        endDate: selected.endDate,
+      };
+    }
+
+    if (editContext.definition.requiresProject) {
+      if (!editProjectsWithId.length) {
+        setEditError("Data proyek belum lengkap. Hubungi operator.");
+        return;
+      }
+      if (!editProjectId) {
+        setEditError("Pilih proyek terlebih dahulu.");
+        return;
+      }
+      payload.legacyProjectId = editProjectId;
+    }
+
+    setUpdatingRequest(true);
+    setEditError("");
+    try {
+      await apiPatch<RequestItem>(
+        `/document-center/my/requests/${encodePathSegment(editingRequest.id)}`,
+        payload,
+      );
+      const editedId = editingRequest.id;
+      setEditOpen(false);
+      resetEditForm();
+      await loadRequests();
+      if (selectedRequest?.id === editedId) await refreshSelectedRequest(editedId);
+      setToast("Perbaikan permintaan berhasil dikirim.");
+    } catch (err: any) {
+      setEditError(safeErrorMessage(err));
+      if (err?.status === 404) {
+        setEditOpen(false);
+        resetEditForm();
+        setSelectedRequest(null);
+        await loadRequests();
+      } else if (err?.status === 409) {
+        await loadRequests();
+        if (selectedRequest?.id === editingRequest.id) {
+          await refreshSelectedRequest(editingRequest.id).catch(() => {});
+        }
+      }
+    } finally {
+      setUpdatingRequest(false);
+    }
+  };
+
+  const cancelRequest = async (request: RequestItem) => {
+    if (!request.canCancel || cancellingRequestId) return;
+
+    const confirmed = await confirm({
+      title: "Batalkan permintaan surat ini?",
+      description: "Permintaan yang dibatalkan tidak dapat dilanjutkan kembali.",
+      confirmLabel: "Batalkan Permintaan",
+      cancelLabel: "Kembali",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    setCancellingRequestId(request.id);
+    setError("");
+    try {
+      await apiPost(`/document-center/my/requests/${encodePathSegment(request.id)}/cancel`);
+      await loadRequests();
+      if (selectedRequest?.id === request.id) await refreshSelectedRequest(request.id);
+      setToast("Permintaan surat berhasil dibatalkan.");
+    } catch (err: any) {
+      setError(safeErrorMessage(err));
+      if (err?.status === 404) {
+        setSelectedRequest(null);
+        await loadRequests();
+      } else if (err?.status === 409) {
+        await loadRequests();
+        if (selectedRequest?.id === request.id) await refreshSelectedRequest(request.id).catch(() => {});
+      }
+    } finally {
+      setCancellingRequestId(null);
+    }
+  };
+
   return (
     <Layout title="Pusat Dokumen Saya">
       <div className="mx-auto flex max-w-[1060px] flex-col gap-5 pb-6">
+        {confirmDialog}
+
         {toast && (
           <div className="fixed right-5 top-5 z-50 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 shadow-lg">
             {toast}
@@ -831,7 +1052,179 @@ export default function DocumentCenter() {
         </Dialog>
 
         <Dialog
-          open={Boolean(selectedRequest) || requestDetailLoading}
+          open={editOpen}
+          onOpenChange={(open) => {
+            setEditOpen(open);
+            if (!open) resetEditForm();
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Perbaiki Permintaan Surat</DialogTitle>
+              <DialogDescription>
+                {editingRequest?.definition.name || "Memuat data permintaan..."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <form className="grid gap-4" onSubmit={submitEditRequest}>
+              {editError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+                  {editError}
+                </div>
+              )}
+
+              {editContextLoading && (
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-slate-50 px-4 py-3 text-sm text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin" />
+                  Memuat detail perbaikan...
+                </div>
+              )}
+
+              {editingRequest && (
+                <div className="rounded-[12px] border border-border bg-slate-50 p-3 text-sm">
+                  <p>
+                    <b>Jenis:</b> {editingRequest.definition.name}
+                  </p>
+                  <p>
+                    <b>Status:</b> {editingRequest.statusLabel || editingRequest.status}
+                  </p>
+                  {editingRequest.operatorNote && (
+                    <p>
+                      <b>Catatan operator:</b> {editingRequest.operatorNote}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {editContext && (
+                <div className="rounded-[12px] border border-border bg-slate-50 p-3 text-sm">
+                  <p>
+                    <b>Nama:</b> {editContext.student.name || "-"}
+                  </p>
+                  <p>
+                    <b>NIM:</b> {editContext.student.nim || "-"}
+                  </p>
+                  <p>
+                    <b>Prodi:</b> {editContext.student.prodi || "-"}
+                  </p>
+                  <p>
+                    <b>Activity type:</b> {editContext.student.activityType || "-"}
+                  </p>
+                </div>
+              )}
+
+              {editContext?.blockingReason && !editContext.canSubmit && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                  {editContext.blockingReason}
+                </div>
+              )}
+
+              <div className="grid gap-1.5">
+                <label className="text-xs font-black text-foreground">Subject / Keperluan</label>
+                <Input
+                  value={editSubject}
+                  maxLength={255}
+                  disabled={updatingRequest}
+                  onChange={(event) => setEditSubject(event.target.value)}
+                  placeholder="Tuliskan keperluan surat"
+                />
+                <p className="text-[11px] text-muted-foreground">{editSubject.trim().length}/255 karakter</p>
+              </div>
+
+              <div className="grid gap-1.5">
+                <label className="text-xs font-black text-foreground">Catatan Mahasiswa</label>
+                <Textarea
+                  rows={3}
+                  value={editStudentNote}
+                  maxLength={2000}
+                  disabled={updatingRequest}
+                  onChange={(event) => setEditStudentNote(event.target.value)}
+                  placeholder="Catatan opsional untuk operator"
+                />
+                <p className="text-[11px] text-muted-foreground">{editStudentNote.trim().length}/2000 karakter</p>
+              </div>
+
+              {editContext && editContext.periods.length === 1 && (
+                <div className="rounded-[12px] border border-border bg-slate-50 p-3 text-sm">
+                  <p className="text-xs font-black text-foreground">Periode</p>
+                  <p className="text-muted-foreground">{periodText(editContext.periods[0])}</p>
+                </div>
+              )}
+
+              {editContext && editContext.periods.length > 1 && (
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-black text-foreground">Periode</label>
+                  <select
+                    value={editPeriodIndex}
+                    disabled={updatingRequest}
+                    onChange={(event) => setEditPeriodIndex(event.target.value)}
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20"
+                  >
+                    <option value="">Pilih periode</option>
+                    {editContext.periods.map((period, index) => (
+                      <option key={`${period.activityType}-${period.startDate}-${period.endDate}-${index}`} value={index}>
+                        {periodText(period)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {editContext?.definition.requiresProject && (
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-black text-foreground">Project</label>
+                  <select
+                    value={editProjectId}
+                    disabled={updatingRequest || editProjectsWithId.length === 0}
+                    onChange={(event) => setEditProjectId(event.target.value)}
+                    className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20"
+                  >
+                    <option value="">
+                      {editProjectsWithId.length === 0 ? "Data project belum tersedia" : "Pilih project"}
+                    </option>
+                    {editProjectsWithId.map((project) => (
+                      <option key={projectId(project)} value={projectId(project)}>
+                        {projectText(project)}
+                      </option>
+                    ))}
+                  </select>
+                  {editProjects.length > 0 && editProjectsWithId.length === 0 && (
+                    <p className="text-[11px] font-semibold text-amber-700">
+                      Data project dari server belum memuat ID yang dapat dikirim.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={updatingRequest}
+                  onClick={() => setEditOpen(false)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    editContextLoading ||
+                    updatingRequest ||
+                    !editingRequest ||
+                    !editContext ||
+                    editContext.canSubmit === false
+                  }
+                >
+                  {updatingRequest ? <Loader2 size={15} className="animate-spin" /> : null}
+                  Kirim Perbaikan
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={(Boolean(selectedRequest) && !editOpen) || requestDetailLoading}
           onOpenChange={(open) => {
             if (!open) setSelectedRequest(null);
           }}
@@ -908,6 +1301,29 @@ export default function DocumentCenter() {
               </div>
             )}
             <DialogFooter>
+              {selectedRequest?.canEdit && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={requestDetailLoading || editContextLoading}
+                  onClick={() => void openEditRequest(selectedRequest)}
+                >
+                  Perbaiki
+                </Button>
+              )}
+              {selectedRequest?.canCancel && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={cancellingRequestId === selectedRequest.id}
+                  onClick={() => void cancelRequest(selectedRequest)}
+                >
+                  {cancellingRequestId === selectedRequest.id ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : null}
+                  Batalkan
+                </Button>
+              )}
               {selectedRequest?.officialDocument?.canDownload && (
                 <Button
                   onClick={() => void download(selectedRequest.officialDocument!)}
