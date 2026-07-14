@@ -27,6 +27,17 @@ import { updateStoredUserProfile } from "../../lib/userProfileSync";
 
 type Tab = "profil" | "akun" | "password" | "notifikasi" | "pengunduran";
 
+type StudentProfileForm = {
+  email: string;
+  prodi: string;
+  angkatan: string;
+  fakultas: string;
+  pembimbing: string;
+  status: string;
+  tipe: string;
+  bergabung: string;
+};
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-base font-black text-foreground mb-1">{children}</h2>;
 }
@@ -103,12 +114,34 @@ function TabProfil({
   const [name, setName] = useState(user?.name || "");
   const [nim, setNim] = useState("");
   const [phone, setPhone] = useState("");
+  const [studentForm, setStudentForm] = useState<StudentProfileForm>({
+    email: "",
+    prodi: "",
+    angkatan: "",
+    fakultas: "",
+    pembimbing: "",
+    status: "Aktif",
+    tipe: "Riset",
+    bergabung: ""
+  });
   const [photoUrl, setPhotoUrl] = useState(user?.photoUrl || user?.photo_url || "");
   const [photoPreview, setPhotoPreview] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [lastUpdate, setLastUpdate] = useState("-");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const setStudentField = (key: keyof StudentProfileForm, value: string) => {
+    setStudentForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const normalizeDateInput = (value: unknown) => {
+    const raw = String(value || "").trim();
+    if (!raw || raw === "-") return "";
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+  };
 
   React.useEffect(() => {
     const loadProfile = async () => {
@@ -120,6 +153,16 @@ function TabProfil({
         setName(profile.name || "");
         setNim(profile.nim || "");
         setPhone(profile.phone || "");
+        setStudentForm({
+          email: profile.email || "",
+          prodi: profile.prodi || "",
+          angkatan: String(profile.angkatan || ""),
+          fakultas: profile.fakultas || "",
+          pembimbing: profile.pembimbing || "",
+          status: profile.status || "Aktif",
+          tipe: profile.tipe || "Riset",
+          bergabung: normalizeDateInput(profile.bergabung)
+        });
         setPhotoUrl(profile.photoUrl || profile.photo_url || "");
         setBio(profile.bio || profile.bioText || profile.bio_text || "");
 
@@ -222,7 +265,16 @@ function TabProfil({
 
       await apiPatch(`/profile/${encodeURIComponent(user.id)}`, {
         name,
+        nim,
         phone,
+        email: studentForm.email,
+        prodi: studentForm.prodi,
+        angkatan: studentForm.angkatan,
+        fakultas: studentForm.fakultas,
+        pembimbing: studentForm.pembimbing,
+        status: studentForm.status,
+        tipe: studentForm.tipe,
+        bergabung: studentForm.bergabung || null,
         bio,
         photoUrl: nextPhotoUrl || null,
       });
@@ -288,8 +340,8 @@ function TabProfil({
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <SectionTitle>Profil & Foto</SectionTitle>
-        <SectionDesc>Informasi ini akan terlihat oleh dosen pembimbing dan anggota riset Anda.</SectionDesc>
+        <SectionTitle>Profil & Data Mahasiswa</SectionTitle>
+        <SectionDesc>Kolom ini sama dengan Database Mahasiswa admin. Admin dan mahasiswa membaca serta mengubah data yang sama.</SectionDesc>
 
         {message && (
           <div className="mb-5 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
@@ -363,18 +415,103 @@ function TabProfil({
 
             <div>
               <Label required>NIM</Label>
-              <Input value={nim} readOnly placeholder="Nomor Induk Mahasiswa" />
+              <Input value={nim} onChange={(event) => setNim(event.target.value)} placeholder="Nomor Induk Mahasiswa" />
             </div>
           </div>
 
-          <div>
-            <Label>Nomor HP</Label>
-            <Input
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              type="tel"
-              placeholder="Nomor HP aktif"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Label>Email</Label>
+              <Input
+                value={studentForm.email}
+                onChange={(event) => setStudentField("email", event.target.value)}
+                type="email"
+                placeholder="email@student.ac.id"
+              />
+            </div>
+
+            <div>
+              <Label>Nomor HP</Label>
+              <Input
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                type="tel"
+                placeholder="Nomor HP aktif"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Label>Program Studi</Label>
+              <Input
+                value={studentForm.prodi}
+                onChange={(event) => setStudentField("prodi", event.target.value)}
+                placeholder="S1 Teknik Informatika"
+              />
+            </div>
+
+            <div>
+              <Label>Angkatan</Label>
+              <Input
+                value={studentForm.angkatan}
+                onChange={(event) => setStudentField("angkatan", event.target.value)}
+                placeholder="2021"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Label>Fakultas</Label>
+              <Input
+                value={studentForm.fakultas}
+                onChange={(event) => setStudentField("fakultas", event.target.value)}
+                placeholder="Fakultas / asal kampus"
+              />
+            </div>
+
+            <div>
+              <Label>Pembimbing</Label>
+              <Input
+                value={studentForm.pembimbing}
+                onChange={(event) => setStudentField("pembimbing", event.target.value)}
+                placeholder="Nama dosen pembimbing"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div>
+              <Label>Tanggal Bergabung</Label>
+              <Input
+                value={studentForm.bergabung}
+                onChange={(event) => setStudentField("bergabung", event.target.value)}
+                type="date"
+              />
+            </div>
+
+            <div>
+              <Label>Status Mahasiswa</Label>
+              <select
+                value={studentForm.status}
+                onChange={(event) => setStudentField("status", event.target.value)}
+                className="w-full px-4 py-3 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
+              >
+                {["Aktif", "Cuti", "Alumni", "Mengundurkan Diri"].map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <Label>Tipe Mahasiswa</Label>
+              <select
+                value={studentForm.tipe}
+                onChange={(event) => setStudentField("tipe", event.target.value)}
+                className="w-full px-4 py-3 rounded-[12px] border border-border bg-white text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-[#6C47FF]/20 focus:border-[#6C47FF] transition-all"
+              >
+                {["Riset", "Magang"].map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </div>
           </div>
 
           <div>
@@ -388,7 +525,6 @@ function TabProfil({
             <p className="text-[11px] text-muted-foreground mt-1.5 text-right">{bio.length}/300 karakter</p>
           </div>
         </div>
-
         <div className="mt-6 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-xs font-medium text-muted-foreground">Terakhir diperbarui: {lastUpdate}</p>
           <SaveButton
@@ -460,19 +596,20 @@ function TabAkunDynamic() {
   return (
     <div>
       <SectionTitle>Informasi Akun</SectionTitle>
-      <SectionDesc>Data akademik yang dikelola oleh institusi. Hubungi admin untuk perubahan.</SectionDesc>
+      <SectionDesc>Data ini sinkron dengan Database Mahasiswa admin dan dapat diperbarui dari tab Profil.</SectionDesc>
 
       <div className="flex items-start sm:items-center gap-2 mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-[12px] self-start w-full sm:w-fit">
         <Shield size={14} className="text-amber-600 shrink-0" />
-        <span className="text-xs font-black text-amber-700">Data bersifat read-only, hanya dapat diubah oleh admin</span>
+        <span className="text-xs font-black text-amber-700">Data ini memakai sumber yang sama dengan Database Mahasiswa admin</span>
       </div>
 
       <div className="bg-white border border-border rounded-[16px] px-4 sm:px-6 divide-y-0">
-        <InfoRow label="Program Studi" value={profile?.prodi || "-"} />
+                <InfoRow label="Program Studi" value={profile?.prodi || "-"} />
+        <InfoRow label="Fakultas" value={profile?.fakultas || "-"} />
         <InfoRow label="Angkatan" value={profile?.angkatan || "-"} />
-        <InfoRow label="Status Mahasiswa" value={status} badge={{ text: status, color: statusColor }} />
+                <InfoRow label="Status Mahasiswa" value={status} badge={{ text: status, color: statusColor }} />
+        <InfoRow label="Tipe Mahasiswa" value={profile?.tipe || "-"} />
         <InfoRow label="Email Institusi" value={profile?.email || "-"} />
-        <InfoRow label="Perguruan Tinggi" value="-" />
         <InfoRow label="Dosen Pembimbing" value={profile?.pembimbing || "-"} />
         <InfoRow label="Bergabung Sejak" value={joinedDate} />
 
@@ -495,9 +632,9 @@ function TabAkunDynamic() {
       <div className="mt-6 p-5 bg-slate-50 border border-border rounded-[16px]">
         <p className="text-sm font-bold text-foreground mb-1">Perlu memperbarui data di atas?</p>
         <p className="text-xs font-medium text-muted-foreground">
-          Kirimkan permintaan perubahan data ke bagian akademik melalui email{" "}
-          <span className="font-black text-[#6C47FF]">akademik@univ.ac.id</span> atau datang langsung ke loket
-          Administrasi Akademik.
+          Buka tab Profil & Data Mahasiswa, ubah kolom yang diperlukan, lalu klik Simpan Perubahan.
+          
+          
         </p>
       </div>
     </div>
