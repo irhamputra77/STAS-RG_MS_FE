@@ -206,6 +206,124 @@ type DocumentCandidate = {
   canDownload: boolean;
 };
 
+type FinalActivityType = "Magang" | "Riset";
+
+type FinalPeriod = {
+  id?: string;
+  activityType?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  description?: string | null;
+};
+
+type FinalDocument = {
+  id: string;
+  title?: string | null;
+  documentNumber?: string | null;
+  status?: string | null;
+  currentVersionNumber?: number | null;
+  canDownload: boolean;
+  issuedAt?: string | null;
+};
+
+type FinalEligibleItem = {
+  student: {
+    id: string;
+    name?: string | null;
+    nim?: string | null;
+    prodi?: string | null;
+    status?: string | null;
+  };
+  activityType: FinalActivityType;
+  period: FinalPeriod & { id: string };
+  completedAt?: string | null;
+  projects?: Array<{
+    title?: string | null;
+    shortTitle?: string | null;
+    role?: string | null;
+    status?: string | null;
+    membershipStatus?: string | null;
+  }>;
+  existingCase?: {
+    id: string;
+    status?: string | null;
+    hasCompletionDocument?: boolean;
+  } | null;
+};
+
+type FinalCase = {
+  id: string;
+  student: {
+    name?: string | null;
+    nim?: string | null;
+    prodi?: string | null;
+  };
+  activityType: FinalActivityType;
+  period: FinalPeriod;
+  outcome: string;
+  status: string;
+  statusLabel?: string;
+  completedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  completionDocument?: FinalDocument | null;
+  capabilities: {
+    canUploadCompletion?: boolean;
+    canPublishCompletion?: boolean;
+  };
+  projects?: FinalProject[];
+};
+
+type FinalProject = {
+  id: string;
+  project: {
+    title?: string | null;
+    shortTitle?: string | null;
+    status?: string | null;
+    role?: string | null;
+    joinedAt?: string | null;
+    completedAt?: string | null;
+  };
+  certificateRequired: boolean;
+  certificateStatus: string;
+  displayOrder?: number | null;
+  certificateDocument?: FinalDocument | null;
+  capabilities: {
+    canUploadCertificate?: boolean;
+    canPublishCertificate?: boolean;
+  };
+};
+
+type FinalEligibleResponse = {
+  items: FinalEligibleItem[];
+  pagination: { limit: number; offset: number; total: number };
+};
+
+type FinalCaseListResponse = {
+  items: FinalCase[];
+  pagination: { limit: number; offset: number; total: number };
+};
+
+type FinalRegisterResponse = {
+  items: Array<{
+    studentId?: string | null;
+    periodId?: string | null;
+    status: string;
+    caseId?: string | null;
+    caseStatus?: string | null;
+    projectCount?: number;
+    message?: string;
+  }>;
+};
+
+type FinalDraftUpload = {
+  type: "completion" | "certificate";
+  id: string;
+  title: string;
+  file: File | null;
+  projectTitle?: string | null;
+};
+
 type ReviewAction = "revision" | "approve" | "reject";
 
 const emptyParticipant = (): UploadParticipant => ({
@@ -262,6 +380,19 @@ const projectText = (project?: RequestProject | null) => {
   return [project.title || project.shortTitle, project.role, project.membershipStatus].filter(Boolean).join(" | ") || "-";
 };
 
+const finalPeriodText = (period?: FinalPeriod | null) => {
+  if (!period) return "-";
+  const range = [formatDateReadable(period.startDate), formatDateReadable(period.endDate)]
+    .filter((value) => value && value !== "-")
+    .join(" - ");
+  return [period.activityType, range, period.description].filter(Boolean).join(" | ") || "-";
+};
+
+const finalProjectText = (project?: FinalProject["project"] | null) => {
+  if (!project) return "-";
+  return [project.shortTitle || project.title, project.role, project.status].filter(Boolean).join(" | ") || "-";
+};
+
 const errorMessage = (err: any) => {
   if (err instanceof ApiError) {
     if (err.status === 400) return err.message || "Input tidak valid.";
@@ -279,7 +410,7 @@ const actionTitle = (action: ReviewAction) =>
 
 export default function DocumentCenter() {
   const { confirm, confirmDialog } = useConfirmDialog();
-  const [activeTab, setActiveTab] = useState<"requests" | "archive">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "final" | "archive">("requests");
 
   const [data, setData] = useState<ListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
   const [status, setStatus] = useState("");
@@ -302,6 +433,29 @@ export default function DocumentCenter() {
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [linkingDocumentId, setLinkingDocumentId] = useState<string | null>(null);
 
+  const [finalSubTab, setFinalSubTab] = useState<"eligible" | "cases">("eligible");
+  const [finalActivityType, setFinalActivityType] = useState<FinalActivityType | "">("");
+  const [finalPeriodId, setFinalPeriodId] = useState("");
+  const [finalSearch, setFinalSearch] = useState("");
+  const [eligibleData, setEligibleData] = useState<FinalEligibleResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+  const [eligibleLoading, setEligibleLoading] = useState(false);
+  const [selectedEligible, setSelectedEligible] = useState<string[]>([]);
+  const [registeringFinalCases, setRegisteringFinalCases] = useState(false);
+  const [registerResult, setRegisterResult] = useState<FinalRegisterResponse["items"]>([]);
+  const [finalCases, setFinalCases] = useState<FinalCaseListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+  const [finalCasesLoading, setFinalCasesLoading] = useState(false);
+  const [finalCasesLoaded, setFinalCasesLoaded] = useState(false);
+  const [finalCaseStatus, setFinalCaseStatus] = useState("");
+  const [finalCaseActivityType, setFinalCaseActivityType] = useState("");
+  const [finalCasePurpose, setFinalCasePurpose] = useState("");
+  const [finalCaseSearch, setFinalCaseSearch] = useState("");
+  const [selectedFinalCase, setSelectedFinalCase] = useState<FinalCase | null>(null);
+  const [finalCaseDetailLoading, setFinalCaseDetailLoading] = useState(false);
+  const [finalDraftUpload, setFinalDraftUpload] = useState<FinalDraftUpload | null>(null);
+  const [finalDraftError, setFinalDraftError] = useState("");
+  const [completionUploading, setCompletionUploading] = useState(false);
+  const [certificateUploadingId, setCertificateUploadingId] = useState<string | null>(null);
+
   const [reviewAction, setReviewAction] = useState<{ action: ReviewAction; request: OperatorRequest } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewError, setReviewError] = useState("");
@@ -321,6 +475,8 @@ export default function DocumentCenter() {
 
   const current = data.pagination;
   const currentRequests = requests.pagination;
+  const currentEligible = eligibleData.pagination;
+  const currentFinalCases = finalCases.pagination;
   const definition = definitions.find((item) => item.id === definitionId) || null;
   const shouldShowCandidates = selectedRequest?.status === "approved" && !selectedRequest.officialDocument;
 
@@ -505,6 +661,226 @@ export default function DocumentCenter() {
     }
   };
 
+  const candidateKey = (item: FinalEligibleItem) => `${item.student.id}::${item.period.id}`;
+
+  const loadEligible = async (offset = eligibleData.pagination.offset) => {
+    if (!finalActivityType) {
+      setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+      setSelectedEligible([]);
+      return;
+    }
+    setEligibleLoading(true);
+    setError("");
+    const requestId = Date.now();
+    try {
+      const result = await apiGet<FinalEligibleResponse>(
+        buildQueryPath("/document-center/operator/final-activity/eligible", {
+          activityType: finalActivityType,
+          periodId: finalPeriodId || null,
+          search: finalSearch || null,
+          limit: 20,
+          offset,
+          _r: requestId,
+        }),
+      );
+      setEligibleData(result);
+      const visibleKeys = new Set(result.items.map(candidateKey));
+      setSelectedEligible((items) => items.filter((key) => visibleKeys.has(key)));
+    } catch (err: any) {
+      setError(errorMessage(err));
+    } finally {
+      setEligibleLoading(false);
+    }
+  };
+
+  const loadFinalCases = async (offset = finalCases.pagination.offset) => {
+    setFinalCasesLoading(true);
+    setError("");
+    try {
+      const result = await apiGet<FinalCaseListResponse>(
+        buildQueryPath("/document-center/operator/final-activity/cases", {
+          status: finalCaseStatus || null,
+          activityType: finalCaseActivityType || null,
+          documentPurpose: finalCasePurpose || null,
+          search: finalCaseSearch || null,
+          limit: 20,
+          offset,
+        }),
+      );
+      setFinalCases(result);
+      setFinalCasesLoaded(true);
+    } catch (err: any) {
+      setError(errorMessage(err));
+    } finally {
+      setFinalCasesLoading(false);
+    }
+  };
+
+  const openFinalCaseDetail = async (id: string) => {
+    setFinalCaseDetailLoading(true);
+    setError("");
+    try {
+      setSelectedFinalCase(await apiGet<FinalCase>(`/document-center/operator/final-activity/cases/${encodePathSegment(id)}`));
+    } catch (err: any) {
+      setError(errorMessage(err));
+    } finally {
+      setFinalCaseDetailLoading(false);
+    }
+  };
+
+  const refreshSelectedFinalCase = async (id = selectedFinalCase?.id || "") => {
+    if (!id) return;
+    try {
+      setSelectedFinalCase(await apiGet<FinalCase>(`/document-center/operator/final-activity/cases/${encodePathSegment(id)}`));
+    } catch (err: any) {
+      if (err?.status === 404) setSelectedFinalCase(null);
+      throw err;
+    }
+  };
+
+  const submitFinalSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    void loadEligible(0);
+  };
+
+  const submitFinalCaseSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    void loadFinalCases(0);
+  };
+
+  const toggleEligible = (item: FinalEligibleItem) => {
+    const key = candidateKey(item);
+    setSelectedEligible((items) => (items.includes(key) ? items.filter((value) => value !== key) : [...items, key]));
+  };
+
+  const registerFinalCases = async () => {
+    if (registeringFinalCases || selectedEligible.length === 0) return;
+    const selectedItems = eligibleData.items.filter((item) => selectedEligible.includes(candidateKey(item)));
+    if (selectedItems.length === 0) return;
+    const confirmed = await confirm({
+      title: "Daftarkan mahasiswa terpilih?",
+      description: "Daftarkan mahasiswa terpilih ke Dokumen Akhir Kegiatan?",
+      confirmLabel: "Daftarkan",
+      cancelLabel: "Batal",
+      variant: "primary",
+    });
+    if (!confirmed) return;
+
+    setRegisteringFinalCases(true);
+    setError("");
+    try {
+      const result = await apiPost<FinalRegisterResponse>("/document-center/operator/final-activity/cases", {
+        items: selectedItems.map((item) => ({ studentId: item.student.id, periodId: item.period.id })),
+      });
+      setRegisterResult(result.items || []);
+      const successful = new Set(
+        (result.items || [])
+          .filter((item) => item.status === "created" || item.status === "existing")
+          .map((item) => `${item.studentId}::${item.periodId}`),
+      );
+      setSelectedEligible((items) => items.filter((key) => !successful.has(key)));
+      await Promise.all([loadEligible(0), loadFinalCases(0)]);
+      const created = result.items?.filter((item) => item.status === "created").length || 0;
+      const existing = result.items?.filter((item) => item.status === "existing").length || 0;
+      const invalid = result.items?.filter((item) => !["created", "existing"].includes(item.status)).length || 0;
+      showToast(`Registrasi selesai: ${created} baru, ${existing} sudah ada, ${invalid} perlu dicek.`);
+    } catch (err: any) {
+      setError(errorMessage(err));
+      if (err?.status === 409) {
+        await Promise.all([loadEligible(0), loadFinalCases(0)]);
+      }
+    } finally {
+      setRegisteringFinalCases(false);
+    }
+  };
+
+  const resetFinalDraftUpload = () => {
+    setFinalDraftUpload(null);
+    setFinalDraftError("");
+  };
+
+  const validatePdf = (file: File | null) => {
+    if (!file || file.type !== "application/pdf" || !/\.pdf$/i.test(file.name) || file.size === 0 || file.size > 8 * 1024 * 1024) {
+      return "File harus PDF dan maksimal 8 MB.";
+    }
+    return "";
+  };
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const submitFinalDraftUpload = async () => {
+    if (!finalDraftUpload) return;
+    const title = finalDraftUpload.title.trim();
+    const fileError = validatePdf(finalDraftUpload.file);
+    if (!title) return setFinalDraftError("Judul wajib diisi.");
+    if (fileError) return setFinalDraftError(fileError);
+
+    const isCompletion = finalDraftUpload.type === "completion";
+    if ((isCompletion && completionUploading) || (!isCompletion && certificateUploadingId === finalDraftUpload.id)) return;
+    if (isCompletion) setCompletionUploading(true);
+    else setCertificateUploadingId(finalDraftUpload.id);
+    setFinalDraftError("");
+    try {
+      const dataUrl = await fileToDataUrl(finalDraftUpload.file!);
+      await apiPost(
+        isCompletion
+          ? `/document-center/operator/final-activity/cases/${encodePathSegment(finalDraftUpload.id)}/completion-draft`
+          : `/document-center/operator/final-activity/case-projects/${encodePathSegment(finalDraftUpload.id)}/certificate-draft`,
+        { title, fileName: finalDraftUpload.file!.name, fileDataUrl: dataUrl },
+      );
+      resetFinalDraftUpload();
+      await Promise.all([loadFinalCases(), load()]);
+      if (selectedFinalCase) await refreshSelectedFinalCase(selectedFinalCase.id);
+      showToast(isCompletion ? "Draft SKS berhasil diunggah." : "Draft sertifikat berhasil diunggah.");
+    } catch (err: any) {
+      setFinalDraftError(errorMessage(err));
+      if ([404, 409].includes(err?.status)) {
+        await Promise.all([loadFinalCases(), loadEligible(0)]);
+        if (selectedFinalCase) await refreshSelectedFinalCase(selectedFinalCase.id).catch(() => {});
+      }
+    } finally {
+      if (isCompletion) setCompletionUploading(false);
+      else setCertificateUploadingId(null);
+    }
+  };
+
+  const publishFinalDocument = async (document: FinalDocument, kind: "completion" | "certificate") => {
+    if (!document.id || publishingId === document.id) return;
+    const confirmed = await confirm({
+      title: kind === "completion" ? "Terbitkan Surat Keterangan Selesai?" : "Terbitkan sertifikat?",
+      description:
+        kind === "completion"
+          ? "Terbitkan Surat Keterangan Selesai ini? Nomor resmi akan dibuat otomatis oleh sistem."
+          : "Terbitkan sertifikat ini? Nomor resmi akan dibuat otomatis oleh sistem.",
+      confirmLabel: "Terbitkan",
+      cancelLabel: "Batal",
+      variant: "primary",
+    });
+    if (!confirmed) return;
+    setPublishingId(document.id);
+    setError("");
+    try {
+      const response = await apiPost<PublishResponse>(`/document-center/operator/documents/${encodePathSegment(document.id)}/publish`);
+      showToast(`Dokumen berhasil diterbitkan: ${response.documentNumber}`);
+      await Promise.all([loadFinalCases(), load()]);
+      if (selectedFinalCase) await refreshSelectedFinalCase(selectedFinalCase.id);
+    } catch (err: any) {
+      setError(errorMessage(err));
+      if ([409, 410].includes(err?.status)) {
+        await Promise.all([loadFinalCases(), loadEligible(0)]);
+        if (selectedFinalCase) await refreshSelectedFinalCase(selectedFinalCase.id).catch(() => {});
+      }
+    } finally {
+      setPublishingId(null);
+    }
+  };
+
   useEffect(() => {
     void load(0);
   }, [status]);
@@ -514,6 +890,28 @@ export default function DocumentCenter() {
       void loadRequests(0);
     }
   }, [activeTab, requestsLoaded]);
+
+  useEffect(() => {
+    if (activeTab === "final" && !finalCasesLoaded) {
+      void loadFinalCases(0);
+    }
+  }, [activeTab, finalCasesLoaded]);
+
+  useEffect(() => {
+    if (activeTab === "final" && finalSubTab === "eligible") {
+      if (finalActivityType) void loadEligible(0);
+      else {
+        setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+        setSelectedEligible([]);
+      }
+    }
+  }, [activeTab, finalSubTab, finalActivityType, finalPeriodId]);
+
+  useEffect(() => {
+    if (activeTab === "final" && finalSubTab === "cases") {
+      void loadFinalCases(0);
+    }
+  }, [activeTab, finalSubTab, finalCaseStatus, finalCaseActivityType, finalCasePurpose]);
 
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
@@ -774,6 +1172,313 @@ export default function DocumentCenter() {
     } finally {
       setLinkingDocumentId(null);
     }
+  };
+
+  const renderFinalDocumentActions = (document: FinalDocument | null | undefined, canPublishCapability?: boolean, kind: "completion" | "certificate" = "completion") => {
+    if (!document) return null;
+    return (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {document.canDownload && (
+          <Button size="sm" variant="outline" disabled={downloadingId === document.id} onClick={() => void download(document)}>
+            {downloadingId === document.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            Unduh
+          </Button>
+        )}
+        {canPublishCapability && (
+          <Button size="sm" disabled={publishingId === document.id} onClick={() => void publishFinalDocument(document, kind)}>
+            {publishingId === document.id ? <Loader2 size={14} className="animate-spin" /> : null}
+            Publish
+          </Button>
+        )}
+      </div>
+    );
+  };
+
+  const renderFinalActivity = () => {
+    const availablePeriods = Array.from(
+      new Map(eligibleData.items.map((item) => [item.period.id, item.period])).values(),
+    );
+    const selectedCount = selectedEligible.length;
+
+    return (
+      <div className="grid gap-4">
+        <div className="flex gap-1 overflow-x-auto rounded-[10px] bg-slate-100 p-1 w-fit max-w-full">
+          {[
+            { key: "eligible", label: "Kandidat Mahasiswa" },
+            { key: "cases", label: "Daftar Dokumen Akhir" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFinalSubTab(tab.key as "eligible" | "cases")}
+              className={`whitespace-nowrap rounded-[8px] px-3 py-1.5 text-xs font-black ${
+                finalSubTab === tab.key ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:bg-white/60"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {finalSubTab === "eligible" ? (
+          <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Kandidat Mahasiswa</p>
+                <h2 className="text-sm font-black text-foreground">Mahasiswa eligible untuk Dokumen Akhir Kegiatan</h2>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={registeringFinalCases || selectedCount === 0}
+                  onClick={() => void registerFinalCases()}
+                >
+                  {registeringFinalCases ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Daftarkan ({selectedCount})
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void loadEligible()} disabled={eligibleLoading || !finalActivityType}>
+                  <RefreshCw size={14} className={eligibleLoading ? "animate-spin" : ""} />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+            <form onSubmit={submitFinalSearch} className="grid gap-2 border-b border-border p-4 md:grid-cols-[160px_220px_1fr_auto]">
+              <select
+                value={finalActivityType}
+                onChange={(event) => {
+                  setFinalActivityType(event.target.value as FinalActivityType | "");
+                  setFinalPeriodId("");
+                  setSelectedEligible([]);
+                }}
+                className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
+              >
+                <option value="">Pilih activity type</option>
+                <option value="Magang">Magang</option>
+                <option value="Riset">Riset</option>
+              </select>
+              <select
+                value={finalPeriodId}
+                onChange={(event) => {
+                  setFinalPeriodId(event.target.value);
+                  setSelectedEligible([]);
+                }}
+                disabled={!finalActivityType || availablePeriods.length === 0}
+                className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
+              >
+                <option value="">Semua periode tampil</option>
+                {availablePeriods.map((period) => (
+                  <option key={period.id} value={period.id}>
+                    {finalPeriodText(period)}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center gap-2 rounded-[10px] border border-border bg-white px-3">
+                <Search size={15} className="text-muted-foreground" />
+                <input
+                  value={finalSearch}
+                  onChange={(event) => setFinalSearch(event.target.value)}
+                  placeholder="Cari nama atau NIM"
+                  className="h-10 w-full border-none bg-transparent text-sm outline-none"
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={!finalActivityType || eligibleLoading}>
+                Cari
+              </Button>
+            </form>
+            {!finalActivityType ? (
+              <div className="p-6 text-sm text-muted-foreground">Pilih activity type Magang atau Riset untuk memuat kandidat.</div>
+            ) : (
+              <>
+                {registerResult.length > 0 && (
+                  <div className="border-b border-border bg-slate-50 p-4 text-xs">
+                    <p className="mb-2 font-black text-foreground">Hasil registrasi batch</p>
+                    <div className="grid gap-1 md:grid-cols-2">
+                      {registerResult.map((item, index) => (
+                        <div key={`${item.studentId}-${item.periodId}-${index}`} className="rounded-[8px] border border-border bg-white px-3 py-2">
+                          <b>{item.studentId || "-"}</b> / {item.periodId || "-"}: {item.status}
+                          {item.message ? <span className="text-muted-foreground"> — {item.message}</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50">
+                      <TableHead>Pilih</TableHead>
+                      <TableHead>Mahasiswa</TableHead>
+                      <TableHead>Periode</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Status Case</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {eligibleLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                          <Loader2 className="mx-auto animate-spin" size={20} />
+                        </TableCell>
+                      </TableRow>
+                    ) : eligibleData.items.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-32 text-center text-sm text-muted-foreground">
+                          Belum ada kandidat untuk filter ini.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      eligibleData.items.map((item) => {
+                        const key = candidateKey(item);
+                        return (
+                          <TableRow key={key}>
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                checked={selectedEligible.includes(key)}
+                                onChange={() => toggleEligible(item)}
+                                aria-label="Pilih kandidat"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-black text-foreground">{item.student.name || "-"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {[item.student.nim, item.student.prodi, item.student.status].filter(Boolean).join(" | ") || "-"}
+                              </p>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{finalPeriodText(item.period)}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {item.projects?.length ? `${item.projects.length} project: ${item.projects.map((project) => project.shortTitle || project.title).filter(Boolean).join(", ")}` : "Tidak ada project"}
+                            </TableCell>
+                            <TableCell>
+                              {item.existingCase ? (
+                                <Badge variant={statusVariant(item.existingCase.status || "") as any}>{item.existingCase.status || "existing"}</Badge>
+                              ) : (
+                                <Badge variant="secondary">Belum terdaftar</Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+                <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+                  <span>{currentEligible.total} kandidat</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={eligibleLoading || currentEligible.offset === 0} onClick={() => void loadEligible(Math.max(0, currentEligible.offset - currentEligible.limit))}>
+                      <ChevronLeft size={14} />
+                      Sebelumnya
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={eligibleLoading || currentEligible.offset + currentEligible.limit >= currentEligible.total} onClick={() => void loadEligible(currentEligible.offset + currentEligible.limit)}>
+                      Berikutnya
+                      <ChevronRight size={14} />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Daftar Dokumen Akhir</p>
+                <h2 className="text-sm font-black text-foreground">Case final activity dan dokumen terkait</h2>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => void loadFinalCases()} disabled={finalCasesLoading}>
+                <RefreshCw size={14} className={finalCasesLoading ? "animate-spin" : ""} />
+                Refresh
+              </Button>
+            </div>
+            <form onSubmit={submitFinalCaseSearch} className="grid gap-2 border-b border-border p-4 md:grid-cols-[160px_160px_190px_1fr_auto]">
+              <select value={finalCaseStatus} onChange={(event) => setFinalCaseStatus(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm">
+                <option value="">Semua status</option>
+                <option value="pending">Pending</option>
+                <option value="draft_created">Draft Dibuat</option>
+                <option value="issued">Terbit</option>
+                <option value="revoked">Dicabut</option>
+              </select>
+              <select value={finalCaseActivityType} onChange={(event) => setFinalCaseActivityType(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm">
+                <option value="">Semua tipe</option>
+                <option value="Magang">Magang</option>
+                <option value="Riset">Riset</option>
+              </select>
+              <select value={finalCasePurpose} onChange={(event) => setFinalCasePurpose(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm">
+                <option value="">Semua dokumen</option>
+                <option value="completion_letter">Surat Keterangan</option>
+                <option value="certificate">Sertifikat</option>
+              </select>
+              <div className="flex items-center gap-2 rounded-[10px] border border-border bg-white px-3">
+                <Search size={15} className="text-muted-foreground" />
+                <input value={finalCaseSearch} onChange={(event) => setFinalCaseSearch(event.target.value)} placeholder="Cari nama atau NIM" className="h-10 w-full border-none bg-transparent text-sm outline-none" />
+              </div>
+              <Button type="submit" size="sm">Cari</Button>
+            </form>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead>Mahasiswa</TableHead>
+                  <TableHead>Periode</TableHead>
+                  <TableHead>Outcome</TableHead>
+                  <TableHead>Status Case</TableHead>
+                  <TableHead>SKS</TableHead>
+                  <TableHead>Sertifikat</TableHead>
+                  <TableHead>Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {finalCasesLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                      <Loader2 className="mx-auto animate-spin" size={20} />
+                    </TableCell>
+                  </TableRow>
+                ) : finalCases.items.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-32 text-center text-sm text-muted-foreground">Belum ada case final activity.</TableCell>
+                  </TableRow>
+                ) : (
+                  finalCases.items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <p className="font-black text-foreground">{item.student.name || "-"}</p>
+                        <p className="text-xs text-muted-foreground">{[item.student.nim, item.student.prodi].filter(Boolean).join(" | ") || "-"}</p>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{finalPeriodText(item.period)}</TableCell>
+                      <TableCell>{item.outcome}</TableCell>
+                      <TableCell><Badge variant={statusVariant(item.status) as any}>{item.statusLabel || item.status}</Badge></TableCell>
+                      <TableCell className="text-xs">
+                        {item.completionDocument ? item.completionDocument.status || "-" : "Belum ada draft"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.projects?.length ? `${item.projects.length} project` : "Tidak ada project"}
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" onClick={() => void openFinalCaseDetail(item.id)} aria-label="Detail case">
+                          <Eye size={15} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+              <span>{currentFinalCases.total} case</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={finalCasesLoading || currentFinalCases.offset === 0} onClick={() => void loadFinalCases(Math.max(0, currentFinalCases.offset - currentFinalCases.limit))}>
+                  <ChevronLeft size={14} />
+                  Sebelumnya
+                </Button>
+                <Button variant="outline" size="sm" disabled={finalCasesLoading || currentFinalCases.offset + currentFinalCases.limit >= currentFinalCases.total} onClick={() => void loadFinalCases(currentFinalCases.offset + currentFinalCases.limit)}>
+                  Berikutnya
+                  <ChevronRight size={14} />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderArchive = () => (
@@ -1051,7 +1756,7 @@ export default function DocumentCenter() {
         <div className="flex gap-1 overflow-x-auto rounded-[10px] bg-slate-100 p-1 w-fit max-w-full">
           {[
             { key: "requests", label: "Permintaan Surat", enabled: true },
-            { key: "final", label: "Dokumen Akhir Kegiatan", enabled: false },
+            { key: "final", label: "Dokumen Akhir Kegiatan", enabled: true },
             { key: "archive", label: "Arsip Dokumen", enabled: true },
             { key: "templates", label: "Template Dokumen", enabled: false },
             { key: "numbering", label: "Jenis & Penomoran", enabled: false },
@@ -1062,7 +1767,7 @@ export default function DocumentCenter() {
               disabled={!tab.enabled}
               onClick={() => {
                 if (!tab.enabled) return;
-                setActiveTab(tab.key as "requests" | "archive");
+                setActiveTab(tab.key as "requests" | "final" | "archive");
               }}
               className={`whitespace-nowrap rounded-[8px] px-3 py-1.5 text-xs font-black ${
                 activeTab === tab.key
@@ -1077,7 +1782,7 @@ export default function DocumentCenter() {
           ))}
         </div>
 
-        {activeTab === "requests" ? renderRequests() : renderArchive()}
+        {activeTab === "requests" ? renderRequests() : activeTab === "final" ? renderFinalActivity() : renderArchive()}
 
         <Dialog open={uploadOpen} onOpenChange={(open) => { setUploadOpen(open); if (!open) resetUpload(); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -1477,6 +2182,181 @@ export default function DocumentCenter() {
                   Setujui
                 </Button>
               )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(selectedFinalCase) || finalCaseDetailLoading}
+          onOpenChange={(open) => {
+            if (!open) setSelectedFinalCase(null);
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>{finalCaseDetailLoading ? "Memuat detail..." : `Dokumen Akhir - ${selectedFinalCase?.student.name || "Mahasiswa"}`}</DialogTitle>
+              <DialogDescription>{selectedFinalCase ? finalPeriodText(selectedFinalCase.period) : ""}</DialogDescription>
+            </DialogHeader>
+            {selectedFinalCase && (
+              <div className="grid gap-4 text-sm">
+                <div className="grid gap-3 rounded-[12px] border border-border bg-slate-50 p-3 md:grid-cols-2">
+                  <div>
+                    <p><b>Mahasiswa:</b> {selectedFinalCase.student.name || "-"}</p>
+                    <p><b>NIM:</b> {selectedFinalCase.student.nim || "-"}</p>
+                    <p><b>Prodi:</b> {selectedFinalCase.student.prodi || "-"}</p>
+                    <p><b>Activity type:</b> {selectedFinalCase.activityType}</p>
+                  </div>
+                  <div>
+                    <p><b>Status:</b> {selectedFinalCase.statusLabel || selectedFinalCase.status}</p>
+                    <p><b>Outcome:</b> {selectedFinalCase.outcome}</p>
+                    <p><b>Periode:</b> {finalPeriodText(selectedFinalCase.period)}</p>
+                    <p><b>Selesai:</b> {formatDateReadable(selectedFinalCase.completedAt)}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-[12px] border border-border bg-white p-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="font-black text-foreground">Surat Keterangan Selesai</p>
+                      {selectedFinalCase.completionDocument ? (
+                        <div className="mt-2 text-sm">
+                          <p><b>Judul:</b> {selectedFinalCase.completionDocument.title || "-"}</p>
+                          <p><b>Nomor:</b> {selectedFinalCase.completionDocument.documentNumber || "-"}</p>
+                          <p><b>Status:</b> {selectedFinalCase.completionDocument.status || "-"}</p>
+                          <p><b>Versi:</b> {selectedFinalCase.completionDocument.currentVersionNumber || "-"}</p>
+                          <p><b>Terbit:</b> {formatDateReadable(selectedFinalCase.completionDocument.issuedAt)}</p>
+                          {renderFinalDocumentActions(
+                            selectedFinalCase.completionDocument,
+                            selectedFinalCase.capabilities.canPublishCompletion,
+                            "completion",
+                          )}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-muted-foreground">Belum ada draft SKS.</p>
+                      )}
+                    </div>
+                    {selectedFinalCase.capabilities.canUploadCompletion && (
+                      <Button
+                        size="sm"
+                        disabled={completionUploading}
+                        onClick={() =>
+                          setFinalDraftUpload({
+                            type: "completion",
+                            id: selectedFinalCase.id,
+                            title: `Surat Keterangan Selesai - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
+                            file: null,
+                          })
+                        }
+                      >
+                        {completionUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                        Upload Draft SKS
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[12px] border border-border bg-white p-3">
+                  <p className="mb-3 font-black text-foreground">Sertifikat Project</p>
+                  {selectedFinalCase.projects?.length ? (
+                    <div className="grid gap-3">
+                      {selectedFinalCase.projects.map((project) => (
+                        <div key={project.id} className="rounded-[10px] border border-border bg-slate-50 p-3">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <p className="font-black text-foreground">{project.project.title || project.project.shortTitle || "Project"}</p>
+                              <p className="text-xs text-muted-foreground">{finalProjectText(project.project)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Certificate required: {project.certificateRequired ? "Ya" : "Tidak"} | Status: {project.certificateStatus}
+                              </p>
+                              {project.certificateDocument ? (
+                                <div className="mt-2 text-sm">
+                                  <p><b>Dokumen:</b> {project.certificateDocument.title || "-"}</p>
+                                  <p><b>Nomor:</b> {project.certificateDocument.documentNumber || "-"}</p>
+                                  <p><b>Status:</b> {project.certificateDocument.status || "-"}</p>
+                                  {renderFinalDocumentActions(
+                                    project.certificateDocument,
+                                    project.capabilities.canPublishCertificate,
+                                    "certificate",
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="mt-2 text-xs text-muted-foreground">Belum ada draft sertifikat.</p>
+                              )}
+                            </div>
+                            {project.capabilities.canUploadCertificate && (
+                              <Button
+                                size="sm"
+                                disabled={certificateUploadingId === project.id}
+                                onClick={() =>
+                                  setFinalDraftUpload({
+                                    type: "certificate",
+                                    id: project.id,
+                                    title: `Sertifikat - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
+                                    file: null,
+                                    projectTitle: project.project.title || project.project.shortTitle,
+                                  })
+                                }
+                              >
+                                {certificateUploadingId === project.id ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                Upload Sertifikat
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">Tidak ada project yang membutuhkan sertifikat.</p>
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSelectedFinalCase(null)}>
+                Tutup
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(finalDraftUpload)} onOpenChange={(open) => { if (!open) resetFinalDraftUpload(); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{finalDraftUpload?.type === "completion" ? "Upload Draft SKS" : "Upload Draft Sertifikat"}</DialogTitle>
+              <DialogDescription>{finalDraftUpload?.projectTitle || "Unggah file PDF draft untuk dokumen akhir kegiatan."}</DialogDescription>
+            </DialogHeader>
+            {finalDraftUpload && (
+              <div className="grid gap-4 text-sm">
+                {finalDraftError && <p className="rounded-lg border border-red-200 bg-red-50 p-3 font-semibold text-red-600">{finalDraftError}</p>}
+                <label className="grid gap-1 font-bold">
+                  Judul
+                  <input
+                    value={finalDraftUpload.title}
+                    onChange={(event) => setFinalDraftUpload({ ...finalDraftUpload, title: event.target.value })}
+                    maxLength={255}
+                    className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                    placeholder="Masukkan judul dokumen"
+                  />
+                </label>
+                <label className="grid gap-1 font-bold">
+                  File PDF
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(event) => setFinalDraftUpload({ ...finalDraftUpload, file: event.target.files?.[0] || null })}
+                    className="rounded-[10px] border border-border p-2 font-normal"
+                  />
+                </label>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={resetFinalDraftUpload} disabled={completionUploading || Boolean(certificateUploadingId)}>
+                Batal
+              </Button>
+              <Button type="button" onClick={() => void submitFinalDraftUpload()} disabled={completionUploading || Boolean(certificateUploadingId)}>
+                {completionUploading || certificateUploadingId ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                Upload Draft
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
