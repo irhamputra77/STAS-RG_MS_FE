@@ -290,6 +290,7 @@ type FinalCase = {
   completedAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  certificateCount?: number;
   completionDocument?: FinalDocument | null;
   capabilities: {
     canUploadCompletion?: boolean;
@@ -459,6 +460,16 @@ const finalPeriodText = (period?: FinalPeriod | null) => {
   return [period.activityType, range, period.description].filter(Boolean).join(" | ") || "-";
 };
 
+const finalPeriodYearText = (period?: FinalPeriod | null) => {
+  if (!period) return "-";
+  const years = [period.startDate, period.endDate]
+    .map((value) => (value ? String(value).slice(0, 4) : ""))
+    .filter(Boolean);
+  const uniqueYears = Array.from(new Set(years));
+  const yearText = uniqueYears.length > 1 ? uniqueYears.join(" - ") : uniqueYears[0] || "";
+  return [period.activityType, yearText].filter(Boolean).join(" | ") || "-";
+};
+
 const finalProjectText = (project?: FinalProject["project"] | null) => {
   if (!project) return "-";
   return [project.shortTitle || project.title, project.role, project.status].filter(Boolean).join(" | ") || "-";
@@ -552,6 +563,7 @@ export default function DocumentCenter() {
   const [withdrawalProjects, setWithdrawalProjects] = useState<Record<string, string[]>>({});
   const [registeringFinalCases, setRegisteringFinalCases] = useState(false);
   const [registerResult, setRegisterResult] = useState<FinalRegisterResponse["items"]>([]);
+  const [registerSummary, setRegisterSummary] = useState<{ created: number; existing: number; invalid: number; documentNumbers: string[] } | null>(null);
   const [finalCases, setFinalCases] = useState<FinalCaseListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
   const [finalCasesLoading, setFinalCasesLoading] = useState(false);
   const [finalCasesLoaded, setFinalCasesLoaded] = useState(false);
@@ -955,7 +967,11 @@ export default function DocumentCenter() {
 
   const toggleEligible = (item: FinalEligibleItem) => {
     const key = candidateKey(item);
-    if (finalOutcome === "withdrawn_early" && item.canRegister === false) return;
+    const periods = item.periods || (item.period ? [item.period] : []);
+    const canSelect = finalOutcome === "completed"
+      ? Boolean(item.period && !item.existingCase)
+      : item.canRegister !== false && periods.length > 0 && (periods.length === 1 || Boolean(withdrawalPeriods[key]));
+    if (!canSelect) return;
     setSelectedEligible((items) => (items.includes(key) ? items.filter((value) => value !== key) : [...items, key]));
   };
 
@@ -1061,6 +1077,8 @@ export default function DocumentCenter() {
       const created = result.items?.filter((item) => item.status === "created").length || 0;
       const existing = result.items?.filter((item) => item.status === "existing").length || 0;
       const invalid = result.items?.filter((item) => !["created", "existing"].includes(item.status)).length || 0;
+      const documentNumbers = Array.from(new Set((bulkPublish?.batches || []).map((batch) => batch.documentNumber).filter(Boolean)));
+      setRegisterSummary({ created, existing, invalid, documentNumbers });
       const batchText = bulkPublish?.batches?.length
         ? ` Nomor batch: ${bulkPublish.batches.map((batch) => batch.documentNumber).join(", ")}.`
         : "";
@@ -1754,21 +1772,32 @@ export default function DocumentCenter() {
           .map((period) => [period.id, period]),
       ).values(),
     );
+    const visibleEligibleItems = eligibleData.items.filter((item) => finalOutcome === "withdrawn_early" ? item.canRegister !== false : !item.existingCase);
+    const selectableEligibleKeys = visibleEligibleItems
+      .filter((item) => {
+        const key = candidateKey(item);
+        const periods = item.periods || (item.period ? [item.period] : []);
+        return finalOutcome === "completed"
+          ? Boolean(item.period && !item.existingCase)
+          : item.canRegister !== false && periods.length > 0 && (periods.length === 1 || Boolean(withdrawalPeriods[key]));
+      })
+      .map(candidateKey);
     const selectedCount = selectedEligible.length;
+    const allSelectableChecked = selectableEligibleKeys.length > 0 && selectableEligibleKeys.every((key) => selectedEligible.includes(key));
 
     return (
       <div className="grid gap-4">
-        <div className="flex gap-1 overflow-x-auto rounded-[10px] bg-slate-100 p-1 w-fit max-w-full">
+        <div className="flex gap-2 overflow-x-auto rounded-[12px] border border-border bg-white p-1 shadow-sm w-fit max-w-full">
           {[
-            { key: "eligible", label: "Kandidat Mahasiswa" },
-            { key: "cases", label: "Daftar Dokumen Akhir" },
+            { key: "eligible", label: "1. Kandidat" },
+            { key: "cases", label: "2. Dokumen Terdaftar" },
           ].map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setFinalSubTab(tab.key as "eligible" | "cases")}
-              className={`whitespace-nowrap rounded-[8px] px-3 py-1.5 text-xs font-black ${
-                finalSubTab === tab.key ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:bg-white/60"
+              className={`whitespace-nowrap rounded-[9px] border px-3 py-1.5 text-xs font-black ${
+                finalSubTab === tab.key ? "border-emerald-300 bg-emerald-50 text-foreground shadow-sm" : "border-transparent text-muted-foreground hover:bg-slate-50"
               }`}
             >
               {tab.label}
@@ -1808,6 +1837,7 @@ export default function DocumentCenter() {
                   setWithdrawalPeriods({});
                   setWithdrawalProjects({});
                   setRegisterResult([]);
+                  setRegisterSummary(null);
                   setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
                 }}
                 className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
@@ -1821,6 +1851,7 @@ export default function DocumentCenter() {
                   setFinalActivityType(event.target.value as FinalActivityType | "");
                   setFinalPeriodId("");
                   setSelectedEligible([]);
+                  setRegisterSummary(null);
                 }}
                 className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
               >
@@ -1833,6 +1864,7 @@ export default function DocumentCenter() {
                 onChange={(event) => {
                   setFinalPeriodId(event.target.value);
                   setSelectedEligible([]);
+                  setRegisterSummary(null);
                 }}
                 disabled={finalOutcome !== "completed" || !finalActivityType || availablePeriods.length === 0}
                 className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
@@ -1840,7 +1872,7 @@ export default function DocumentCenter() {
                 <option value="">{finalOutcome === "withdrawn_early" ? "Periode dipilih per kandidat" : "Semua periode tampil"}</option>
                 {availablePeriods.map((period) => (
                   <option key={period.id} value={period.id}>
-                    {finalPeriodText(period)}
+                    {finalPeriodYearText(period)}
                   </option>
                 ))}
               </select>
@@ -1861,27 +1893,47 @@ export default function DocumentCenter() {
               <div className="p-6 text-sm text-muted-foreground">Pilih activity type Magang atau Riset untuk memuat kandidat.</div>
             ) : (
               <>
-                {registerResult.length > 0 && (
-                  <div className="border-b border-border bg-slate-50 p-4 text-xs">
-                    <p className="mb-2 font-black text-foreground">Hasil registrasi batch</p>
-                    <div className="grid gap-1 md:grid-cols-2">
-                      {registerResult.map((item, index) => (
-                        <div key={`${item.withdrawalRequestId || item.studentId}-${item.periodId}-${index}`} className="rounded-[8px] border border-border bg-white px-3 py-2">
-                          <b>{item.withdrawalRequestId || item.studentId || "-"}</b> / {item.periodId || "-"}: {item.status}
-                          {item.message ? <span className="text-muted-foreground"> — {item.message}</span> : null}
-                        </div>
-                      ))}
-                    </div>
+                {registerSummary && (
+                  <div className="border-b border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">
+                    <p className="font-black text-emerald-900">Dokumen akhir berhasil diproses</p>
+                    <p className="mt-1 font-semibold">
+                      {registerSummary.created} kandidat baru berhasil didaftarkan
+                      {registerSummary.existing ? ", " + registerSummary.existing + " sudah terdaftar sebelumnya" : ""}
+                      {registerSummary.invalid ? ", " + registerSummary.invalid + " perlu dicek" : ""}.
+                    </p>
+                    {registerSummary.documentNumbers.length > 0 && (
+                      <p className="mt-2">
+                        Nomor dokumen terbit: <b>{registerSummary.documentNumbers.join(", ")}</b>
+                      </p>
+                    )}
+                    {registerSummary.documentNumbers.length === 0 && registerResult.length > 0 && (
+                      <p className="mt-2">Dokumen sudah masuk ke tab Dokumen Terdaftar.</p>
+                    )}
                   </div>
                 )}
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50">
-                      <TableHead>Pilih</TableHead>
+                      <TableHead className="w-12">
+                        <input
+                          type="checkbox"
+                          checked={allSelectableChecked}
+                          disabled={selectableEligibleKeys.length === 0}
+                          onChange={(event) => {
+                            setSelectedEligible((items) => {
+                              const current = new Set(items);
+                              if (event.target.checked) selectableEligibleKeys.forEach((key) => current.add(key));
+                              else selectableEligibleKeys.forEach((key) => current.delete(key));
+                              return Array.from(current);
+                            });
+                          }}
+                          aria-label="Pilih semua kandidat yang bisa didaftarkan"
+                        />
+                      </TableHead>
                       <TableHead>Mahasiswa</TableHead>
-                      <TableHead>Periode</TableHead>
+                      <TableHead className="w-40">Periode</TableHead>
                       <TableHead>Project</TableHead>
-                      <TableHead>Status Case</TableHead>
+                      <TableHead className="w-36">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1891,18 +1943,19 @@ export default function DocumentCenter() {
                           <Loader2 className="mx-auto animate-spin" size={20} />
                         </TableCell>
                       </TableRow>
-                    ) : eligibleData.items.length === 0 ? (
+                    ) : visibleEligibleItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="h-32 text-center text-sm text-muted-foreground">
-                          Belum ada kandidat untuk filter ini.
+                          Semua kandidat pada filter ini sudah terdaftar.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      eligibleData.items.map((item) => {
+                      visibleEligibleItems.map((item) => {
                         const key = candidateKey(item);
                         const effectivePeriod = effectivePeriodForCandidate(item);
                         const periods = item.periods || (item.period ? [item.period] : []);
                         const selectedProjectIds = withdrawalProjects[key] || [];
+                        const projectNames = item.projects?.map((project) => project.shortTitle || project.title).filter(Boolean) || [];
                         const canSelect = finalOutcome === "completed"
                           ? Boolean(item.period && !item.existingCase)
                           : item.canRegister !== false && periods.length > 0 && (periods.length === 1 || Boolean(withdrawalPeriods[key]));
@@ -1920,7 +1973,7 @@ export default function DocumentCenter() {
                             <TableCell>
                               <p className="font-black text-foreground">{item.student.name || "-"}</p>
                               <p className="text-xs text-muted-foreground">
-                                {[item.student.nim, item.student.prodi, item.student.status].filter(Boolean).join(" | ") || "-"}
+                                {[item.student.nim, item.student.prodi].filter(Boolean).join(" | ") || "-"}
                               </p>
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
@@ -1948,7 +2001,7 @@ export default function DocumentCenter() {
                                   {item.blockingReason && <span className="font-semibold text-red-600">{item.blockingReason}</span>}
                                 </div>
                               ) : (
-                                finalPeriodText(effectivePeriod)
+                                finalPeriodYearText(effectivePeriod)
                               )}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
@@ -1985,7 +2038,9 @@ export default function DocumentCenter() {
                                   </div>
                                 ) : "Tidak ada project eligible"
                               ) : (
-                                item.projects?.length ? `${item.projects.length} project: ${item.projects.map((project) => project.shortTitle || project.title).filter(Boolean).join(", ")}` : "Tidak ada project"
+                                projectNames.length
+                                  ? `${projectNames.length} project${projectNames[0] ? `: ${projectNames[0]}${projectNames.length > 1 ? " +" + (projectNames.length - 1) : ""}` : ""}`
+                                  : "Tidak ada project"
                               )}
                             </TableCell>
                             <TableCell>
@@ -2083,14 +2138,16 @@ export default function DocumentCenter() {
                         <p className="font-black text-foreground">{item.student.name || "-"}</p>
                         <p className="text-xs text-muted-foreground">{[item.student.nim, item.student.prodi].filter(Boolean).join(" | ") || "-"}</p>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{finalPeriodText(item.period)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{finalPeriodYearText(item.period)}</TableCell>
                       <TableCell>{finalOutcomeLabel(item.outcome)}</TableCell>
                       <TableCell><Badge variant={statusVariant(item.status) as any}>{item.statusLabel || item.status}</Badge></TableCell>
                       <TableCell className="text-xs">
                         {item.completionDocument ? item.completionDocument.status || "-" : "Belum ada draft"}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {item.projects?.length ? `${item.projects.length} project` : "Tidak ada project"}
+                        {Number(item.certificateCount || item.projects?.length || 0) > 0
+                          ? `${Number(item.certificateCount || item.projects?.length)} sertif`
+                          : "Belum ada sertif"}
                       </TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" onClick={() => void openFinalCaseDetail(item.id)} aria-label="Detail case">
@@ -2390,9 +2447,6 @@ export default function DocumentCenter() {
           <div>
             <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Template Dokumen</p>
             <h2 className="text-sm font-black text-foreground">Template PDF sertifikat dan surat keterangan</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              V1 mengelola Sertifikat Mahasiswa Magang, Sertifikat Mahasiswa Riset, dan Surat Keterangan Selesai Magang. Layout dan konten preset ditentukan backend.
-            </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => void loadTemplates()} disabled={templatesLoading}>
             <RefreshCw size={14} className={templatesLoading ? "animate-spin" : ""} />
@@ -2483,12 +2537,12 @@ export default function DocumentCenter() {
           </div>
         )}
 
-        <div className="flex gap-1 overflow-x-auto rounded-[10px] bg-slate-100 p-1 w-fit max-w-full">
+        <div className="flex gap-2 overflow-x-auto rounded-[12px] border border-border bg-white p-1 shadow-sm w-fit max-w-full">
           {[
-            { key: "requests", label: "Permintaan Surat", enabled: true },
-            { key: "final", label: "Dokumen Akhir Kegiatan", enabled: true },
-            { key: "archive", label: "Arsip Dokumen", enabled: true },
-            { key: "templates", label: "Template Dokumen", enabled: true },
+            { key: "requests", label: "Pengajuan Surat", enabled: true },
+            { key: "final", label: "Dokumen Akhir", enabled: true },
+            { key: "archive", label: "Arsip Resmi", enabled: true },
+            { key: "templates", label: "Template", enabled: true },
             { key: "numbering", label: "Jenis & Penomoran", enabled: false },
           ].map((tab) => (
             <button
@@ -2499,12 +2553,12 @@ export default function DocumentCenter() {
                 if (!tab.enabled) return;
                 setActiveTab(tab.key as "requests" | "final" | "archive" | "templates");
               }}
-              className={`whitespace-nowrap rounded-[8px] px-3 py-1.5 text-xs font-black ${
+              className={`whitespace-nowrap rounded-[9px] border px-3 py-1.5 text-xs font-black ${
                 activeTab === tab.key
-                  ? "bg-white text-foreground shadow-sm"
+                  ? "border-emerald-300 bg-emerald-50 text-foreground shadow-sm"
                   : tab.enabled
-                    ? "text-muted-foreground hover:bg-white/60"
-                    : "cursor-not-allowed text-muted-foreground opacity-55"
+                    ? "border-transparent text-muted-foreground hover:bg-slate-50"
+                    : "cursor-not-allowed border-transparent text-muted-foreground opacity-55"
               }`}
             >
               {tab.label}
