@@ -3,7 +3,8 @@ import { useNavigate } from "react-router";
 import { Layout } from "../../templates/Layout";
 import { AlertTriangle, MapPin, Clock, LogIn, LogOut, Search } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { ApiError, apiGet, apiPost, getStoredUser } from "../../../lib/api";
+import { ApiError, apiGet, apiPost } from "../../../lib/api";
+import { useAuth } from "../../../context/AuthContext";
 import { HolidayItem, findHolidayForDate, normalizeHolidays } from "../../../lib/holidays";
 import {
   PicketAssignment,
@@ -195,7 +196,7 @@ const isMobileAttendanceDevice = () => {
 
 export default function Attendance() {
   const navigate = useNavigate();
-  const user = getStoredUser();
+  const { user } = useAuth();
   const [activeFilter, setActiveFilter] = useState("Semua");
   const [monthLabel, setMonthLabel] = useState("");
   const [chartData, setChartData] = useState<Array<{ name: string; value: number; color: string }>>([]);

@@ -7,7 +7,8 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2, Hourglass, Check,
   Target, GitBranch, TrendingUp, MessageSquare, Calendar,
 } from "lucide-react";
-import { apiGet, getStoredUser } from "../../../lib/api";
+import { apiGet } from "../../../lib/api";
+import { useAuth } from "../../../context/AuthContext";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 import { PicketAssignment, PicketHoliday, getPicketHolidayFromTodayResponse, isPicketHolidayResponse, mapPicketTodayAssignment } from "../../../lib/picket";
 
@@ -154,7 +155,7 @@ function MiniMilestones({ milestones, color }: { milestones: { label: string; do
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const user = getStoredUser();
+  const { user } = useAuth();
   const [dashboardData, setDashboardData] = React.useState<any>(null);
   const [boardProjectsData, setBoardProjectsData] = React.useState<any[]>([]);
   const [boardSprintTasks, setBoardSprintTasks] = React.useState<any[]>([]);

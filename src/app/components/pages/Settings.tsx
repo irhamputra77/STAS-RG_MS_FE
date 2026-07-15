@@ -21,7 +21,8 @@ import {
   FileCheck,
   Calendar,
 } from "lucide-react";
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut, getStoredUser } from "../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 import { getWfhSourceMeta, getWfhSummary } from "../../lib/wfh";
 import { updateStoredUserProfile } from "../../lib/userProfileSync";
 
@@ -104,7 +105,7 @@ function TabProfil({
 }: {
   onProfileUpdated?: (profile: { name?: string; photoUrl?: string | null }) => void;
 }) {
-  const user = getStoredUser();
+  const { user } = useAuth();
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const [bio, setBio] = useState("");
@@ -507,7 +508,7 @@ function InfoRow({
 }
 
 function TabAkunDynamic() {
-  const user = getStoredUser();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
 
   React.useEffect(() => {
@@ -694,7 +695,7 @@ function PasswordStrength({ password }: { password: string }) {
 }
 
 function TabPassword() {
-  const user = getStoredUser();
+  const { user } = useAuth();
   const [current, setCurrent] = useState("");
   const [newPass, setNewPass] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -847,7 +848,7 @@ interface NotifItem {
 }
 
 function TabNotifikasi() {
-  const user = getStoredUser();
+  const { user } = useAuth();
 
   const [items, setItems] = useState<NotifItem[]>([
     {
@@ -1000,7 +1001,7 @@ function TabNotifikasi() {
 }
 
 function TabPengunduran() {
-  const user = getStoredUser();
+  const { user } = useAuth();
 
   const [advisorName, setAdvisorName] = useState("dosen pembimbing Anda");
   const [studentRecordId, setStudentRecordId] = useState("");
@@ -1298,7 +1299,7 @@ const TAB_CONFIG: { id: Tab; label: string; icon: React.ReactNode; danger?: bool
 ];
 
 export default function Settings() {
-  const user = getStoredUser();
+  const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<Tab>("profil");
   const [miniName, setMiniName] = useState(user?.name || "Pengguna");

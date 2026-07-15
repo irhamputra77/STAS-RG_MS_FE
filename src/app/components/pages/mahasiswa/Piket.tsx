@@ -2,7 +2,8 @@ import React from "react";
 import { CalendarOff, CheckCircle2, ClipboardCheck, History, ImagePlus, Loader2, Send, UploadCloud, UserCog } from "lucide-react";
 import { Link } from "react-router";
 import { Layout } from "../../templates/Layout";
-import { apiGet, apiPost, getStoredUser } from "../../../lib/api";
+import { apiGet, apiPost } from "../../../lib/api";
+import { useAuth } from "../../../context/AuthContext";
 import {
   PicketAssignment,
   PicketHoliday,
@@ -38,7 +39,7 @@ function Badge({ status }: { status?: string | null }) {
 }
 
 export default function Piket() {
-  const user = getStoredUser();
+  const { user } = useAuth();
   const [todayAssignment, setTodayAssignment] = React.useState<PicketAssignment | null>(null);
   const [history, setHistory] = React.useState<PicketAssignment[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<PicketLeaveRequest[]>([]);
