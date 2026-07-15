@@ -71,6 +71,17 @@ type PublishResponse = {
   canDownload: boolean;
 };
 
+type BulkPublishResponse = {
+  items: PublishResponse[];
+  batches: Array<{
+    id: string;
+    typeCode: string;
+    sequence: number;
+    documentNumber: string;
+    issuedAt: string;
+  }>;
+};
+
 type ListResponse = {
   items: DocumentItem[];
   pagination: { limit: number; offset: number; total: number };
@@ -948,6 +959,48 @@ export default function DocumentCenter() {
     setSelectedEligible((items) => (items.includes(key) ? items.filter((value) => value !== key) : [...items, key]));
   };
 
+  const autoGenerateAndPublishFinalCases = async (caseIds: string[]) => {
+    const documentIds: string[] = [];
+    for (const caseId of caseIds) {
+      let detail = await apiGet<FinalCase>(`/document-center/operator/final-activity/cases/${encodePathSegment(caseId)}`);
+      if (detail.completionDocument && detail.capabilities?.canPublishCompletion) {
+        documentIds.push(detail.completionDocument.id);
+      }
+
+      for (const project of detail.projects || []) {
+        let certificateDocument = project.certificateDocument || null;
+        if (
+          detail.outcome === "completed" &&
+          ["Magang", "Riset"].includes(detail.activityType) &&
+          project.certificateRequired &&
+          project.certificateStatus === "pending" &&
+          !certificateDocument
+        ) {
+          const generated = await apiPost<{ document?: FinalDocument }>(
+            `/document-center/operator/final-activity/case-projects/${encodePathSegment(project.id)}/generate-certificate-draft`,
+            {},
+          );
+          certificateDocument = generated.document || null;
+        }
+
+        if (!certificateDocument) {
+          detail = await apiGet<FinalCase>(`/document-center/operator/final-activity/cases/${encodePathSegment(caseId)}`);
+          certificateDocument = detail.projects?.find((item) => item.id === project.id)?.certificateDocument || null;
+        }
+
+        if (certificateDocument?.status === "draft" && Number(certificateDocument.currentVersionNumber) > 0) {
+          documentIds.push(certificateDocument.id);
+        }
+      }
+    }
+
+    const uniqueDocumentIds = Array.from(new Set(documentIds));
+    if (!uniqueDocumentIds.length) return null;
+    return apiPost<BulkPublishResponse>("/document-center/operator/documents/bulk-publish", {
+      documentIds: uniqueDocumentIds,
+    });
+  };
+
   const registerFinalCases = async () => {
     if (registeringFinalCases || selectedEligible.length === 0) return;
     const selectedItems = eligibleData.items.filter((item) => selectedEligible.includes(candidateKey(item)));
@@ -998,11 +1051,20 @@ export default function DocumentCenter() {
           .map((item) => finalOutcome === "withdrawn_early" ? String(item.withdrawalRequestId || "") : `${item.studentId}::${item.periodId}`),
       );
       setSelectedEligible((items) => items.filter((key) => !successful.has(key)));
+      const caseIds = Array.from(new Set((result.items || [])
+        .filter((item) => (item.status === "created" || item.status === "existing") && item.caseId)
+        .map((item) => String(item.caseId))));
+      const bulkPublish = finalOutcome === "completed" && caseIds.length
+        ? await autoGenerateAndPublishFinalCases(caseIds)
+        : null;
       await Promise.all([loadEligible(0), loadFinalCases(0)]);
       const created = result.items?.filter((item) => item.status === "created").length || 0;
       const existing = result.items?.filter((item) => item.status === "existing").length || 0;
       const invalid = result.items?.filter((item) => !["created", "existing"].includes(item.status)).length || 0;
-      showToast(`Registrasi selesai: ${created} baru, ${existing} sudah ada, ${invalid} perlu dicek.`);
+      const batchText = bulkPublish?.batches?.length
+        ? ` Nomor batch: ${bulkPublish.batches.map((batch) => batch.documentNumber).join(", ")}.`
+        : "";
+      showToast(`Registrasi selesai: ${created} baru, ${existing} sudah ada, ${invalid} perlu dicek.${batchText}`);
     } catch (err: any) {
       setError(errorMessage(err));
       if (err?.status === 409) {
@@ -1166,7 +1228,7 @@ export default function DocumentCenter() {
       caseItem.status === "pending" &&
       !caseItem.completionDocument &&
       caseItem.capabilities.canGenerateCompletion !== false &&
-      caseItem.projects?.length === 1 &&
+      (caseItem.projects?.length || 0) >= 1 &&
       activeCompletionLetterTemplate,
     );
 
@@ -1178,7 +1240,7 @@ export default function DocumentCenter() {
       caseItem.status === "pending" &&
       !caseItem.completionDocument &&
       caseItem.capabilities.canGenerateCompletion !== false &&
-      caseItem.projects?.length === 1,
+      (caseItem.projects?.length || 0) >= 1,
     );
 
   const generateCompletionLetterDraft = async (caseItem: FinalCase) => {
@@ -1264,8 +1326,8 @@ export default function DocumentCenter() {
         isInternshipCompletionLetter
           ? "Terbitkan Surat Keterangan Selesai Magang ini? Sistem akan membuat nomor resmi kode 09 dan PDF final bertanggal secara otomatis."
           : kind === "completion"
-            ? "Terbitkan Surat Keterangan Selesai ini? Nomor resmi akan dibuat otomatis oleh sistem."
-            : "Terbitkan sertifikat ini? Sistem akan membuat nomor resmi dan PDF final bernomor secara otomatis.",
+          ? "Terbitkan Surat Keterangan Selesai ini? Nomor resmi akan dibuat otomatis oleh sistem."
+          : "Terbitkan sertifikat ini? Sistem akan membuat nomor resmi dan PDF final bernomor secara otomatis.",
       confirmLabel: "Terbitkan",
       cancelLabel: "Batal",
       variant: "primary",
@@ -1842,7 +1904,7 @@ export default function DocumentCenter() {
                         const periods = item.periods || (item.period ? [item.period] : []);
                         const selectedProjectIds = withdrawalProjects[key] || [];
                         const canSelect = finalOutcome === "completed"
-                          ? Boolean(item.period?.id && !item.existingCase)
+                          ? Boolean(item.period && !item.existingCase)
                           : item.canRegister !== false && periods.length > 0 && (periods.length === 1 || Boolean(withdrawalPeriods[key]));
                         return (
                           <TableRow key={key}>

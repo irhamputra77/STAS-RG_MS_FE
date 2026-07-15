@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Layout } from "../../templates/Layout";
-import { apiGet, apiPost, buildQueryPath, encodePathSegment, getStoredUser, resolveApiAssetUrl } from "../../../lib/api";
+import { apiGet, apiGetBlob, apiPost, buildQueryPath, downloadBlob, encodePathSegment, getStoredUser, resolveApiAssetUrl } from "../../../lib/api";
 import { formatDateYmd } from "../../../lib/date";
 import {
   Plus,
@@ -55,12 +55,37 @@ interface StudentDocumentRecord {
   fileSize: number | null;
 }
 
+interface OfficialDocumentRecord {
+  id: string;
+  title: string;
+  documentNumber: string | null;
+  status: string;
+  statusLabel?: string | null;
+  typeName: string;
+  documentPurpose: string;
+  issuedAt?: string | null;
+  canDownload: boolean;
+  participantContexts?: Array<{ projectName?: string | null; period?: string | null }>;
+}
+
+interface OfficialDocumentListResponse {
+  items: OfficialDocumentRecord[];
+  pagination: { limit: number; offset: number; total: number };
+}
+
 const studentDocumentDefinitions = [
   { type: "surat_pengantar", label: "Surat pengantar mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: false },
   { type: "surat_penerimaan", label: "Surat Penerimaan mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: false },
   { type: "surat_keterangan_selesai", label: "Surat Keterangan Selesai mahasiswa riset dan magang CoE STAS-RG", requiresAlumni: true },
   { type: "sertifikat", label: "Sertifikat", requiresAlumni: true },
 ];
+
+const officialPurposeByLegacyType: Record<string, string> = {
+  surat_pengantar: "introductory_letter",
+  surat_penerimaan: "acceptance_letter",
+  surat_keterangan_selesai: "completion_letter",
+  sertifikat: "certificate",
+};
 
 function normalizeStudentDocuments(source: any, fallbackStatus?: string | null): StudentDocumentRecord[] {
   const rawDocuments = source?.student_documents ?? source?.studentDocuments ?? source?.documents;
@@ -136,6 +161,8 @@ export default function Documents() {
   const [suratData, setSuratData] = useState<SuratRecord[]>([]);
   const [certificateData, setCertificateData] = useState<CertificateRecord[]>([]);
   const [studentDocuments, setStudentDocuments] = useState<StudentDocumentRecord[]>(normalizeStudentDocuments(null));
+  const [officialDocuments, setOfficialDocuments] = useState<OfficialDocumentRecord[]>([]);
+  const [downloadingOfficialId, setDownloadingOfficialId] = useState<string | null>(null);
   const [assignedProjects, setAssignedProjects] = useState<Array<{ id: string; title: string }>>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [error, setError] = useState("");
@@ -170,10 +197,12 @@ export default function Documents() {
     const loadData = async () => {
       try {
         const studentId = effectiveStudentId;
-        const [rows, certRows, projectRows] = await Promise.all([
+        const [rows, certRows, projectRows, officialRows] = await Promise.all([
           apiGet<Array<any>>(buildQueryPath("/letter-requests", { studentId })),
           apiGet<Array<any>>(buildQueryPath("/certificates", { studentId })),
-          user?.id ? apiGet<Array<any>>(buildQueryPath("/research/assigned", { userId: user.id })) : Promise.resolve([])
+          user?.id ? apiGet<Array<any>>(buildQueryPath("/research/assigned", { userId: user.id })) : Promise.resolve([]),
+          apiGet<OfficialDocumentListResponse>(buildQueryPath("/document-center/my/documents", { limit: 100, offset: 0 }))
+            .catch(() => ({ items: [], pagination: { limit: 100, offset: 0, total: 0 } })),
         ]);
         const mapped: SuratRecord[] = rows
           .map((item) => ({
@@ -199,6 +228,7 @@ export default function Documents() {
 
         setSuratData(mapped);
         setCertificateData(mappedCerts);
+        setOfficialDocuments(Array.isArray(officialRows.items) ? officialRows.items : []);
         const projectOptions = (projectRows || []).map((item) => ({
           id: item.id,
           title: item.short_title || item.title || item.id
@@ -219,6 +249,25 @@ export default function Documents() {
       loadData();
     }
   }, [effectiveStudentId, studentRecordId, user?.id]);
+
+  const officialDocumentsForType = (type: string) => {
+    const purpose = officialPurposeByLegacyType[type];
+    return officialDocuments.filter((document) => document.documentPurpose === purpose);
+  };
+
+  const downloadOfficialDocument = async (document: OfficialDocumentRecord) => {
+    if (!document.canDownload || downloadingOfficialId) return;
+    setDownloadingOfficialId(document.id);
+    setError("");
+    try {
+      const file = await apiGetBlob(`/document-center/documents/${encodePathSegment(document.id)}/download`);
+      downloadBlob(file.blob, file.fileName || `dokumen-${document.id}.pdf`);
+    } catch (err: any) {
+      setError(err?.message || "Gagal mengunduh dokumen resmi.");
+    } finally {
+      setDownloadingOfficialId(null);
+    }
+  };
 
   const submitLetterRequest = async () => {
     if (!studentRecordId) {
@@ -356,28 +405,50 @@ export default function Documents() {
               <h2 className="text-sm font-black text-foreground mt-0.5">Dokumen dari Admin STAS-RG</h2>
             </div>
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black text-emerald-700">
-              {studentDocuments.filter((doc) => doc.fileUrl).length}/4 tersedia
+              {studentDocuments.filter((doc) => doc.fileUrl || officialDocumentsForType(doc.type).length > 0).length}/4 tersedia
             </span>
           </div>
           <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
             {studentDocuments.map((doc) => {
               const resolvedUrl = resolveApiAssetUrl(doc.fileUrl);
+              const publishedDocuments = officialDocumentsForType(doc.type);
+              const primaryOfficialDocument = publishedDocuments[0] || null;
+              const isAvailable = Boolean(resolvedUrl || primaryOfficialDocument);
               return (
-                <div key={doc.type} className={`rounded-[14px] border p-4 ${resolvedUrl ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-slate-50"}`}>
+                <div key={doc.type} className={`rounded-[14px] border p-4 ${isAvailable ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-slate-50"}`}>
                   <div className="flex items-start gap-3">
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${resolvedUrl ? "bg-emerald-500 text-white" : "bg-white text-slate-400 border border-slate-200"}`}>
-                      {doc.locked && !resolvedUrl ? <Lock size={17} /> : <FileText size={17} />}
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isAvailable ? "bg-emerald-500 text-white" : "bg-white text-slate-400 border border-slate-200"}`}>
+                      {doc.locked && !isAvailable ? <Lock size={17} /> : <FileText size={17} />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-black text-foreground leading-snug">{doc.label}</p>
                       <p className="mt-1 text-xs font-medium text-muted-foreground">
-                        {doc.fileName
+                        {publishedDocuments.length > 0
+                          ? `${publishedDocuments.length} dokumen terbit${primaryOfficialDocument?.documentNumber ? ` • ${primaryOfficialDocument.documentNumber}` : ""}`
+                          : doc.fileName
                           ? `${doc.fileName}${doc.fileSize ? ` • ${formatFileSize(doc.fileSize)}` : ""}`
                           : doc.locked
                             ? doc.lockReason || "Tersedia setelah status Alumni."
                             : "Belum diunggah admin."}
                       </p>
-                      {resolvedUrl ? (
+                      {doc.type === "sertifikat" && publishedDocuments.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("sertifikat")}
+                          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-white hover:bg-emerald-600"
+                        >
+                          <Award size={13} /> Lihat {publishedDocuments.length} Sertifikat
+                        </button>
+                      ) : primaryOfficialDocument?.canDownload ? (
+                        <button
+                          type="button"
+                          disabled={downloadingOfficialId === primaryOfficialDocument.id}
+                          onClick={() => void downloadOfficialDocument(primaryOfficialDocument)}
+                          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-white hover:bg-emerald-600 disabled:opacity-60"
+                        >
+                          <Download size={13} /> {downloadingOfficialId === primaryOfficialDocument.id ? "Mengunduh..." : "Unduh"}
+                        </button>
+                      ) : resolvedUrl ? (
                         <a
                           href={resolvedUrl}
                           target="_blank"
@@ -526,7 +597,7 @@ export default function Documents() {
         {/* ─── TAB: SERTIFIKAT ─── */}
         {activeTab === "sertifikat" && (
           <div className="flex flex-col gap-4">
-            {certificateData.length === 0 ? (
+            {officialDocumentsForType("sertifikat").length === 0 && certificateData.length === 0 ? (
               <div className="border-2 border-dashed border-slate-200 rounded-[18px] p-10 flex flex-col items-center justify-center text-center gap-3 bg-slate-50/50">
                 <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-300 shadow-sm">
                   <Sparkles size={24} />
@@ -538,6 +609,45 @@ export default function Documents() {
                   </p>
                 </div>
               </div>
+            ) : officialDocumentsForType("sertifikat").length > 0 ? (
+              officialDocumentsForType("sertifikat").map((cert) => (
+                <div key={cert.id} className="bg-white border rounded-[16px] p-5 shadow-sm border-emerald-200/70">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-black text-foreground">{cert.title || "Sertifikat"}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {cert.participantContexts?.map((context) => context.projectName).filter(Boolean).join(", ") || cert.typeName || "Sertifikat resmi STAS-RG"}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border bg-emerald-100 text-emerald-700 border-emerald-200">
+                      {cert.statusLabel || "Terbit"}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2.5">
+                    <div>
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Tanggal Terbit</p>
+                      <p className="text-sm font-bold text-foreground mt-0.5">{cert.issuedAt ? formatDateYmd(cert.issuedAt) : "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">No. Sertifikat</p>
+                      <p className="text-sm font-bold text-foreground mt-0.5">{cert.documentNumber || "-"}</p>
+                    </div>
+                  </div>
+                  {cert.canDownload && (
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        disabled={downloadingOfficialId === cert.id}
+                        onClick={() => void downloadOfficialDocument(cert)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition-all disabled:opacity-60"
+                      >
+                        <Download size={14} strokeWidth={2.5} />
+                        {downloadingOfficialId === cert.id ? "Mengunduh..." : "Unduh Sertifikat"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
             ) : (
               certificateData.map((cert) => (
                 <div key={cert.id} className="bg-white border rounded-[16px] p-5 shadow-sm border-border/60">
