@@ -226,7 +226,10 @@ type FinalDocument = {
   issuedAt?: string | null;
 };
 
+type FinalOutcomeFilter = "completed" | "withdrawn_early";
+
 type FinalEligibleItem = {
+  withdrawalRequestId?: string | null;
   student: {
     id: string;
     name?: string | null;
@@ -234,15 +237,25 @@ type FinalEligibleItem = {
     prodi?: string | null;
     status?: string | null;
   };
-  activityType: FinalActivityType;
-  period: FinalPeriod & { id: string };
+  activityType?: FinalActivityType | null;
+  period?: (FinalPeriod & { id: string }) | null;
+  periods?: Array<FinalPeriod & { id: string }>;
+  effectiveDate?: string | null;
+  reason?: string | null;
+  finalStatus?: string | null;
+  canRegister?: boolean;
+  blockingReason?: string | null;
   completedAt?: string | null;
   projects?: Array<{
+    id?: string | null;
     title?: string | null;
     shortTitle?: string | null;
     role?: string | null;
     status?: string | null;
+    projectStatus?: string | null;
     membershipStatus?: string | null;
+    joinedAt?: string | null;
+    completedAt?: string | null;
   }>;
   existingCase?: {
     id: string;
@@ -307,6 +320,7 @@ type FinalCaseListResponse = {
 type FinalRegisterResponse = {
   items: Array<{
     studentId?: string | null;
+    withdrawalRequestId?: string | null;
     periodId?: string | null;
     status: string;
     caseId?: string | null;
@@ -322,6 +336,15 @@ type FinalDraftUpload = {
   title: string;
   file: File | null;
   projectTitle?: string | null;
+};
+
+type RevokeDialogState = {
+  document: FinalDocument;
+  kind: "completion" | "certificate";
+  caseId: string;
+  projectId?: string | null;
+  reason: string;
+  effectiveDate: string;
 };
 
 type ReviewAction = "revision" | "approve" | "reject";
@@ -393,6 +416,11 @@ const finalProjectText = (project?: FinalProject["project"] | null) => {
   return [project.shortTitle || project.title, project.role, project.status].filter(Boolean).join(" | ") || "-";
 };
 
+const finalOutcomeLabel = (outcome?: string | null) =>
+  outcome === "withdrawn_early" ? "Mengundurkan Diri" : outcome === "completed" ? "Selesai Kegiatan" : outcome || "-";
+
+const todayIsoDate = () => new Date().toISOString().slice(0, 10);
+
 const errorMessage = (err: any) => {
   if (err instanceof ApiError) {
     if (err.status === 400) return err.message || "Input tidak valid.";
@@ -434,12 +462,15 @@ export default function DocumentCenter() {
   const [linkingDocumentId, setLinkingDocumentId] = useState<string | null>(null);
 
   const [finalSubTab, setFinalSubTab] = useState<"eligible" | "cases">("eligible");
+  const [finalOutcome, setFinalOutcome] = useState<FinalOutcomeFilter>("completed");
   const [finalActivityType, setFinalActivityType] = useState<FinalActivityType | "">("");
   const [finalPeriodId, setFinalPeriodId] = useState("");
   const [finalSearch, setFinalSearch] = useState("");
   const [eligibleData, setEligibleData] = useState<FinalEligibleResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
   const [eligibleLoading, setEligibleLoading] = useState(false);
   const [selectedEligible, setSelectedEligible] = useState<string[]>([]);
+  const [withdrawalPeriods, setWithdrawalPeriods] = useState<Record<string, string>>({});
+  const [withdrawalProjects, setWithdrawalProjects] = useState<Record<string, string[]>>({});
   const [registeringFinalCases, setRegisteringFinalCases] = useState(false);
   const [registerResult, setRegisterResult] = useState<FinalRegisterResponse["items"]>([]);
   const [finalCases, setFinalCases] = useState<FinalCaseListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
@@ -455,6 +486,9 @@ export default function DocumentCenter() {
   const [finalDraftError, setFinalDraftError] = useState("");
   const [completionUploading, setCompletionUploading] = useState(false);
   const [certificateUploadingId, setCertificateUploadingId] = useState<string | null>(null);
+  const [revokeDialog, setRevokeDialog] = useState<RevokeDialogState | null>(null);
+  const [revokeError, setRevokeError] = useState("");
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const [reviewAction, setReviewAction] = useState<{ action: ReviewAction; request: OperatorRequest } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
@@ -661,22 +695,39 @@ export default function DocumentCenter() {
     }
   };
 
-  const candidateKey = (item: FinalEligibleItem) => `${item.student.id}::${item.period.id}`;
+  const candidateKey = (item: FinalEligibleItem) =>
+    finalOutcome === "withdrawn_early"
+      ? String(item.withdrawalRequestId || item.student.id)
+      : `${item.student.id}::${item.period?.id || ""}`;
+
+  const effectivePeriodForCandidate = (item: FinalEligibleItem) => {
+    if (finalOutcome === "withdrawn_early") {
+      const key = candidateKey(item);
+      const selectedPeriodId = withdrawalPeriods[key];
+      return (item.periods || []).find((period) => period.id === selectedPeriodId) || item.period || item.periods?.[0] || null;
+    }
+    return item.period || null;
+  };
 
   const loadEligible = async (offset = eligibleData.pagination.offset) => {
     if (!finalActivityType) {
       setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
       setSelectedEligible([]);
+      setWithdrawalPeriods({});
+      setWithdrawalProjects({});
       return;
     }
     setEligibleLoading(true);
     setError("");
     const requestId = Date.now();
     try {
+      const endpoint = finalOutcome === "withdrawn_early"
+        ? "/document-center/operator/final-activity/early-exit/eligible"
+        : "/document-center/operator/final-activity/eligible";
       const result = await apiGet<FinalEligibleResponse>(
-        buildQueryPath("/document-center/operator/final-activity/eligible", {
+        buildQueryPath(endpoint, {
           activityType: finalActivityType,
-          periodId: finalPeriodId || null,
+          periodId: finalOutcome === "completed" ? finalPeriodId || null : null,
           search: finalSearch || null,
           limit: 20,
           offset,
@@ -686,6 +737,23 @@ export default function DocumentCenter() {
       setEligibleData(result);
       const visibleKeys = new Set(result.items.map(candidateKey));
       setSelectedEligible((items) => items.filter((key) => visibleKeys.has(key)));
+      setWithdrawalPeriods((items) => {
+        const next: Record<string, string> = {};
+        for (const item of result.items) {
+          const key = finalOutcome === "withdrawn_early" ? String(item.withdrawalRequestId || item.student.id) : `${item.student.id}::${item.period?.id || ""}`;
+          if (visibleKeys.has(key) && items[key]) next[key] = items[key];
+          if (!next[key] && item.periods?.length === 1) next[key] = item.periods[0].id;
+        }
+        return next;
+      });
+      setWithdrawalProjects((items) => {
+        const next: Record<string, string[]> = {};
+        for (const item of result.items) {
+          const key = finalOutcome === "withdrawn_early" ? String(item.withdrawalRequestId || item.student.id) : `${item.student.id}::${item.period?.id || ""}`;
+          if (visibleKeys.has(key)) next[key] = (items[key] || []).filter((projectId) => item.projects?.some((project) => project.id === projectId));
+        }
+        return next;
+      });
     } catch (err: any) {
       setError(errorMessage(err));
     } finally {
@@ -750,6 +818,7 @@ export default function DocumentCenter() {
 
   const toggleEligible = (item: FinalEligibleItem) => {
     const key = candidateKey(item);
+    if (finalOutcome === "withdrawn_early" && item.canRegister === false) return;
     setSelectedEligible((items) => (items.includes(key) ? items.filter((value) => value !== key) : [...items, key]));
   };
 
@@ -757,9 +826,21 @@ export default function DocumentCenter() {
     if (registeringFinalCases || selectedEligible.length === 0) return;
     const selectedItems = eligibleData.items.filter((item) => selectedEligible.includes(candidateKey(item)));
     if (selectedItems.length === 0) return;
+    if (finalOutcome === "withdrawn_early") {
+      const invalid = selectedItems.find((item) => {
+        const key = candidateKey(item);
+        return item.canRegister === false || ((item.periods?.length || 0) > 1 && !withdrawalPeriods[key]);
+      });
+      if (invalid) {
+        setError(invalid.blockingReason || "Pilih periode untuk seluruh kandidat withdrawal.");
+        return;
+      }
+    }
     const confirmed = await confirm({
-      title: "Daftarkan mahasiswa terpilih?",
-      description: "Daftarkan mahasiswa terpilih ke Dokumen Akhir Kegiatan?",
+      title: finalOutcome === "withdrawn_early" ? "Daftarkan withdrawal early exit?" : "Daftarkan mahasiswa terpilih?",
+      description: finalOutcome === "withdrawn_early"
+        ? "Daftarkan mahasiswa terpilih sebagai Dokumen Akhir Kegiatan karena mengundurkan diri?"
+        : "Daftarkan mahasiswa terpilih ke Dokumen Akhir Kegiatan?",
       confirmLabel: "Daftarkan",
       cancelLabel: "Batal",
       variant: "primary",
@@ -769,14 +850,26 @@ export default function DocumentCenter() {
     setRegisteringFinalCases(true);
     setError("");
     try {
-      const result = await apiPost<FinalRegisterResponse>("/document-center/operator/final-activity/cases", {
-        items: selectedItems.map((item) => ({ studentId: item.student.id, periodId: item.period.id })),
-      });
+      const result = finalOutcome === "withdrawn_early"
+        ? await apiPost<FinalRegisterResponse>("/document-center/operator/final-activity/early-exit/cases", {
+            items: selectedItems.map((item) => {
+              const key = candidateKey(item);
+              const periodId = withdrawalPeriods[key] || (item.periods?.length === 1 ? item.periods[0].id : "");
+              return {
+                withdrawalRequestId: item.withdrawalRequestId,
+                ...(periodId ? { periodId } : {}),
+                certificateProjectIds: withdrawalProjects[key] || [],
+              };
+            }),
+          })
+        : await apiPost<FinalRegisterResponse>("/document-center/operator/final-activity/cases", {
+            items: selectedItems.map((item) => ({ studentId: item.student.id, periodId: item.period?.id })),
+          });
       setRegisterResult(result.items || []);
       const successful = new Set(
         (result.items || [])
           .filter((item) => item.status === "created" || item.status === "existing")
-          .map((item) => `${item.studentId}::${item.periodId}`),
+          .map((item) => finalOutcome === "withdrawn_early" ? String(item.withdrawalRequestId || "") : `${item.studentId}::${item.periodId}`),
       );
       setSelectedEligible((items) => items.filter((key) => !successful.has(key)));
       await Promise.all([loadEligible(0), loadFinalCases(0)]);
@@ -881,6 +974,68 @@ export default function DocumentCenter() {
     }
   };
 
+  const canRevokeFinalDocument = (document?: FinalDocument | null) =>
+    Boolean(document?.id && ["terbit", "diarsipkan"].includes(String(document.status || "")) && document.documentNumber);
+
+  const openRevokeDialog = (document: FinalDocument, kind: "completion" | "certificate", projectId?: string | null) => {
+    if (!selectedFinalCase || !canRevokeFinalDocument(document)) return;
+    setRevokeError("");
+    setRevokeDialog({
+      document,
+      kind,
+      caseId: selectedFinalCase.id,
+      projectId: projectId || null,
+      reason: "",
+      effectiveDate: todayIsoDate(),
+    });
+  };
+
+  const submitRevoke = async () => {
+    if (!revokeDialog || revokingId === revokeDialog.document.id) return;
+    const reason = revokeDialog.reason.trim();
+    const effectiveDate = revokeDialog.effectiveDate;
+    if (!reason || reason.length > 2000) {
+      setRevokeError("Alasan wajib diisi dan maksimal 2.000 karakter.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
+      setRevokeError("Tanggal efektif wajib berformat YYYY-MM-DD.");
+      return;
+    }
+    if (effectiveDate > todayIsoDate()) {
+      setRevokeError("Tanggal efektif tidak boleh melewati hari ini.");
+      return;
+    }
+    const issuedDate = revokeDialog.document.issuedAt ? String(revokeDialog.document.issuedAt).slice(0, 10) : null;
+    if (issuedDate && effectiveDate < issuedDate) {
+      setRevokeError("Tanggal efektif tidak boleh sebelum tanggal terbit.");
+      return;
+    }
+
+    setRevokingId(revokeDialog.document.id);
+    setRevokeError("");
+    setError("");
+    try {
+      await apiPost(`/document-center/operator/documents/${encodePathSegment(revokeDialog.document.id)}/revoke`, {
+        reason,
+        effectiveDate,
+      });
+      const caseId = revokeDialog.caseId;
+      setRevokeDialog(null);
+      showToast("Dokumen berhasil dicabut.");
+      await Promise.all([loadFinalCases(), load()]);
+      await refreshSelectedFinalCase(caseId).catch(() => {});
+    } catch (err: any) {
+      setRevokeError(errorMessage(err));
+      if ([404, 409].includes(err?.status)) {
+        await Promise.all([loadFinalCases(), loadEligible(0), load()]);
+        if (selectedFinalCase) await refreshSelectedFinalCase(selectedFinalCase.id).catch(() => {});
+      }
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
   useEffect(() => {
     void load(0);
   }, [status]);
@@ -903,9 +1058,11 @@ export default function DocumentCenter() {
       else {
         setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
         setSelectedEligible([]);
+        setWithdrawalPeriods({});
+        setWithdrawalProjects({});
       }
     }
-  }, [activeTab, finalSubTab, finalActivityType, finalPeriodId]);
+  }, [activeTab, finalSubTab, finalOutcome, finalActivityType, finalPeriodId]);
 
   useEffect(() => {
     if (activeTab === "final" && finalSubTab === "cases") {
@@ -1174,7 +1331,7 @@ export default function DocumentCenter() {
     }
   };
 
-  const renderFinalDocumentActions = (document: FinalDocument | null | undefined, canPublishCapability?: boolean, kind: "completion" | "certificate" = "completion") => {
+  const renderFinalDocumentActions = (document: FinalDocument | null | undefined, canPublishCapability?: boolean, kind: "completion" | "certificate" = "completion", projectId?: string | null) => {
     if (!document) return null;
     return (
       <div className="mt-2 flex flex-wrap gap-2">
@@ -1190,13 +1347,23 @@ export default function DocumentCenter() {
             Publish
           </Button>
         )}
+        {canRevokeFinalDocument(document) && (
+          <Button size="sm" variant="destructive" disabled={revokingId === document.id} onClick={() => openRevokeDialog(document, kind, projectId)}>
+            {revokingId === document.id ? <Loader2 size={14} className="animate-spin" /> : null}
+            Cabut Dokumen
+          </Button>
+        )}
       </div>
     );
   };
 
   const renderFinalActivity = () => {
     const availablePeriods = Array.from(
-      new Map(eligibleData.items.map((item) => [item.period.id, item.period])).values(),
+      new Map(
+        eligibleData.items
+          .flatMap((item) => finalOutcome === "withdrawn_early" ? item.periods || [] : item.period ? [item.period] : [])
+          .map((period) => [period.id, period]),
+      ).values(),
     );
     const selectedCount = selectedEligible.length;
 
@@ -1242,7 +1409,23 @@ export default function DocumentCenter() {
                 </Button>
               </div>
             </div>
-            <form onSubmit={submitFinalSearch} className="grid gap-2 border-b border-border p-4 md:grid-cols-[160px_220px_1fr_auto]">
+            <form onSubmit={submitFinalSearch} className="grid gap-2 border-b border-border p-4 md:grid-cols-[180px_160px_220px_1fr_auto]">
+              <select
+                value={finalOutcome}
+                onChange={(event) => {
+                  setFinalOutcome(event.target.value as FinalOutcomeFilter);
+                  setFinalPeriodId("");
+                  setSelectedEligible([]);
+                  setWithdrawalPeriods({});
+                  setWithdrawalProjects({});
+                  setRegisterResult([]);
+                  setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+                }}
+                className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
+              >
+                <option value="completed">Selesai Kegiatan</option>
+                <option value="withdrawn_early">Mengundurkan Diri</option>
+              </select>
               <select
                 value={finalActivityType}
                 onChange={(event) => {
@@ -1262,10 +1445,10 @@ export default function DocumentCenter() {
                   setFinalPeriodId(event.target.value);
                   setSelectedEligible([]);
                 }}
-                disabled={!finalActivityType || availablePeriods.length === 0}
+                disabled={finalOutcome !== "completed" || !finalActivityType || availablePeriods.length === 0}
                 className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
               >
-                <option value="">Semua periode tampil</option>
+                <option value="">{finalOutcome === "withdrawn_early" ? "Periode dipilih per kandidat" : "Semua periode tampil"}</option>
                 {availablePeriods.map((period) => (
                   <option key={period.id} value={period.id}>
                     {finalPeriodText(period)}
@@ -1294,8 +1477,8 @@ export default function DocumentCenter() {
                     <p className="mb-2 font-black text-foreground">Hasil registrasi batch</p>
                     <div className="grid gap-1 md:grid-cols-2">
                       {registerResult.map((item, index) => (
-                        <div key={`${item.studentId}-${item.periodId}-${index}`} className="rounded-[8px] border border-border bg-white px-3 py-2">
-                          <b>{item.studentId || "-"}</b> / {item.periodId || "-"}: {item.status}
+                        <div key={`${item.withdrawalRequestId || item.studentId}-${item.periodId}-${index}`} className="rounded-[8px] border border-border bg-white px-3 py-2">
+                          <b>{item.withdrawalRequestId || item.studentId || "-"}</b> / {item.periodId || "-"}: {item.status}
                           {item.message ? <span className="text-muted-foreground"> — {item.message}</span> : null}
                         </div>
                       ))}
@@ -1328,12 +1511,19 @@ export default function DocumentCenter() {
                     ) : (
                       eligibleData.items.map((item) => {
                         const key = candidateKey(item);
+                        const effectivePeriod = effectivePeriodForCandidate(item);
+                        const periods = item.periods || (item.period ? [item.period] : []);
+                        const selectedProjectIds = withdrawalProjects[key] || [];
+                        const canSelect = finalOutcome === "completed"
+                          ? Boolean(item.period?.id && !item.existingCase)
+                          : item.canRegister !== false && periods.length > 0 && (periods.length === 1 || Boolean(withdrawalPeriods[key]));
                         return (
                           <TableRow key={key}>
                             <TableCell>
                               <input
                                 type="checkbox"
                                 checked={selectedEligible.includes(key)}
+                                disabled={!canSelect}
                                 onChange={() => toggleEligible(item)}
                                 aria-label="Pilih kandidat"
                               />
@@ -1344,9 +1534,70 @@ export default function DocumentCenter() {
                                 {[item.student.nim, item.student.prodi, item.student.status].filter(Boolean).join(" | ") || "-"}
                               </p>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{finalPeriodText(item.period)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">
-                              {item.projects?.length ? `${item.projects.length} project: ${item.projects.map((project) => project.shortTitle || project.title).filter(Boolean).join(", ")}` : "Tidak ada project"}
+                              {finalOutcome === "withdrawn_early" ? (
+                                <div className="grid gap-1">
+                                  <p>{finalPeriodText(effectivePeriod)}</p>
+                                  {periods.length > 1 && (
+                                    <select
+                                      value={withdrawalPeriods[key] || ""}
+                                      onChange={(event) => {
+                                        setWithdrawalPeriods((items) => ({ ...items, [key]: event.target.value }));
+                                        setSelectedEligible((items) => items.filter((value) => value !== key));
+                                      }}
+                                      className="h-8 rounded-[8px] border border-border bg-white px-2 text-xs"
+                                    >
+                                      <option value="">Pilih periode</option>
+                                      {periods.map((period) => (
+                                        <option key={period.id} value={period.id}>{finalPeriodText(period)}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                  {item.effectiveDate && <span>Efektif: {formatDateReadable(item.effectiveDate)}</span>}
+                                  {item.reason && <span>Alasan: {item.reason}</span>}
+                                  {item.finalStatus && <span>Status: {item.finalStatus}</span>}
+                                  {item.blockingReason && <span className="font-semibold text-red-600">{item.blockingReason}</span>}
+                                </div>
+                              ) : (
+                                finalPeriodText(effectivePeriod)
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {finalOutcome === "withdrawn_early" ? (
+                                item.projects?.length ? (
+                                  <div className="grid gap-1">
+                                    {item.projects.map((project) => {
+                                      const projectId = String(project.id || "");
+                                      if (!projectId) return null;
+                                      return (
+                                        <label key={projectId} className="flex items-start gap-2 rounded-[8px] border border-border bg-white px-2 py-1">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedProjectIds.includes(projectId)}
+                                            onChange={(event) => {
+                                              setWithdrawalProjects((items) => {
+                                                const current = items[key] || [];
+                                                const next = event.target.checked
+                                                  ? [...new Set([...current, projectId])]
+                                                  : current.filter((value) => value !== projectId);
+                                                return { ...items, [key]: next };
+                                              });
+                                            }}
+                                          />
+                                          <span>
+                                            <b>{project.shortTitle || project.title || "Project"}</b>
+                                            <span className="block text-[11px] text-muted-foreground">
+                                              {[project.projectStatus || project.status, project.membershipStatus, project.role].filter(Boolean).join(" | ") || "Opsional sertifikat"}
+                                            </span>
+                                          </span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : "Tidak ada project eligible"
+                              ) : (
+                                item.projects?.length ? `${item.projects.length} project: ${item.projects.map((project) => project.shortTitle || project.title).filter(Boolean).join(", ")}` : "Tidak ada project"
+                              )}
                             </TableCell>
                             <TableCell>
                               {item.existingCase ? (
@@ -1444,7 +1695,7 @@ export default function DocumentCenter() {
                         <p className="text-xs text-muted-foreground">{[item.student.nim, item.student.prodi].filter(Boolean).join(" | ") || "-"}</p>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{finalPeriodText(item.period)}</TableCell>
-                      <TableCell>{item.outcome}</TableCell>
+                      <TableCell>{finalOutcomeLabel(item.outcome)}</TableCell>
                       <TableCell><Badge variant={statusVariant(item.status) as any}>{item.statusLabel || item.status}</Badge></TableCell>
                       <TableCell className="text-xs">
                         {item.completionDocument ? item.completionDocument.status || "-" : "Belum ada draft"}
@@ -1840,7 +2091,7 @@ export default function DocumentCenter() {
                   >
                     <option value="">Pilih outcome</option>
                     <option value="withdrawn_early">Mengundurkan diri lebih awal</option>
-                    <option value="terminated_early">Dihentikan lebih awal</option>
+                    <option value="terminated_early" disabled>Dihentikan lebih awal — Belum tersedia</option>
                   </select>
                 </label>
               )}
@@ -2208,16 +2459,16 @@ export default function DocumentCenter() {
                   </div>
                   <div>
                     <p><b>Status:</b> {selectedFinalCase.statusLabel || selectedFinalCase.status}</p>
-                    <p><b>Outcome:</b> {selectedFinalCase.outcome}</p>
+                    <p><b>Outcome:</b> {finalOutcomeLabel(selectedFinalCase.outcome)}</p>
                     <p><b>Periode:</b> {finalPeriodText(selectedFinalCase.period)}</p>
-                    <p><b>Selesai:</b> {formatDateReadable(selectedFinalCase.completedAt)}</p>
+                    <p><b>{selectedFinalCase.outcome === "withdrawn_early" ? "Tanggal efektif:" : "Selesai:"}</b> {formatDateReadable(selectedFinalCase.completedAt)}</p>
                   </div>
                 </div>
 
                 <div className="rounded-[12px] border border-border bg-white p-3">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <p className="font-black text-foreground">Surat Keterangan Selesai</p>
+                      <p className="font-black text-foreground">{selectedFinalCase.outcome === "withdrawn_early" ? "Surat Keterangan Kegiatan Early Exit" : "Surat Keterangan Selesai"}</p>
                       {selectedFinalCase.completionDocument ? (
                         <div className="mt-2 text-sm">
                           <p><b>Judul:</b> {selectedFinalCase.completionDocument.title || "-"}</p>
@@ -2243,7 +2494,7 @@ export default function DocumentCenter() {
                           setFinalDraftUpload({
                             type: "completion",
                             id: selectedFinalCase.id,
-                            title: `Surat Keterangan Selesai - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
+                            title: `${selectedFinalCase.outcome === "withdrawn_early" ? "Surat Keterangan Kegiatan" : "Surat Keterangan Selesai"} - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
                             file: null,
                           })
                         }
@@ -2277,6 +2528,7 @@ export default function DocumentCenter() {
                                     project.certificateDocument,
                                     project.capabilities.canPublishCertificate,
                                     "certificate",
+                                    project.id,
                                   )}
                                 </div>
                               ) : (
@@ -2314,6 +2566,58 @@ export default function DocumentCenter() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setSelectedFinalCase(null)}>
                 Tutup
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(revokeDialog)} onOpenChange={(open) => { if (!open) { setRevokeDialog(null); setRevokeError(""); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Cabut Dokumen</DialogTitle>
+              <DialogDescription>
+                Dokumen yang dicabut tidak lagi dapat dilihat atau diunduh mahasiswa. Nomor dokumen tetap tersimpan dan tidak dapat digunakan kembali.
+              </DialogDescription>
+            </DialogHeader>
+            {revokeDialog && (
+              <div className="grid gap-4 text-sm">
+                {revokeError && <p className="rounded-lg border border-red-200 bg-red-50 p-3 font-semibold text-red-600">{revokeError}</p>}
+                <div className="rounded-[10px] border border-border bg-slate-50 p-3 text-xs">
+                  <p><b>Dokumen:</b> {revokeDialog.document.title || "-"}</p>
+                  <p><b>Nomor:</b> {revokeDialog.document.documentNumber || "-"}</p>
+                  <p><b>Status:</b> {revokeDialog.document.status || "-"}</p>
+                  <p><b>Terbit:</b> {formatDateReadable(revokeDialog.document.issuedAt)}</p>
+                </div>
+                <label className="grid gap-1 font-bold">
+                  Alasan pencabutan
+                  <textarea
+                    value={revokeDialog.reason}
+                    onChange={(event) => setRevokeDialog({ ...revokeDialog, reason: event.target.value })}
+                    maxLength={2000}
+                    className="min-h-28 rounded-[10px] border border-border px-3 py-2 font-normal"
+                    placeholder="Tuliskan alasan pencabutan dokumen"
+                  />
+                </label>
+                <label className="grid gap-1 font-bold">
+                  Tanggal efektif pencabutan
+                  <input
+                    type="date"
+                    value={revokeDialog.effectiveDate}
+                    min={revokeDialog.document.issuedAt ? String(revokeDialog.document.issuedAt).slice(0, 10) : undefined}
+                    max={todayIsoDate()}
+                    onChange={(event) => setRevokeDialog({ ...revokeDialog, effectiveDate: event.target.value })}
+                    className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                  />
+                </label>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setRevokeDialog(null); setRevokeError(""); }} disabled={Boolean(revokingId)}>
+                Batal
+              </Button>
+              <Button variant="destructive" onClick={() => void submitRevoke()} disabled={!revokeDialog || revokingId === revokeDialog.document.id}>
+                {revokingId ? <Loader2 size={15} className="animate-spin" /> : null}
+                Cabut Dokumen
               </Button>
             </DialogFooter>
           </DialogContent>
