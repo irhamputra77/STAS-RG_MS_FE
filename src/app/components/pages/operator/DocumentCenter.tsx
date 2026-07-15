@@ -347,6 +347,42 @@ type RevokeDialogState = {
   effectiveDate: string;
 };
 
+type TemplateVersion = {
+  id: string;
+  versionNumber: number;
+  originalFilename?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  pageWidth?: number | null;
+  pageHeight?: number | null;
+  createdAt?: string | null;
+};
+
+type DocumentTemplate = {
+  id: string;
+  documentDefinitionId: string;
+  templateKey: string;
+  name: string;
+  activityType: string;
+  activityOutcome: string;
+  status: string;
+  activeVersionId?: string | null;
+  activeVersionNumber?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  versions?: TemplateVersion[];
+};
+
+type TemplateListResponse = {
+  items: DocumentTemplate[];
+  pagination: { limit: number; offset: number; total: number };
+};
+
+type TemplateUploadState = {
+  template: DocumentTemplate;
+  file: File | null;
+};
+
 type ReviewAction = "revision" | "approve" | "reject";
 
 const emptyParticipant = (): UploadParticipant => ({
@@ -421,6 +457,22 @@ const finalOutcomeLabel = (outcome?: string | null) =>
 
 const todayIsoDate = () => new Date().toISOString().slice(0, 10);
 
+const templateLabels: Record<string, string> = {
+  certificate_completed_internship: "Sertifikat Mahasiswa Magang",
+  certificate_completed_research: "Sertifikat Mahasiswa Riset",
+};
+
+const templateOutcomeLabel = (outcome?: string | null) =>
+  outcome === "completed" ? "Selesai" : outcome || "-";
+
+const formatFileSize = (value?: number | null) => {
+  const size = Number(value || 0);
+  if (!Number.isFinite(size) || size <= 0) return "-";
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
+  return `${size} B`;
+};
+
 const errorMessage = (err: any) => {
   if (err instanceof ApiError) {
     if (err.status === 400) return err.message || "Input tidak valid.";
@@ -438,7 +490,7 @@ const actionTitle = (action: ReviewAction) =>
 
 export default function DocumentCenter() {
   const { confirm, confirmDialog } = useConfirmDialog();
-  const [activeTab, setActiveTab] = useState<"requests" | "final" | "archive">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "final" | "archive" | "templates">("requests");
 
   const [data, setData] = useState<ListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
   const [status, setStatus] = useState("");
@@ -486,9 +538,21 @@ export default function DocumentCenter() {
   const [finalDraftError, setFinalDraftError] = useState("");
   const [completionUploading, setCompletionUploading] = useState(false);
   const [certificateUploadingId, setCertificateUploadingId] = useState<string | null>(null);
+  const [generatingCertificateId, setGeneratingCertificateId] = useState<string | null>(null);
   const [revokeDialog, setRevokeDialog] = useState<RevokeDialogState | null>(null);
   const [revokeError, setRevokeError] = useState("");
   const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const [templates, setTemplates] = useState<TemplateListResponse>({ items: [], pagination: { limit: 50, offset: 0, total: 0 } });
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
+  const [templateDetailLoading, setTemplateDetailLoading] = useState(false);
+  const [templateUpload, setTemplateUpload] = useState<TemplateUploadState | null>(null);
+  const [templateUploadError, setTemplateUploadError] = useState("");
+  const [templateUploadingId, setTemplateUploadingId] = useState<string | null>(null);
+  const [activatingTemplateVersionId, setActivatingTemplateVersionId] = useState<string | null>(null);
+  const [previewingTemplateId, setPreviewingTemplateId] = useState<string | null>(null);
 
   const [reviewAction, setReviewAction] = useState<{ action: ReviewAction; request: OperatorRequest } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
@@ -806,6 +870,51 @@ export default function DocumentCenter() {
     }
   };
 
+  const loadTemplates = async (offset = templates.pagination.offset) => {
+    setTemplatesLoading(true);
+    setError("");
+    try {
+      const result = await apiGet<TemplateListResponse>(
+        buildQueryPath("/document-center/operator/templates", {
+          limit: 50,
+          offset,
+          activityOutcome: "completed",
+        }),
+      );
+      setTemplates({
+        ...result,
+        items: (result.items || []).filter((item) => ["certificate_completed_internship", "certificate_completed_research"].includes(item.templateKey)),
+      });
+      setTemplatesLoaded(true);
+    } catch (err: any) {
+      setError(errorMessage(err));
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  const openTemplateDetail = async (id: string) => {
+    setTemplateDetailLoading(true);
+    setError("");
+    try {
+      setSelectedTemplate(await apiGet<DocumentTemplate>(`/document-center/operator/templates/${encodePathSegment(id)}`));
+    } catch (err: any) {
+      setError(errorMessage(err));
+    } finally {
+      setTemplateDetailLoading(false);
+    }
+  };
+
+  const refreshSelectedTemplate = async (id = selectedTemplate?.id || "") => {
+    if (!id) return;
+    try {
+      setSelectedTemplate(await apiGet<DocumentTemplate>(`/document-center/operator/templates/${encodePathSegment(id)}`));
+    } catch (err: any) {
+      if (err?.status === 404) setSelectedTemplate(null);
+      throw err;
+    }
+  };
+
   const submitFinalSearch = (event: React.FormEvent) => {
     event.preventDefault();
     void loadEligible(0);
@@ -907,6 +1016,91 @@ export default function DocumentCenter() {
       reader.readAsDataURL(file);
     });
 
+  const resetTemplateUpload = () => {
+    setTemplateUpload(null);
+    setTemplateUploadError("");
+  };
+
+  const submitTemplateUpload = async () => {
+    if (!templateUpload) return;
+    const fileError = validatePdf(templateUpload.file);
+    if (fileError) return setTemplateUploadError(fileError);
+    if (templateUploadingId === templateUpload.template.id) return;
+    setTemplateUploadingId(templateUpload.template.id);
+    setTemplateUploadError("");
+    try {
+      const dataUrl = await fileToDataUrl(templateUpload.file!);
+      await apiPost(`/document-center/operator/templates/${encodePathSegment(templateUpload.template.id)}/versions`, {
+        fileName: templateUpload.file!.name,
+        fileDataUrl: dataUrl,
+      });
+      const templateId = templateUpload.template.id;
+      resetTemplateUpload();
+      await loadTemplates();
+      if (selectedTemplate?.id === templateId) await refreshSelectedTemplate(templateId);
+      showToast("Versi template berhasil diunggah.");
+    } catch (err: any) {
+      setTemplateUploadError(errorMessage(err));
+      if ([404, 409].includes(err?.status)) {
+        await loadTemplates();
+        if (selectedTemplate) await refreshSelectedTemplate(selectedTemplate.id).catch(() => {});
+      }
+    } finally {
+      setTemplateUploadingId(null);
+    }
+  };
+
+  const activateTemplate = async (template: DocumentTemplate, version: TemplateVersion) => {
+    if (activatingTemplateVersionId === version.id) return;
+    const confirmed = await confirm({
+      title: "Aktifkan versi template ini?",
+      description: "Versi ini akan digunakan untuk generate sertifikat berikutnya.",
+      confirmLabel: "Aktifkan",
+      cancelLabel: "Batal",
+      variant: "primary",
+    });
+    if (!confirmed) return;
+    setActivatingTemplateVersionId(version.id);
+    setError("");
+    try {
+      await apiPost(`/document-center/operator/templates/${encodePathSegment(template.id)}/activate`, {
+        versionId: version.id,
+      });
+      await loadTemplates();
+      await refreshSelectedTemplate(template.id);
+      showToast("Versi template berhasil diaktifkan.");
+    } catch (err: any) {
+      setError(errorMessage(err));
+      if ([404, 409].includes(err?.status)) {
+        await loadTemplates();
+        await refreshSelectedTemplate(template.id).catch(() => {});
+      }
+    } finally {
+      setActivatingTemplateVersionId(null);
+    }
+  };
+
+  const previewTemplate = async (template: DocumentTemplate) => {
+    if (previewingTemplateId === template.id) return;
+    setPreviewingTemplateId(template.id);
+    setError("");
+    try {
+      const file = await apiGetBlob(`/document-center/operator/templates/${encodePathSegment(template.id)}/preview`);
+      const url = window.URL.createObjectURL(file.blob);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) downloadBlob(file.blob, file.fileName || `${template.id}-preview.pdf`);
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      setError(errorMessage(err));
+      if ([404, 409].includes(err?.status)) {
+        await loadTemplates();
+        if (selectedTemplate?.id === template.id) await refreshSelectedTemplate(template.id).catch(() => {});
+      }
+    } finally {
+      setPreviewingTemplateId(null);
+    }
+  };
+
   const submitFinalDraftUpload = async () => {
     if (!finalDraftUpload) return;
     const title = finalDraftUpload.title.trim();
@@ -943,6 +1137,44 @@ export default function DocumentCenter() {
     }
   };
 
+  const canGenerateCertificate = (project: FinalProject) =>
+    Boolean(
+      selectedFinalCase?.outcome === "completed" &&
+      ["Magang", "Riset"].includes(selectedFinalCase.activityType) &&
+      project.certificateRequired &&
+      project.certificateStatus === "pending" &&
+      !project.certificateDocument &&
+      project.capabilities.canUploadCertificate,
+    );
+
+  const generateCertificateDraft = async (project: FinalProject) => {
+    if (!selectedFinalCase || !canGenerateCertificate(project) || generatingCertificateId === project.id) return;
+    const confirmed = await confirm({
+      title: "Generate draft sertifikat dari template aktif?",
+      description: "Data mahasiswa, proyek, peran, dan periode akan diambil otomatis oleh sistem.",
+      confirmLabel: "Generate",
+      cancelLabel: "Batal",
+      variant: "primary",
+    });
+    if (!confirmed) return;
+    setGeneratingCertificateId(project.id);
+    setError("");
+    try {
+      await apiPost(`/document-center/operator/final-activity/case-projects/${encodePathSegment(project.id)}/generate-certificate-draft`, {});
+      await Promise.all([loadFinalCases(), load()]);
+      await refreshSelectedFinalCase(selectedFinalCase.id);
+      showToast("Draft sertifikat berhasil dibuat dari template.");
+    } catch (err: any) {
+      setError(errorMessage(err));
+      if ([404, 409, 410].includes(err?.status)) {
+        await Promise.all([loadFinalCases(), loadTemplates()]);
+        await refreshSelectedFinalCase(selectedFinalCase.id).catch(() => {});
+      }
+    } finally {
+      setGeneratingCertificateId(null);
+    }
+  };
+
   const publishFinalDocument = async (document: FinalDocument, kind: "completion" | "certificate") => {
     if (!document.id || publishingId === document.id) return;
     const confirmed = await confirm({
@@ -950,7 +1182,7 @@ export default function DocumentCenter() {
       description:
         kind === "completion"
           ? "Terbitkan Surat Keterangan Selesai ini? Nomor resmi akan dibuat otomatis oleh sistem."
-          : "Terbitkan sertifikat ini? Nomor resmi akan dibuat otomatis oleh sistem.",
+          : "Terbitkan sertifikat ini? Sistem akan membuat nomor resmi dan PDF final bernomor secara otomatis.",
       confirmLabel: "Terbitkan",
       cancelLabel: "Batal",
       variant: "primary",
@@ -1051,6 +1283,12 @@ export default function DocumentCenter() {
       void loadFinalCases(0);
     }
   }, [activeTab, finalCasesLoaded]);
+
+  useEffect(() => {
+    if (activeTab === "templates" && !templatesLoaded) {
+      void loadTemplates(0);
+    }
+  }, [activeTab, templatesLoaded]);
 
   useEffect(() => {
     if (activeTab === "final" && finalSubTab === "eligible") {
@@ -1994,6 +2232,96 @@ export default function DocumentCenter() {
     </div>
   );
 
+  const renderTemplates = () => (
+    <div className="grid gap-4">
+      <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Template Dokumen</p>
+            <h2 className="text-sm font-black text-foreground">Template sertifikat berbasis PDF</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              V1 hanya mengelola Sertifikat Mahasiswa Magang dan Sertifikat Mahasiswa Riset. Layout dan konten preset ditentukan backend.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void loadTemplates()} disabled={templatesLoading}>
+            <RefreshCw size={14} className={templatesLoading ? "animate-spin" : ""} />
+            Refresh
+          </Button>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-slate-50">
+              <TableHead>Template</TableHead>
+              <TableHead>Aktivitas</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Versi Aktif</TableHead>
+              <TableHead>Diperbarui</TableHead>
+              <TableHead>Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {templatesLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  <Loader2 className="mx-auto animate-spin" size={20} />
+                </TableCell>
+              </TableRow>
+            ) : templates.items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
+                  Belum ada template sertifikat V1.
+                </TableCell>
+              </TableRow>
+            ) : (
+              templates.items.map((template) => (
+                <TableRow key={template.id}>
+                  <TableCell>
+                    <p className="font-black text-foreground">{templateLabels[template.templateKey] || template.name}</p>
+                    <p className="text-xs text-muted-foreground">{template.templateKey}</p>
+                  </TableCell>
+                  <TableCell>
+                    {template.activityType}
+                    <p className="text-xs text-muted-foreground">{templateOutcomeLabel(template.activityOutcome)}</p>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={template.status === "active" ? "default" : "secondary"}>{template.status}</Badge>
+                  </TableCell>
+                  <TableCell>{template.activeVersionNumber ? `v${template.activeVersionNumber}` : "Belum aktif"}</TableCell>
+                  <TableCell>{formatDateReadable(template.updatedAt || template.createdAt)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => void openTemplateDetail(template.id)}>
+                        <Eye size={14} />
+                        Detail
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setTemplateUpload({ template, file: null })}>
+                        <Upload size={14} />
+                        Upload Versi
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!template.activeVersionId || previewingTemplateId === template.id}
+                        onClick={() => void previewTemplate(template)}
+                      >
+                        {previewingTemplateId === template.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                        Preview
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <span>{templates.pagination.total} template</span>
+          <span>Layout/content preset tidak dikirim dari UI.</span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <OperatorLayout title="Pusat Dokumen">
       <div className="flex flex-col gap-5 pb-4">
@@ -2009,7 +2337,7 @@ export default function DocumentCenter() {
             { key: "requests", label: "Permintaan Surat", enabled: true },
             { key: "final", label: "Dokumen Akhir Kegiatan", enabled: true },
             { key: "archive", label: "Arsip Dokumen", enabled: true },
-            { key: "templates", label: "Template Dokumen", enabled: false },
+            { key: "templates", label: "Template Dokumen", enabled: true },
             { key: "numbering", label: "Jenis & Penomoran", enabled: false },
           ].map((tab) => (
             <button
@@ -2018,7 +2346,7 @@ export default function DocumentCenter() {
               disabled={!tab.enabled}
               onClick={() => {
                 if (!tab.enabled) return;
-                setActiveTab(tab.key as "requests" | "final" | "archive");
+                setActiveTab(tab.key as "requests" | "final" | "archive" | "templates");
               }}
               className={`whitespace-nowrap rounded-[8px] px-3 py-1.5 text-xs font-black ${
                 activeTab === tab.key
@@ -2033,7 +2361,140 @@ export default function DocumentCenter() {
           ))}
         </div>
 
-        {activeTab === "requests" ? renderRequests() : activeTab === "final" ? renderFinalActivity() : renderArchive()}
+        {activeTab === "requests" ? renderRequests() : activeTab === "final" ? renderFinalActivity() : activeTab === "templates" ? renderTemplates() : renderArchive()}
+
+        <Dialog
+          open={Boolean(selectedTemplate) || templateDetailLoading}
+          onOpenChange={(open) => {
+            if (!open) setSelectedTemplate(null);
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>{templateDetailLoading ? "Memuat template..." : (selectedTemplate ? templateLabels[selectedTemplate.templateKey] || selectedTemplate.name : "Detail Template")}</DialogTitle>
+              <DialogDescription>{selectedTemplate ? `${selectedTemplate.activityType} | ${templateOutcomeLabel(selectedTemplate.activityOutcome)}` : ""}</DialogDescription>
+            </DialogHeader>
+            {selectedTemplate && (
+              <div className="grid gap-4 text-sm">
+                <div className="grid gap-3 rounded-[12px] border border-border bg-slate-50 p-3 md:grid-cols-2">
+                  <div>
+                    <p><b>Nama:</b> {selectedTemplate.name}</p>
+                    <p><b>Key:</b> {selectedTemplate.templateKey}</p>
+                    <p><b>Definition:</b> {selectedTemplate.documentDefinitionId}</p>
+                  </div>
+                  <div>
+                    <p><b>Status:</b> {selectedTemplate.status}</p>
+                    <p><b>Versi aktif:</b> {selectedTemplate.activeVersionNumber ? `v${selectedTemplate.activeVersionNumber}` : "Belum aktif"}</p>
+                    <p><b>Diperbarui:</b> {formatDateReadable(selectedTemplate.updatedAt || selectedTemplate.createdAt)}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => setTemplateUpload({ template: selectedTemplate, file: null })}>
+                    <Upload size={14} />
+                    Upload Versi
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!selectedTemplate.activeVersionId || previewingTemplateId === selectedTemplate.id}
+                    onClick={() => void previewTemplate(selectedTemplate)}
+                  >
+                    {previewingTemplateId === selectedTemplate.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                    Preview Aktif
+                  </Button>
+                </div>
+
+                <div className="rounded-[12px] border border-border bg-white">
+                  <div className="border-b border-border px-4 py-3">
+                    <p className="font-black text-foreground">Versi Template</p>
+                    <p className="text-xs text-muted-foreground">Aktifkan versi yang akan digunakan untuk generate sertifikat berikutnya.</p>
+                  </div>
+                  {selectedTemplate.versions?.length ? (
+                    <div className="grid gap-2 p-3">
+                      {selectedTemplate.versions.map((version) => {
+                        const isActive = selectedTemplate.activeVersionId === version.id;
+                        return (
+                          <div key={version.id} className="rounded-[10px] border border-border bg-slate-50 p-3">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div>
+                                <p className="font-black text-foreground">
+                                  Versi {version.versionNumber} {isActive ? <Badge>Aktif</Badge> : null}
+                                </p>
+                                <p className="text-xs text-muted-foreground break-all">{version.originalFilename || "-"}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatFileSize(version.fileSize)} | {formatDateReadable(version.createdAt)}
+                                </p>
+                              </div>
+                              {!isActive && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={activatingTemplateVersionId === version.id}
+                                  onClick={() => void activateTemplate(selectedTemplate, version)}
+                                >
+                                  {activatingTemplateVersionId === version.id ? <Loader2 size={14} className="animate-spin" /> : null}
+                                  Aktifkan
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="p-4 text-sm text-muted-foreground">Belum ada versi template. Upload PDF background terlebih dahulu.</p>
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSelectedTemplate(null)}>
+                Tutup
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(templateUpload)} onOpenChange={(open) => { if (!open) resetTemplateUpload(); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Upload Versi Template</DialogTitle>
+              <DialogDescription>{templateUpload ? templateLabels[templateUpload.template.templateKey] || templateUpload.template.name : ""}</DialogDescription>
+            </DialogHeader>
+            {templateUpload && (
+              <div className="grid gap-4 text-sm">
+                {templateUploadError && <p className="rounded-lg border border-red-200 bg-red-50 p-3 font-semibold text-red-600">{templateUploadError}</p>}
+                <div className="rounded-[10px] border border-border bg-slate-50 p-3 text-xs text-muted-foreground">
+                  <p>Upload hanya mengirim <b>fileName</b> dan <b>fileDataUrl</b>. Layout, content, signer, dan placeholder ditentukan backend.</p>
+                </div>
+                <label className="grid gap-1 font-bold">
+                  File PDF Template
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(event) => setTemplateUpload({ ...templateUpload, file: event.target.files?.[0] || null })}
+                    className="rounded-[10px] border border-border p-2 font-normal"
+                  />
+                  {templateUpload.file && (
+                    <span className="text-xs font-normal text-muted-foreground break-all">
+                      {templateUpload.file.name} ({formatFileSize(templateUpload.file.size)})
+                    </span>
+                  )}
+                </label>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={resetTemplateUpload} disabled={Boolean(templateUploadingId)}>
+                Batal
+              </Button>
+              <Button type="button" onClick={() => void submitTemplateUpload()} disabled={!templateUpload?.file || templateUploadingId === templateUpload?.template.id}>
+                {templateUploadingId === templateUpload?.template.id ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                Upload Versi
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={uploadOpen} onOpenChange={(open) => { setUploadOpen(open); if (!open) resetUpload(); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -2536,22 +2997,40 @@ export default function DocumentCenter() {
                               )}
                             </div>
                             {project.capabilities.canUploadCertificate && (
-                              <Button
-                                size="sm"
-                                disabled={certificateUploadingId === project.id}
-                                onClick={() =>
-                                  setFinalDraftUpload({
-                                    type: "certificate",
-                                    id: project.id,
-                                    title: `Sertifikat - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
-                                    file: null,
-                                    projectTitle: project.project.title || project.project.shortTitle,
-                                  })
-                                }
-                              >
-                                {certificateUploadingId === project.id ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                                Upload Sertifikat
-                              </Button>
+                              <div className="flex flex-wrap gap-2">
+                                {canGenerateCertificate(project) && (
+                                  <Button
+                                    size="sm"
+                                    disabled={generatingCertificateId === project.id}
+                                    onClick={() => void generateCertificateDraft(project)}
+                                  >
+                                    {generatingCertificateId === project.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                                    Generate Sertifikat
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={certificateUploadingId === project.id}
+                                  onClick={() =>
+                                    setFinalDraftUpload({
+                                      type: "certificate",
+                                      id: project.id,
+                                      title: `Sertifikat - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
+                                      file: null,
+                                      projectTitle: project.project.title || project.project.shortTitle,
+                                    })
+                                  }
+                                >
+                                  {certificateUploadingId === project.id ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                  Upload PDF Manual
+                                </Button>
+                                {selectedFinalCase.outcome === "completed" && ["Magang", "Riset"].includes(selectedFinalCase.activityType) && project.certificateStatus === "pending" && !project.certificateDocument && (
+                                  <p className="basis-full text-xs text-muted-foreground">
+                                    Jika template aktif belum tersedia, gunakan upload manual atau aktifkan template terlebih dahulu.
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
