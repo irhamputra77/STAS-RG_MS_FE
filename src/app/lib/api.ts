@@ -69,8 +69,15 @@ function getFilenameFromDisposition(disposition: string | null) {
   return plainMatch?.[1] || null;
 }
 
+let memoryUser: any = null;
+
 function emitAuthExpired(path: string) {
   if (typeof window === "undefined" || path === "/auth/login") return;
+  // Hanya fire jika ada user aktif di memori.
+  // Ini mencegah race condition: request lama (in-flight dari sebelum login selesai
+  // atau dari user/tab lain) men-trigger logout spurious yang mengeluarkan
+  // mahasiswa dari halaman padahal session mereka sebenarnya masih valid.
+  if (!memoryUser) return;
   window.dispatchEvent(new CustomEvent("stas:auth-expired"));
 }
 
@@ -212,7 +219,6 @@ export function buildQueryPath(path: string, params: Record<string, string | num
   return query ? `${path}?${query}` : path;
 }
 
-let memoryUser: any = null;
 
 export function setStoredUser(user: any) {
   memoryUser = user || null;
