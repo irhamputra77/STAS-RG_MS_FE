@@ -283,6 +283,7 @@ type FinalCase = {
   capabilities: {
     canUploadCompletion?: boolean;
     canPublishCompletion?: boolean;
+    canGenerateCompletion?: boolean;
   };
   projects?: FinalProject[];
 };
@@ -460,7 +461,14 @@ const todayIsoDate = () => new Date().toISOString().slice(0, 10);
 const templateLabels: Record<string, string> = {
   certificate_completed_internship: "Sertifikat Mahasiswa Magang",
   certificate_completed_research: "Sertifikat Mahasiswa Riset",
+  completion_letter_completed_internship: "Surat Keterangan Selesai Magang",
 };
+
+const managedTemplateKeys = [
+  "certificate_completed_internship",
+  "certificate_completed_research",
+  "completion_letter_completed_internship",
+];
 
 const templateOutcomeLabel = (outcome?: string | null) =>
   outcome === "completed" ? "Selesai" : outcome || "-";
@@ -473,13 +481,21 @@ const formatFileSize = (value?: number | null) => {
   return `${size} B`;
 };
 
+const templatePageLabel = (version?: TemplateVersion | null) => {
+  if (!version?.pageWidth || !version?.pageHeight) return "-";
+  const orientation = Number(version.pageWidth) >= Number(version.pageHeight) ? "Landscape" : "Portrait";
+  return `${orientation} ${Math.round(Number(version.pageWidth))} x ${Math.round(Number(version.pageHeight))} pt`;
+};
+
 const errorMessage = (err: any) => {
   if (err instanceof ApiError) {
     if (err.status === 400) return err.message || "Input tidak valid.";
     if (err.status === 403) return "Anda tidak memiliki akses untuk aksi ini.";
     if (err.status === 404) return "Data tidak ditemukan atau sudah tidak tersedia.";
-    if (err.status === 409) return "Data atau status telah berubah. Muat ulang dan periksa kembali.";
+    if (err.status === 409) return err.message || "Data atau status telah berubah. Muat ulang dan periksa kembali.";
     if (err.status === 410) return "File dokumen tidak tersedia. Periksa kembali draft sebelum menerbitkan.";
+    if (err.status === 413) return "File terlalu besar. Gunakan PDF sesuai batas ukuran yang diizinkan.";
+    if (err.status === 422) return err.message || "Data belum memenuhi syarat untuk diproses.";
     if (err.status >= 500) return "Permintaan belum dapat diproses. Coba lagi nanti.";
   }
   return err?.message || "Permintaan belum dapat diproses.";
@@ -539,6 +555,7 @@ export default function DocumentCenter() {
   const [completionUploading, setCompletionUploading] = useState(false);
   const [certificateUploadingId, setCertificateUploadingId] = useState<string | null>(null);
   const [generatingCertificateId, setGeneratingCertificateId] = useState<string | null>(null);
+  const [generatingCompletionCaseId, setGeneratingCompletionCaseId] = useState<string | null>(null);
   const [revokeDialog, setRevokeDialog] = useState<RevokeDialogState | null>(null);
   const [revokeError, setRevokeError] = useState("");
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -883,7 +900,7 @@ export default function DocumentCenter() {
       );
       setTemplates({
         ...result,
-        items: (result.items || []).filter((item) => ["certificate_completed_internship", "certificate_completed_research"].includes(item.templateKey)),
+        items: (result.items || []).filter((item) => managedTemplateKeys.includes(item.templateKey)),
       });
       setTemplatesLoaded(true);
     } catch (err: any) {
@@ -1137,6 +1154,62 @@ export default function DocumentCenter() {
     }
   };
 
+  const activeCompletionLetterTemplate = templates.items.find(
+    (template) => template.templateKey === "completion_letter_completed_internship" && Boolean(template.activeVersionId),
+  );
+
+  const canGenerateCompletionLetter = (caseItem: FinalCase | null = selectedFinalCase) =>
+    Boolean(
+      caseItem &&
+      caseItem.activityType === "Magang" &&
+      caseItem.outcome === "completed" &&
+      caseItem.status === "pending" &&
+      !caseItem.completionDocument &&
+      caseItem.capabilities.canGenerateCompletion !== false &&
+      caseItem.projects?.length === 1 &&
+      activeCompletionLetterTemplate,
+    );
+
+  const shouldShowCompletionGenerateSlot = (caseItem: FinalCase | null = selectedFinalCase) =>
+    Boolean(
+      caseItem &&
+      caseItem.activityType === "Magang" &&
+      caseItem.outcome === "completed" &&
+      caseItem.status === "pending" &&
+      !caseItem.completionDocument &&
+      caseItem.capabilities.canGenerateCompletion !== false &&
+      caseItem.projects?.length === 1,
+    );
+
+  const generateCompletionLetterDraft = async (caseItem: FinalCase) => {
+    if (!canGenerateCompletionLetter(caseItem) || generatingCompletionCaseId === caseItem.id) return;
+    const confirmed = await confirm({
+      title: "Generate draft Surat Keterangan Selesai Magang?",
+      description:
+        "Sistem akan memakai template aktif dan mengambil data mahasiswa, periode, dan proyek dari case ini. Tidak ada nomor resmi yang dibuat pada tahap draft.",
+      confirmLabel: "Generate",
+      cancelLabel: "Batal",
+      variant: "primary",
+    });
+    if (!confirmed) return;
+    setGeneratingCompletionCaseId(caseItem.id);
+    setError("");
+    try {
+      await apiPost(`/document-center/operator/final-activity/cases/${encodePathSegment(caseItem.id)}/generate-completion-letter-draft`, {});
+      await Promise.all([loadFinalCases(), load()]);
+      await refreshSelectedFinalCase(caseItem.id);
+      showToast("Draft Surat Keterangan Selesai Magang berhasil dibuat.");
+    } catch (err: any) {
+      setError(errorMessage(err));
+      if ([404, 409, 410, 422].includes(err?.status)) {
+        await Promise.all([loadFinalCases(), loadTemplates()]);
+        await refreshSelectedFinalCase(caseItem.id).catch(() => {});
+      }
+    } finally {
+      setGeneratingCompletionCaseId(null);
+    }
+  };
+
   const canGenerateCertificate = (project: FinalProject) =>
     Boolean(
       selectedFinalCase?.outcome === "completed" &&
@@ -1177,12 +1250,22 @@ export default function DocumentCenter() {
 
   const publishFinalDocument = async (document: FinalDocument, kind: "completion" | "certificate") => {
     if (!document.id || publishingId === document.id) return;
+    const isInternshipCompletionLetter =
+      kind === "completion" &&
+      selectedFinalCase?.activityType === "Magang" &&
+      selectedFinalCase?.outcome === "completed";
     const confirmed = await confirm({
-      title: kind === "completion" ? "Terbitkan Surat Keterangan Selesai?" : "Terbitkan sertifikat?",
+      title: isInternshipCompletionLetter
+        ? "Terbitkan Surat Keterangan Selesai Magang ini?"
+        : kind === "completion"
+          ? "Terbitkan Surat Keterangan Selesai?"
+          : "Terbitkan sertifikat?",
       description:
-        kind === "completion"
-          ? "Terbitkan Surat Keterangan Selesai ini? Nomor resmi akan dibuat otomatis oleh sistem."
-          : "Terbitkan sertifikat ini? Sistem akan membuat nomor resmi dan PDF final bernomor secara otomatis.",
+        isInternshipCompletionLetter
+          ? "Terbitkan Surat Keterangan Selesai Magang ini? Sistem akan membuat nomor resmi kode 09 dan PDF final bertanggal secara otomatis."
+          : kind === "completion"
+            ? "Terbitkan Surat Keterangan Selesai ini? Nomor resmi akan dibuat otomatis oleh sistem."
+            : "Terbitkan sertifikat ini? Sistem akan membuat nomor resmi dan PDF final bernomor secara otomatis.",
       confirmLabel: "Terbitkan",
       cancelLabel: "Batal",
       variant: "primary",
@@ -1192,7 +1275,7 @@ export default function DocumentCenter() {
     setError("");
     try {
       const response = await apiPost<PublishResponse>(`/document-center/operator/documents/${encodePathSegment(document.id)}/publish`);
-      showToast(`Dokumen berhasil diterbitkan: ${response.documentNumber}`);
+      showToast(isInternshipCompletionLetter ? `Surat berhasil diterbitkan dengan nomor ${response.documentNumber}.` : `Dokumen berhasil diterbitkan: ${response.documentNumber}`);
       await Promise.all([loadFinalCases(), load()]);
       if (selectedFinalCase) await refreshSelectedFinalCase(selectedFinalCase.id);
     } catch (err: any) {
@@ -1286,6 +1369,12 @@ export default function DocumentCenter() {
 
   useEffect(() => {
     if (activeTab === "templates" && !templatesLoaded) {
+      void loadTemplates(0);
+    }
+  }, [activeTab, templatesLoaded]);
+
+  useEffect(() => {
+    if (activeTab === "final" && !templatesLoaded) {
       void loadTemplates(0);
     }
   }, [activeTab, templatesLoaded]);
@@ -2238,9 +2327,9 @@ export default function DocumentCenter() {
         <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Template Dokumen</p>
-            <h2 className="text-sm font-black text-foreground">Template sertifikat berbasis PDF</h2>
+            <h2 className="text-sm font-black text-foreground">Template PDF sertifikat dan surat keterangan</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              V1 hanya mengelola Sertifikat Mahasiswa Magang dan Sertifikat Mahasiswa Riset. Layout dan konten preset ditentukan backend.
+              V1 mengelola Sertifikat Mahasiswa Magang, Sertifikat Mahasiswa Riset, dan Surat Keterangan Selesai Magang. Layout dan konten preset ditentukan backend.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => void loadTemplates()} disabled={templatesLoading}>
@@ -2269,7 +2358,7 @@ export default function DocumentCenter() {
             ) : templates.items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
-                  Belum ada template sertifikat V1.
+                  Belum ada template dokumen V1.
                 </TableCell>
               </TableRow>
             ) : (
@@ -2408,7 +2497,7 @@ export default function DocumentCenter() {
                 <div className="rounded-[12px] border border-border bg-white">
                   <div className="border-b border-border px-4 py-3">
                     <p className="font-black text-foreground">Versi Template</p>
-                    <p className="text-xs text-muted-foreground">Aktifkan versi yang akan digunakan untuk generate sertifikat berikutnya.</p>
+                    <p className="text-xs text-muted-foreground">Aktifkan versi yang akan digunakan untuk generate dokumen berikutnya.</p>
                   </div>
                   {selectedTemplate.versions?.length ? (
                     <div className="grid gap-2 p-3">
@@ -2425,6 +2514,7 @@ export default function DocumentCenter() {
                                 <p className="text-xs text-muted-foreground">
                                   {formatFileSize(version.fileSize)} | {formatDateReadable(version.createdAt)}
                                 </p>
+                                <p className="text-xs text-muted-foreground">Halaman: {templatePageLabel(version)}</p>
                               </div>
                               {!isActive && (
                                 <Button
@@ -2947,22 +3037,43 @@ export default function DocumentCenter() {
                         <p className="mt-2 text-muted-foreground">Belum ada draft SKS.</p>
                       )}
                     </div>
-                    {selectedFinalCase.capabilities.canUploadCompletion && (
-                      <Button
-                        size="sm"
-                        disabled={completionUploading}
-                        onClick={() =>
-                          setFinalDraftUpload({
-                            type: "completion",
-                            id: selectedFinalCase.id,
-                            title: `${selectedFinalCase.outcome === "withdrawn_early" ? "Surat Keterangan Kegiatan" : "Surat Keterangan Selesai"} - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
-                            file: null,
-                          })
-                        }
-                      >
-                        {completionUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                        Upload Draft SKS
-                      </Button>
+                    {(shouldShowCompletionGenerateSlot(selectedFinalCase) || selectedFinalCase.capabilities.canUploadCompletion) && (
+                      <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                        {shouldShowCompletionGenerateSlot(selectedFinalCase) && (
+                          canGenerateCompletionLetter(selectedFinalCase) ? (
+                            <Button
+                              size="sm"
+                              disabled={generatingCompletionCaseId === selectedFinalCase.id}
+                              onClick={() => void generateCompletionLetterDraft(selectedFinalCase)}
+                            >
+                              {generatingCompletionCaseId === selectedFinalCase.id ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                              Generate Surat Keterangan Selesai
+                            </Button>
+                          ) : (
+                            <p className="max-w-xs text-xs text-muted-foreground">
+                              Template aktif Surat Keterangan Selesai Magang belum tersedia. Gunakan upload manual atau aktifkan template terlebih dahulu.
+                            </p>
+                          )
+                        )}
+                        {selectedFinalCase.capabilities.canUploadCompletion && (
+                          <Button
+                            size="sm"
+                            variant={shouldShowCompletionGenerateSlot(selectedFinalCase) ? "outline" : "default"}
+                            disabled={completionUploading}
+                            onClick={() =>
+                              setFinalDraftUpload({
+                                type: "completion",
+                                id: selectedFinalCase.id,
+                                title: `${selectedFinalCase.outcome === "withdrawn_early" ? "Surat Keterangan Kegiatan" : "Surat Keterangan Selesai"} - ${selectedFinalCase.student.name || selectedFinalCase.student.nim || ""}`.trim(),
+                                file: null,
+                              })
+                            }
+                          >
+                            {completionUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                            Upload Draft SKS
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
