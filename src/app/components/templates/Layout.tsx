@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   LayoutDashboard,
@@ -415,9 +415,9 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     return () => window.removeEventListener("stas:access-locked", onAccessLocked);
   }, [shouldHideHolidayAttendanceLock, user?.role]);
 
-  // Auto-logout mahasiswa tepat pukul 22:00 WIB agar session tidak bisa digunakan untuk check-in
+  // Alumni tidak perlu auto-logout jam 22
   useEffect(() => {
-    if (user?.role !== "mahasiswa") return;
+    if (user?.role !== "mahasiswa" || isAlumni) return;
 
     const CUTOFF_HOUR = 22;
 
@@ -472,18 +472,26 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     };
   }, [user?.role, logout, navigate]);
 
-  const navItems = [
+  const studentStatus = String((user as any)?.status || (user as any)?.studentStatus || "").trim();
+  const isAlumni = user?.role === "mahasiswa" && studentStatus === "Alumni";
+
+  // Halaman yang bisa diakses Alumni (read-only history)
+  const ALUMNI_ALLOWED_PATHS = new Set(["/dashboard", "/logbook", "/research", "/documents", "/graduation", "/draft", "/settings"]);
+
+  const allNavItems = [
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { name: "Kehadiran (GPS)", path: "/attendance", icon: MapPin },
+    { name: "Kehadiran (GPS)", path: "/attendance", icon: MapPin, alumniHidden: true },
     { name: "Logbook", path: "/logbook", icon: BookOpen },
-    { name: "Piket", path: "/picket", icon: ClipboardCheck },
+    { name: "Piket", path: "/picket", icon: ClipboardCheck, alumniHidden: true },
     { name: "Riset Saya", path: "/research", icon: FlaskConical },
-    { name: "Pengajuan", path: "/leave", icon: FileText },
+    { name: "Pengajuan", path: "/leave", icon: FileText, alumniHidden: true },
     { name: "Dokumen & Sertifikat", path: "/documents", icon: Award },
-    { name: "Pusat Dokumen Saya", path: "/document-center", icon: FileText },
+    { name: "Pusat Dokumen Saya", path: "/document-center", icon: FileText, alumniHidden: true },
     { name: "Berkas Kelulusan", path: "/graduation", icon: FileCheck },
     { name: "Draft TA / Jurnal", path: "/draft", icon: ScrollText },
   ];
+
+  const navItems = allNavItems.filter((item) => !isAlumni || !(item as any).alumniHidden);
 
   const handleLogout = () => {
     logout();
@@ -504,6 +512,12 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
           </div>
 
           <nav className="flex-1 px-4 py-6 flex flex-col gap-2 overflow-y-auto">
+            {isAlumni && (
+              <div className="mb-2 mx-1 px-3 py-2 rounded-[10px] bg-emerald-50 border border-emerald-200 flex items-center gap-2">
+                <GraduationCap size={14} className="text-emerald-600 shrink-0" />
+                <span className="text-[11px] font-black text-emerald-700">Mode Alumni — Hanya History</span>
+              </div>
+            )}
             {navItems.map((item) => {
               const isActive =
                 location.pathname === item.path ||
@@ -576,6 +590,12 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
           </div>
 
           <nav className="flex-1 px-4 py-6 flex flex-col gap-2 overflow-y-auto">
+            {isAlumni && (
+              <div className="mb-2 mx-1 px-3 py-2 rounded-[10px] bg-emerald-50 border border-emerald-200 flex items-center gap-2">
+                <GraduationCap size={14} className="text-emerald-600 shrink-0" />
+                <span className="text-[11px] font-black text-emerald-700">Mode Alumni — Hanya History</span>
+              </div>
+            )}
             {navItems.map((item) => {
               const isActive =
                 location.pathname === item.path ||
@@ -715,7 +735,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
         </div>
       )}
 
-      {isActiveAccessLock(accessLock) && (
+      {isActiveAccessLock(accessLock) && !isAlumni && (
         <div className="fixed inset-0 z-[900] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-[460px] overflow-hidden rounded-[22px] border border-red-200 bg-white shadow-2xl">
             <div className="bg-red-600 px-6 py-5 flex items-center gap-4">

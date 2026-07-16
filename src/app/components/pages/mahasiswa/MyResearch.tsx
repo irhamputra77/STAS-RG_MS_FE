@@ -17,6 +17,7 @@ interface ResearchProject {
   category?: string;
   description?: string;
   funding?: string;
+  my_peran?: string;
 }
 
 export default function MyResearch() {
@@ -146,14 +147,20 @@ export default function MyResearch() {
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    <span
-                      className={`text-xs font-black px-2 py-1 rounded-full ${r.status === "Aktif"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-slate-100 text-slate-600"
-                        }`}
-                    >
-                      {r.status}
-                    </span>
+                    {r.my_peran === "Alumni" ? (
+                      <span className="text-xs font-black px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                        Alumni
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-xs font-black px-2 py-1 rounded-full ${r.status === "Aktif"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-slate-100 text-slate-600"
+                          }`}
+                      >
+                        {r.status}
+                      </span>
+                    )}
 
                     <div className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-[#6C47FF] group-hover:border-[#6C47FF]/30 group-hover:bg-[#F8F5FF] transition-all">
                       <ChevronRight size={18} />

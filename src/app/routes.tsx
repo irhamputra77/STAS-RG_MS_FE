@@ -85,6 +85,20 @@ function RequireRole({ allowedRoles }: { allowedRoles: UserRole[] }) {
   return <Outlet />;
 }
 
+function RequireNonAlumni() {
+  const { user, hydrated } = useAuth();
+  const storedUser = user as any;
+  const studentStatus = String(storedUser?.status || storedUser?.studentStatus || "").trim();
+
+  if (!hydrated) return null;
+
+  if (user?.role === "mahasiswa" && studentStatus === "Alumni") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Outlet />;
+}
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -108,19 +122,25 @@ export const router = createBrowserRouter([
                 element: <RequireRole allowedRoles={["mahasiswa"]} />,
                 children: [
                   { path: "dashboard", element: <Dashboard /> },
-                  { path: "attendance", element: <Attendance /> },
                   { path: "logbook", element: <Logbook /> },
-                  { path: "logbook/new", element: <LogbookForm /> },
-                  { path: "leave", element: <LeaveRequest /> },
+                  { path: "research", element: <MyResearch /> },
                   { path: "documents", element: <Documents /> },
-                  { path: "document-center", element: <DocumentCenterMahasiswa /> },
                   { path: "graduation", element: <GraduationSubmission /> },
                   { path: "draft", element: <DraftReport /> },
-                  { path: "research", element: <MyResearch /> },
-                  { path: "picket", element: <Piket /> },
-                  { path: "picket/history", element: <PicketHistory /> },
-                  { path: "picket/manage", element: <PiketOperator /> },
-                  { path: "picket/manage/history", element: <PicketHistory management /> },
+                  // Halaman berikut hanya untuk mahasiswa aktif (non-alumni)
+                  {
+                    element: <RequireNonAlumni />,
+                    children: [
+                      { path: "attendance", element: <Attendance /> },
+                      { path: "logbook/new", element: <LogbookForm /> },
+                      { path: "leave", element: <LeaveRequest /> },
+                      { path: "document-center", element: <DocumentCenterMahasiswa /> },
+                      { path: "picket", element: <Piket /> },
+                      { path: "picket/history", element: <PicketHistory /> },
+                      { path: "picket/manage", element: <PiketOperator /> },
+                      { path: "picket/manage/history", element: <PicketHistory management /> },
+                    ],
+                  },
                   { path: "scrum-board", element: <Navigate to="/research" replace /> },
                   { path: "scrum-board/:researchId", element: <ScrumBoard /> },
                   { path: "board", element: <Navigate to="/research" replace /> },
