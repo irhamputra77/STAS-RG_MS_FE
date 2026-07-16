@@ -236,17 +236,21 @@ export function resolveApiAssetUrl(fileUrl?: string | null) {
   const normalized = String(fileUrl).trim();
   if (!normalized) return null;
 
+  let finalUrl = normalized;
+
   if (/^https?:\/\//i.test(normalized) || normalized.startsWith("blob:") || normalized.startsWith("data:")) {
-    return normalized;
+    finalUrl = normalized;
+  } else if (normalized.startsWith("//")) {
+    finalUrl = `${window.location.protocol}${normalized}`;
+  } else if (normalized.startsWith("/")) {
+    finalUrl = `${API_ORIGIN}${normalized}`;
+  } else {
+    finalUrl = `${API_ORIGIN}/${normalized}`;
   }
 
-  if (normalized.startsWith("//")) {
-    return `${window.location.protocol}${normalized}`;
+  if (typeof window !== "undefined" && window.location.protocol === "https:" && finalUrl.startsWith("http://")) {
+    finalUrl = finalUrl.replace(/^http:\/\//i, "https://");
   }
 
-  if (normalized.startsWith("/")) {
-    return `${API_ORIGIN}${normalized}`;
-  }
-
-  return `${API_ORIGIN}/${normalized}`;
+  return finalUrl;
 }
