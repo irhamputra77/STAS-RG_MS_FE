@@ -14,6 +14,7 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
+import { useAuth } from "../../../context/AuthContext";
 
 type FieldReview = {
   status?: "accepted" | "rejected" | "pending";
@@ -368,6 +369,7 @@ export default function GraduationSubmission() {
   const [becomingAlumni, setBecomingAlumni] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const { login } = useAuth();
 
   const completion = useMemo(() => {
     const requiredPairs = projects.flatMap((project) =>
@@ -493,7 +495,7 @@ export default function GraduationSubmission() {
 
       const currentUser = getStoredUser();
       if (currentUser && nextStudentStatus && nextStudentStatus !== currentUser.status) {
-        setStoredUser({
+        login({
           ...currentUser,
           status: nextStudentStatus,
           studentStatus: nextStudentStatus,
@@ -527,7 +529,7 @@ export default function GraduationSubmission() {
 
       const currentUser = getStoredUser();
       if (currentUser) {
-        setStoredUser({
+        login({
           ...currentUser,
           status: nextStudentStatus,
           studentStatus: nextStudentStatus,
