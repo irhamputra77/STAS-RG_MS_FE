@@ -118,6 +118,7 @@ function getLink(role: string | undefined, type: NotificationType) {
       case "wfh":
         return "/operator/cuti";
       case "dokumen":
+        return "/operator/mahasiswa";
       case "surat":
         return "/operator/surat";
       case "sertifikat":
