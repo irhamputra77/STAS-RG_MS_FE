@@ -98,7 +98,9 @@ export default function Login() {
         initials: sessionUser.initials,
         role: sessionUser.role,
         prodi: sessionUser.prodi,
-        tipe: sessionUser.tipe
+        tipe: sessionUser.tipe,
+        status: sessionUser.status,
+        studentStatus: sessionUser.studentStatus
       });
       navigate(ROLE_DESTINATION[sessionUser.role] || "/dashboard");
     } catch (err: any) {
