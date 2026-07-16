@@ -16,6 +16,7 @@ import {
   ApiError,
   apiGet,
   apiGetBlob,
+  apiPatch,
   apiPost,
   buildQueryPath,
   downloadBlob,
@@ -291,6 +292,13 @@ type FinalCase = {
   createdAt?: string | null;
   updatedAt?: string | null;
   certificateCount?: number;
+  certificateSummary?: Array<{
+    id?: string | null;
+    status?: string | null;
+    documentNumber?: string | null;
+    documentStatus?: string | null;
+    documentId?: string | null;
+  }>;
   completionDocument?: FinalDocument | null;
   capabilities: {
     canUploadCompletion?: boolean;
@@ -349,6 +357,24 @@ type FinalDraftUpload = {
   title: string;
   file: File | null;
   projectTitle?: string | null;
+};
+
+type FinalCorrectionProject = {
+  id: string;
+  title: string;
+  role: string;
+  joinedAt: string;
+  completedAt: string;
+};
+
+type FinalCorrectionForm = {
+  studentName: string;
+  studentNim: string;
+  studentProdi: string;
+  periodStart: string;
+  periodEnd: string;
+  periodDescription: string;
+  projects: FinalCorrectionProject[];
 };
 
 type RevokeDialogState = {
@@ -575,6 +601,10 @@ export default function DocumentCenter() {
   const [finalCaseSearch, setFinalCaseSearch] = useState("");
   const [selectedFinalCase, setSelectedFinalCase] = useState<FinalCase | null>(null);
   const [finalCaseDetailLoading, setFinalCaseDetailLoading] = useState(false);
+  const [finalCorrectionOpen, setFinalCorrectionOpen] = useState(false);
+  const [finalCorrectionForm, setFinalCorrectionForm] = useState<FinalCorrectionForm | null>(null);
+  const [finalCorrectionError, setFinalCorrectionError] = useState("");
+  const [finalCorrectionSaving, setFinalCorrectionSaving] = useState(false);
   const [finalDraftUpload, setFinalDraftUpload] = useState<FinalDraftUpload | null>(null);
   const [finalDraftError, setFinalDraftError] = useState("");
   const [completionUploading, setCompletionUploading] = useState(false);
@@ -935,6 +965,126 @@ export default function DocumentCenter() {
     }
   };
 
+  const buildFinalCorrectionForm = (caseItem: FinalCase): FinalCorrectionForm => ({
+    studentName: caseItem.student.name || "",
+    studentNim: caseItem.student.nim || "",
+    studentProdi: caseItem.student.prodi || "",
+    periodStart: caseItem.period?.startDate ? String(caseItem.period.startDate).slice(0, 10) : "",
+    periodEnd: caseItem.period?.endDate ? String(caseItem.period.endDate).slice(0, 10) : "",
+    periodDescription: caseItem.period?.description || "",
+    projects: (caseItem.projects || []).map((project) => ({
+      id: project.id,
+      title: project.project.title || project.project.shortTitle || "",
+      role: project.project.role || "",
+      joinedAt: project.project.joinedAt ? String(project.project.joinedAt).slice(0, 10) : "",
+      completedAt: project.project.completedAt ? String(project.project.completedAt).slice(0, 10) : "",
+    })),
+  });
+
+  const openFinalCorrection = () => {
+    if (!selectedFinalCase) return;
+    setFinalCorrectionForm(buildFinalCorrectionForm(selectedFinalCase));
+    setFinalCorrectionError("");
+    setFinalCorrectionOpen(true);
+  };
+
+  const openFinalCorrectionById = async (id: string) => {
+    setFinalCaseDetailLoading(true);
+    setError("");
+    try {
+      const caseItem = await apiGet<FinalCase>(`/document-center/operator/final-activity/cases/${encodePathSegment(id)}`);
+      setSelectedFinalCase(caseItem);
+      setFinalCorrectionForm(buildFinalCorrectionForm(caseItem));
+      setFinalCorrectionError("");
+      setFinalCorrectionOpen(true);
+    } catch (err: any) {
+      setError(errorMessage(err));
+    } finally {
+      setFinalCaseDetailLoading(false);
+    }
+  };
+
+  const updateFinalCorrectionProject = (id: string, patch: Partial<FinalCorrectionProject>) => {
+    setFinalCorrectionForm((current) =>
+      current
+        ? {
+            ...current,
+            projects: current.projects.map((project) => (project.id === id ? { ...project, ...patch } : project)),
+          }
+        : current,
+    );
+  };
+
+  const submitFinalCorrection = async () => {
+    if (!selectedFinalCase || !finalCorrectionForm || finalCorrectionSaving) return;
+    setFinalCorrectionSaving(true);
+    setFinalCorrectionError("");
+    try {
+      const result = await apiPatch<{ case: FinalCase }>(
+        `/document-center/operator/final-activity/cases/${encodePathSegment(selectedFinalCase.id)}/dynamic-data`,
+        {
+          student: {
+            name: finalCorrectionForm.studentName,
+            nim: finalCorrectionForm.studentNim,
+            prodi: finalCorrectionForm.studentProdi,
+          },
+          period: {
+            startDate: finalCorrectionForm.periodStart || null,
+            endDate: finalCorrectionForm.periodEnd || null,
+            description: finalCorrectionForm.periodDescription,
+          },
+          projects: finalCorrectionForm.projects.map((project) => ({
+            id: project.id,
+            title: project.title,
+            role: project.role,
+            joinedAt: project.joinedAt || null,
+            completedAt: project.completedAt || null,
+          })),
+        },
+      );
+      setSelectedFinalCase(result.case);
+      setFinalCorrectionOpen(false);
+      await loadFinalCases();
+      showToast("Data dokumen akhir berhasil diperbarui tanpa mengubah nomor dan tanggal terbit.");
+    } catch (err: any) {
+      setFinalCorrectionError(err instanceof ApiError && err.message ? err.message : errorMessage(err));
+      if ([404, 409, 410, 422].includes(err?.status)) {
+        await Promise.all([loadFinalCases(), refreshSelectedFinalCase(selectedFinalCase.id).catch(() => {})]);
+      }
+    } finally {
+      setFinalCorrectionSaving(false);
+    }
+  };
+
+  const buildFinalBatchSummaries = () => {
+    const batches = new Map<string, {
+      key: string;
+      kind: "SKS" | "Sertifikat";
+      documentNumber: string;
+      documentStatus?: string | null;
+      count: number;
+      students: string[];
+    }>();
+    const addBatch = (kind: "SKS" | "Sertifikat", documentNumber?: string | null, documentStatus?: string | null, studentName?: string | null) => {
+      if (!documentNumber) return;
+      const key = `${kind}:${documentNumber}`;
+      const current = batches.get(key) || { key, kind, documentNumber, documentStatus, count: 0, students: [] };
+      current.count += 1;
+      if (studentName && !current.students.includes(studentName)) current.students.push(studentName);
+      if (documentStatus) current.documentStatus = documentStatus;
+      batches.set(key, current);
+    };
+    for (const item of finalCases.items) {
+      addBatch("SKS", item.completionDocument?.documentNumber, item.completionDocument?.status, item.student.name);
+      for (const certificate of item.certificateSummary || []) {
+        addBatch("Sertifikat", certificate.documentNumber, certificate.documentStatus || certificate.status, item.student.name);
+      }
+    }
+    return Array.from(batches.values()).sort((a, b) =>
+      a.kind.localeCompare(b.kind) || a.documentNumber.localeCompare(b.documentNumber),
+    );
+  };
+
   const loadTemplates = async (offset = templates.pagination.offset) => {
     setTemplatesLoading(true);
     setError("");
@@ -1111,9 +1261,15 @@ export default function DocumentCenter() {
       const caseIds = Array.from(new Set((result.items || [])
         .filter((item) => (item.status === "created" || item.status === "existing") && item.caseId)
         .map((item) => String(item.caseId))));
-      const bulkPublish = finalOutcome === "completed" && caseIds.length
-        ? await autoGenerateAndPublishFinalCases(caseIds)
-        : null;
+      let bulkPublish: BulkPublishResponse | null = null;
+      let autoPublishError = "";
+      if (finalOutcome === "completed" && caseIds.length) {
+        try {
+          bulkPublish = await autoGenerateAndPublishFinalCases(caseIds);
+        } catch (err: any) {
+          autoPublishError = err instanceof ApiError && err.message ? err.message : errorMessage(err);
+        }
+      }
       await Promise.all([loadEligible(0), loadFinalCases(0)]);
       const created = result.items?.filter((item) => item.status === "created").length || 0;
       const existing = result.items?.filter((item) => item.status === "existing").length || 0;
@@ -1123,6 +1279,11 @@ export default function DocumentCenter() {
       const batchText = bulkPublish?.batches?.length
         ? ` Nomor batch: ${bulkPublish.batches.map((batch) => batch.documentNumber).join(", ")}.`
         : "";
+      if (autoPublishError) {
+        setError(`Registrasi berhasil, tetapi generate/publish otomatis belum selesai: ${autoPublishError}`);
+      } else {
+        setError("");
+      }
       showToast(`Registrasi selesai: ${created} baru, ${existing} sudah ada, ${invalid} perlu dicek.${batchText}`);
     } catch (err: any) {
       setError(errorMessage(err));
@@ -1825,6 +1986,7 @@ export default function DocumentCenter() {
       .map(candidateKey);
     const selectedCount = selectedEligible.length;
     const allSelectableChecked = selectableEligibleKeys.length > 0 && selectableEligibleKeys.every((key) => selectedEligible.includes(key));
+    const finalBatchSummaries = buildFinalBatchSummaries();
 
     return (
       <div className="grid gap-4">
@@ -2173,6 +2335,13 @@ export default function DocumentCenter() {
               </div>
               <Button type="submit" size="sm">Cari</Button>
             </form>
+            {finalBatchSummaries.length > 0 && (
+              <div className="border-b border-border bg-emerald-50/40 px-4 py-3 text-xs text-muted-foreground">
+                <span className="font-black text-emerald-700">Ringkasan nomor halaman ini: </span>
+                {finalBatchSummaries.slice(0, 4).map((batch) => `${batch.kind} ${batch.documentNumber} (${batch.count})`).join(" · ")}
+                {finalBatchSummaries.length > 4 ? ` · +${finalBatchSummaries.length - 4} nomor lain` : ""}
+              </div>
+            )}
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50">
@@ -2215,9 +2384,17 @@ export default function DocumentCenter() {
                           : "Belum ada sertif"}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => void openFinalCaseDetail(item.id)} aria-label="Detail case">
-                          <Eye size={15} />
-                        </Button>
+                        <div className="flex flex-wrap gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => void openFinalCaseDetail(item.id)} aria-label="Detail case">
+                            <Eye size={14} />
+                            Detail
+                          </Button>
+                          {(item.completionDocument || Number(item.certificateCount || item.projects?.length || 0) > 0) && item.status !== "revoked" && (
+                            <Button variant="ghost" size="sm" onClick={() => void openFinalCorrectionById(item.id)}>
+                              Edit Data
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -3196,6 +3373,13 @@ export default function DocumentCenter() {
                     <p><b>{selectedFinalCase.outcome === "withdrawn_early" ? "Tanggal efektif:" : "Selesai:"}</b> {formatDateReadable(selectedFinalCase.completedAt)}</p>
                   </div>
                 </div>
+                {(selectedFinalCase.completionDocument || selectedFinalCase.projects?.some((project) => project.certificateDocument)) && selectedFinalCase.status !== "revoked" && (
+                  <div className="flex justify-end">
+                    <Button size="sm" variant="outline" onClick={openFinalCorrection}>
+                      Perbarui Data Dokumen
+                    </Button>
+                  </div>
+                )}
 
                 <div className="rounded-[12px] border border-border bg-white p-3">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -3337,6 +3521,138 @@ export default function DocumentCenter() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setSelectedFinalCase(null)}>
                 Tutup
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={finalCorrectionOpen} onOpenChange={setFinalCorrectionOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Perbarui Data Dokumen Akhir</DialogTitle>
+              <DialogDescription>
+                Data ini akan merender ulang PDF yang sudah ada. Nomor dokumen dan tanggal terbit/tanda tangan tetap dipertahankan.
+              </DialogDescription>
+            </DialogHeader>
+            {finalCorrectionForm && (
+              <div className="grid gap-4 text-sm">
+                {finalCorrectionError && <p className="rounded-lg border border-red-200 bg-red-50 p-3 font-semibold text-red-600">{finalCorrectionError}</p>}
+                <div className="grid gap-3 rounded-[12px] border border-border bg-slate-50 p-3 md:grid-cols-3">
+                  <label className="grid gap-1 font-bold">
+                    Nama mahasiswa
+                    <input
+                      value={finalCorrectionForm.studentName}
+                      onChange={(event) => setFinalCorrectionForm({ ...finalCorrectionForm, studentName: event.target.value })}
+                      className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                      placeholder="Nama mahasiswa"
+                    />
+                  </label>
+                  <label className="grid gap-1 font-bold">
+                    NIM
+                    <input
+                      value={finalCorrectionForm.studentNim}
+                      onChange={(event) => setFinalCorrectionForm({ ...finalCorrectionForm, studentNim: event.target.value })}
+                      className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                      placeholder="NIM"
+                    />
+                  </label>
+                  <label className="grid gap-1 font-bold">
+                    Program studi
+                    <input
+                      value={finalCorrectionForm.studentProdi}
+                      onChange={(event) => setFinalCorrectionForm({ ...finalCorrectionForm, studentProdi: event.target.value })}
+                      className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                      placeholder="Program studi"
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-3 rounded-[12px] border border-border bg-white p-3 md:grid-cols-3">
+                  <label className="grid gap-1 font-bold">
+                    Mulai periode
+                    <input
+                      type="date"
+                      value={finalCorrectionForm.periodStart}
+                      onChange={(event) => setFinalCorrectionForm({ ...finalCorrectionForm, periodStart: event.target.value })}
+                      className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-1 font-bold">
+                    Selesai periode
+                    <input
+                      type="date"
+                      value={finalCorrectionForm.periodEnd}
+                      onChange={(event) => setFinalCorrectionForm({ ...finalCorrectionForm, periodEnd: event.target.value })}
+                      className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                    />
+                  </label>
+                  <label className="grid gap-1 font-bold">
+                    Keterangan periode
+                    <input
+                      value={finalCorrectionForm.periodDescription}
+                      onChange={(event) => setFinalCorrectionForm({ ...finalCorrectionForm, periodDescription: event.target.value })}
+                      className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                      placeholder="Keterangan periode"
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-3">
+                  <p className="font-black text-foreground">Project dan posisi</p>
+                  {finalCorrectionForm.projects.length ? (
+                    finalCorrectionForm.projects.map((project) => (
+                      <div key={project.id} className="grid gap-3 rounded-[12px] border border-border bg-slate-50 p-3 md:grid-cols-2">
+                        <label className="grid gap-1 font-bold">
+                          Judul project
+                          <input
+                            value={project.title}
+                            onChange={(event) => updateFinalCorrectionProject(project.id, { title: event.target.value })}
+                            className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                            placeholder="Judul project"
+                          />
+                        </label>
+                        <label className="grid gap-1 font-bold">
+                          Posisi/peran
+                          <input
+                            value={project.role}
+                            onChange={(event) => updateFinalCorrectionProject(project.id, { role: event.target.value })}
+                            className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                            placeholder="Contoh: Embedded System Engineer"
+                          />
+                        </label>
+                        <label className="grid gap-1 font-bold">
+                          Mulai project
+                          <input
+                            type="date"
+                            value={project.joinedAt}
+                            onChange={(event) => updateFinalCorrectionProject(project.id, { joinedAt: event.target.value })}
+                            className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                          />
+                        </label>
+                        <label className="grid gap-1 font-bold">
+                          Selesai project
+                          <input
+                            type="date"
+                            value={project.completedAt}
+                            onChange={(event) => updateFinalCorrectionProject(project.id, { completedAt: event.target.value })}
+                            className="h-10 rounded-[10px] border border-border px-3 font-normal"
+                          />
+                        </label>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-[12px] border border-border bg-slate-50 p-3 text-muted-foreground">
+                      Tidak ada project pada dokumen ini.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setFinalCorrectionOpen(false)} disabled={finalCorrectionSaving}>
+                Batal
+              </Button>
+              <Button onClick={() => void submitFinalCorrection()} disabled={finalCorrectionSaving || !finalCorrectionForm}>
+                {finalCorrectionSaving ? <Loader2 size={14} className="animate-spin" /> : null}
+                Simpan & Render Ulang
               </Button>
             </DialogFooter>
           </DialogContent>
