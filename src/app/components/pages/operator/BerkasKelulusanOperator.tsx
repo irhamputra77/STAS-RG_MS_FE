@@ -414,17 +414,14 @@ export default function BerkasKelulusanOperator() {
     }
 
     if (!isSubmissionFullyAccepted(selected)) {
-      setError("Semua link wajib harus terisi dan ACC dulu sebelum izin lulus diberikan.");
-      return;
+      const proceed = window.confirm(
+        "⚠️ Peringatan: Tidak semua link wajib terisi dan ACC.\n\nApakah Anda tetap ingin memberi izin lulus untuk mahasiswa ini? Mahasiswa tetap harus klik Jadi Alumni STAS-RG sendiri."
+      );
+      if (!proceed) return;
+    } else {
+      const confirmed = window.confirm("Beri izin lulus untuk mahasiswa ini? Setelah diizinkan, mahasiswa bisa klik Jadi Alumni STAS-RG sendiri.");
+      if (!confirmed) return;
     }
-
-    if (selected.status === "Draft") {
-      setError("Berkas masih draft. Pastikan semua link sudah ACC lalu refresh data sebelum memberi izin lulus.");
-      return;
-    }
-
-    const confirmed = window.confirm("Beri izin lulus untuk mahasiswa ini? Setelah diizinkan, mahasiswa bisa klik Jadi Alumni STAS-RG sendiri.");
-    if (!confirmed) return;
 
     setAllowing(true);
     setError("");
@@ -440,21 +437,17 @@ export default function BerkasKelulusanOperator() {
 
   const graduationAlreadyAllowed = Boolean(getGraduationAllowedAt(selected));
   const selectedFullyAccepted = isSubmissionFullyAccepted(selected);
-  const canAllowSelected = selectedFullyAccepted && selected?.status !== "Draft" && selected?.student?.status !== "Alumni" && !graduationAlreadyAllowed;
+  const canAllowSelected = selected?.student?.status !== "Alumni" && !graduationAlreadyAllowed;
   const allowGraduationLabel = selected?.student?.status === "Alumni"
     ? "Sudah Alumni"
     : graduationAlreadyAllowed
       ? "Sudah Diizinkan"
       : !selectedFullyAccepted
-        ? "Belum Lengkap"
-        : selected?.status === "Draft"
-          ? "Masih Draft"
-          : "Izinkan Lulus";
+        ? "Izinkan Lulus (Belum Lengkap)"
+        : "Izinkan Lulus";
   const allowGraduationHint = !selectedFullyAccepted
-    ? "Semua link wajib harus terisi dan ACC dulu."
-    : selected?.status === "Draft"
-      ? "Berkas masih draft, refresh setelah semua review tersimpan."
-      : undefined;
+    ? "Tidak semua link ACC — Anda tetap bisa izinkan lulus dengan konfirmasi."
+    : undefined;
 
   return (
     <OperatorLayout title="Berkas Kelulusan Mahasiswa">

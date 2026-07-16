@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Layout } from "../../templates/Layout";
-import { apiGet, apiGetBlob, apiPost, buildQueryPath, downloadBlob, encodePathSegment, getStoredUser, resolveApiAssetUrl } from "../../../lib/api";
+import { apiGet, apiGetBlob, apiPost, apiPut, buildQueryPath, downloadBlob, encodePathSegment, getStoredUser, resolveApiAssetUrl } from "../../../lib/api";
 import { formatDateYmd } from "../../../lib/date";
 import {
   Plus,
@@ -20,6 +20,7 @@ import {
   CalendarClock,
   SendHorizonal,
   Lock,
+  Upload,
 } from "lucide-react";
 
 type SuratStatus = "Menunggu" | "Diproses" | "Siap Unduh";
@@ -171,6 +172,9 @@ export default function Documents() {
   const [certProjectId, setCertProjectId] = useState("");
   const [certRequestNote, setCertRequestNote] = useState("");
   const [certFinishDate, setCertFinishDate] = useState("");
+  const [uploadModal, setUploadModal] = useState<{ type: string; label: string } | null>(null);
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState("");
   const effectiveStudentId = String(studentRecordId || user?.id || "").trim();
 
   useEffect(() => {
@@ -363,6 +367,34 @@ export default function Documents() {
     }
   };
 
+  const handleUploadFile = async (docType: string, file: File) => {
+    if (!user?.id) return;
+    setUploadingType(docType);
+    setUploadError("");
+    try {
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await apiPut<{ message: string; documents: any[] }>(
+        `/students/${encodePathSegment(user.id)}/documents/${encodePathSegment(docType)}`,
+        { fileDataUrl: dataUrl, fileName: file.name }
+      );
+      if (res.documents) {
+        const profile = await apiGet<any>(`/profile/${encodePathSegment(user.id)}`).catch(() => null);
+        const status = profile?.status || profile?.studentStatus || null;
+        setStudentDocuments(normalizeStudentDocuments({ student_documents: res.documents }, status));
+      }
+      setUploadModal(null);
+    } catch (err: any) {
+      setUploadError(err?.message || "Gagal mengupload dokumen.");
+    } finally {
+      setUploadingType(null);
+    }
+  };
+
   return (
     <Layout title="Dokumen & Sertifikat">
       <div className="flex flex-col gap-6 max-w-[1060px] mx-auto">
@@ -449,18 +481,37 @@ export default function Documents() {
                           <Download size={13} /> {downloadingOfficialId === primaryOfficialDocument.id ? "Mengunduh..." : "Unduh"}
                         </button>
                       ) : resolvedUrl ? (
-                        <a
-                          href={resolvedUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-white hover:bg-emerald-600"
-                        >
-                          <Download size={13} /> Unduh
-                        </a>
-                      ) : (
+                        <div className="mt-3 flex items-center gap-2 flex-wrap">
+                          <a
+                            href={resolvedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-white hover:bg-emerald-600"
+                          >
+                            <Download size={13} /> Unduh
+                          </a>
+                          {!doc.locked && (
+                            <button
+                              type="button"
+                              onClick={() => setUploadModal({ type: doc.type, label: doc.label })}
+                              className="inline-flex items-center gap-2 rounded-xl border border-[#6C47FF]/30 bg-[#F8F5FF] px-4 py-2 text-xs font-black text-[#6C47FF] hover:bg-[#ede9ff] transition-colors"
+                            >
+                              <Upload size={13} /> Ganti File
+                            </button>
+                          )}
+                        </div>
+                      ) : doc.locked ? (
                         <span className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-400">
-                          {doc.locked ? <Lock size={13} /> : <Hourglass size={13} />} Belum tersedia
+                          <Lock size={13} /> Belum tersedia
                         </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setUploadModal({ type: doc.type, label: doc.label })}
+                          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[#6C47FF] px-4 py-2 text-xs font-black text-white hover:bg-[#5835e5] transition-colors"
+                        >
+                          <Upload size={13} /> Upload Dokumen
+                        </button>
                       )}
                     </div>
                   </div>
@@ -860,6 +911,91 @@ export default function Documents() {
               <button onClick={submitCertificateRequest} disabled={submitting} className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#6C47FF] hover:bg-[#5835e5] shadow-sm shadow-[#6C47FF]/20 transition-all flex items-center gap-2 disabled:opacity-60">
                 <SendHorizonal size={15} strokeWidth={2.5} />
                 {submitting ? "Mengirim..." : "Kirim Pengajuan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Modal: Upload Dokumen Mahasiswa ─── */}
+      {uploadModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center pt-[6vh] p-4 sm:p-6">
+          <div className="bg-white w-full max-w-[480px] rounded-[20px] shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#F8F5FF] text-[#6C47FF] flex items-center justify-center">
+                  <Upload size={20} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-foreground">Upload Dokumen</h2>
+                  <p className="text-[11px] font-medium text-muted-foreground line-clamp-1">{uploadModal.label}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setUploadModal(null); setUploadError(""); }}
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 flex flex-col gap-4">
+              {uploadError && (
+                <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
+                  {uploadError}
+                </div>
+              )}
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                <Info size={15} className="text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-xs font-medium text-blue-700">
+                  Format yang diterima: <span className="font-bold">PDF, DOC, DOCX, JPG, PNG</span>. Ukuran maksimal <span className="font-bold">10 MB</span>.
+                </p>
+              </div>
+
+              <label
+                htmlFor="doc-upload-input"
+                className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-[14px] p-8 cursor-pointer transition-all ${
+                  uploadingType === uploadModal.type
+                    ? "border-[#6C47FF]/40 bg-[#F8F5FF]"
+                    : "border-slate-200 bg-slate-50 hover:border-[#6C47FF]/50 hover:bg-[#F8F5FF]/60"
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-[#6C47FF] shadow-sm">
+                  {uploadingType === uploadModal.type ? (
+                    <Hourglass size={22} className="animate-pulse" />
+                  ) : (
+                    <Upload size={22} />
+                  )}
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-black text-slate-700">
+                    {uploadingType === uploadModal.type ? "Mengupload..." : "Klik untuk pilih file"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">atau drag & drop file ke sini</p>
+                </div>
+                <input
+                  id="doc-upload-input"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  className="hidden"
+                  disabled={uploadingType !== null}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleUploadFile(uploadModal.type, file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="p-5 border-t border-border bg-slate-50/50 flex items-center justify-end shrink-0">
+              <button
+                onClick={() => { setUploadModal(null); setUploadError(""); }}
+                disabled={uploadingType !== null}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-60"
+              >
+                Tutup
               </button>
             </div>
           </div>
