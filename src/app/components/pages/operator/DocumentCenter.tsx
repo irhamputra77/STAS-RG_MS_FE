@@ -561,6 +561,8 @@ export default function DocumentCenter() {
   const [selectedEligible, setSelectedEligible] = useState<string[]>([]);
   const [withdrawalPeriods, setWithdrawalPeriods] = useState<Record<string, string>>({});
   const [withdrawalProjects, setWithdrawalProjects] = useState<Record<string, string[]>>({});
+  const [primaryProjects, setPrimaryProjects] = useState<Record<string, string>>({});
+  const [primaryProjectDialogOpen, setPrimaryProjectDialogOpen] = useState(false);
   const [registeringFinalCases, setRegisteringFinalCases] = useState(false);
   const [registerResult, setRegisterResult] = useState<FinalRegisterResponse["items"]>([]);
   const [registerSummary, setRegisterSummary] = useState<{ created: number; existing: number; invalid: number; documentNumbers: string[] } | null>(null);
@@ -813,12 +815,26 @@ export default function DocumentCenter() {
     return item.period || null;
   };
 
+  const needsPrimaryProjectSelection = (item: FinalEligibleItem) =>
+    finalOutcome === "completed" &&
+    item.activityType === "Magang" &&
+    (item.projects?.length || 0) > 1;
+
+  const selectedPrimaryProjectId = (item: FinalEligibleItem) => {
+    const key = candidateKey(item);
+    const saved = primaryProjects[key];
+    if (saved && item.projects?.some((project) => String(project.id || "") === saved)) return saved;
+    if ((item.projects?.length || 0) === 1) return String(item.projects?.[0]?.id || "");
+    return "";
+  };
+
   const loadEligible = async (offset = eligibleData.pagination.offset) => {
     if (!finalActivityType) {
       setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
       setSelectedEligible([]);
       setWithdrawalPeriods({});
       setWithdrawalProjects({});
+      setPrimaryProjects({});
       return;
     }
     setEligibleLoading(true);
@@ -855,6 +871,15 @@ export default function DocumentCenter() {
         for (const item of result.items) {
           const key = finalOutcome === "withdrawn_early" ? String(item.withdrawalRequestId || item.student.id) : `${item.student.id}::${item.period?.id || ""}`;
           if (visibleKeys.has(key)) next[key] = (items[key] || []).filter((projectId) => item.projects?.some((project) => project.id === projectId));
+        }
+        return next;
+      });
+      setPrimaryProjects((items) => {
+        const next: Record<string, string> = {};
+        for (const item of result.items) {
+          const key = candidateKey(item);
+          const saved = items[key];
+          if (visibleKeys.has(key) && saved && item.projects?.some((project) => String(project.id || "") === saved)) next[key] = saved;
         }
         return next;
       });
@@ -1031,6 +1056,14 @@ export default function DocumentCenter() {
         return;
       }
     }
+    if (finalOutcome === "completed") {
+      const missingPrimaryProject = selectedItems.find((item) => needsPrimaryProjectSelection(item) && !selectedPrimaryProjectId(item));
+      if (missingPrimaryProject) {
+        setError("");
+        setPrimaryProjectDialogOpen(true);
+        return;
+      }
+    }
     const confirmed = await confirm({
       title: finalOutcome === "withdrawn_early" ? "Daftarkan withdrawal early exit?" : "Daftarkan mahasiswa terpilih?",
       description: finalOutcome === "withdrawn_early"
@@ -1042,6 +1075,7 @@ export default function DocumentCenter() {
     });
     if (!confirmed) return;
 
+    setPrimaryProjectDialogOpen(false);
     setRegisteringFinalCases(true);
     setError("");
     try {
@@ -1058,7 +1092,14 @@ export default function DocumentCenter() {
             }),
           })
         : await apiPost<FinalRegisterResponse>("/document-center/operator/final-activity/cases", {
-            items: selectedItems.map((item) => ({ studentId: item.student.id, periodId: item.period?.id })),
+            items: selectedItems.map((item) => {
+              const primaryProjectId = selectedPrimaryProjectId(item);
+              return {
+                studentId: item.student.id,
+                periodId: item.period?.id,
+                ...(primaryProjectId ? { primaryProjectId } : {}),
+              };
+            }),
           });
       setRegisterResult(result.items || []);
       const successful = new Set(
@@ -1836,6 +1877,8 @@ export default function DocumentCenter() {
                   setSelectedEligible([]);
                   setWithdrawalPeriods({});
                   setWithdrawalProjects({});
+                  setPrimaryProjects({});
+                  setPrimaryProjectDialogOpen(false);
                   setRegisterResult([]);
                   setRegisterSummary(null);
                   setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
@@ -1851,6 +1894,8 @@ export default function DocumentCenter() {
                   setFinalActivityType(event.target.value as FinalActivityType | "");
                   setFinalPeriodId("");
                   setSelectedEligible([]);
+                  setPrimaryProjects({});
+                  setPrimaryProjectDialogOpen(false);
                   setRegisterSummary(null);
                 }}
                 className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
@@ -1864,6 +1909,8 @@ export default function DocumentCenter() {
                 onChange={(event) => {
                   setFinalPeriodId(event.target.value);
                   setSelectedEligible([]);
+                  setPrimaryProjects({});
+                  setPrimaryProjectDialogOpen(false);
                   setRegisterSummary(null);
                 }}
                 disabled={finalOutcome !== "completed" || !finalActivityType || availablePeriods.length === 0}
@@ -1956,6 +2003,10 @@ export default function DocumentCenter() {
                         const periods = item.periods || (item.period ? [item.period] : []);
                         const selectedProjectIds = withdrawalProjects[key] || [];
                         const projectNames = item.projects?.map((project) => project.shortTitle || project.title).filter(Boolean) || [];
+                        const primaryProjectId = selectedPrimaryProjectId(item);
+                        const primaryProjectName = item.projects?.find((project) => String(project.id || "") === primaryProjectId)?.shortTitle
+                          || item.projects?.find((project) => String(project.id || "") === primaryProjectId)?.title
+                          || "";
                         const canSelect = finalOutcome === "completed"
                           ? Boolean(item.period && !item.existingCase)
                           : item.canRegister !== false && periods.length > 0 && (periods.length === 1 || Boolean(withdrawalPeriods[key]));
@@ -2038,9 +2089,23 @@ export default function DocumentCenter() {
                                   </div>
                                 ) : "Tidak ada project eligible"
                               ) : (
-                                projectNames.length
-                                  ? `${projectNames.length} project${projectNames[0] ? `: ${projectNames[0]}${projectNames.length > 1 ? " +" + (projectNames.length - 1) : ""}` : ""}`
-                                  : "Tidak ada project"
+                                item.projects?.length ? (
+                                  <div className="grid gap-1">
+                                    <span>
+                                      {projectNames.length} project{projectNames[0] ? `: ${projectNames[0]}${projectNames.length > 1 ? " +" + (projectNames.length - 1) : ""}` : ""}
+                                    </span>
+                                    {needsPrimaryProjectSelection(item) && primaryProjectId && (
+                                      <span className="text-[11px] text-amber-700">
+                                        Utama: {primaryProjectName || primaryProjectId}
+                                      </span>
+                                    )}
+                                    {needsPrimaryProjectSelection(item) && !primaryProjectId && (
+                                      <span className="text-[11px] text-amber-700">
+                                        Project utama dipilih saat klik Daftarkan.
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : "Tidak ada project"
                               )}
                             </TableCell>
                             <TableCell>
@@ -3272,6 +3337,79 @@ export default function DocumentCenter() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setSelectedFinalCase(null)}>
                 Tutup
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={primaryProjectDialogOpen} onOpenChange={setPrimaryProjectDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Pilih Project Utama Magang</DialogTitle>
+              <DialogDescription>
+                Project utama dipakai untuk SKS dan Sertifikat Magang. Project lainnya tetap dibuatkan Sertifikat Riset.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid max-h-[60vh] gap-3 overflow-y-auto pr-1 text-sm">
+              {eligibleData.items
+                .filter((item) => selectedEligible.includes(candidateKey(item)) && needsPrimaryProjectSelection(item))
+                .map((item) => {
+                  const key = candidateKey(item);
+                  const selectedProjectId = selectedPrimaryProjectId(item);
+                  return (
+                    <div key={key} className="rounded-[12px] border border-amber-200 bg-amber-50/70 p-3">
+                      <div className="mb-2">
+                        <p className="font-black text-foreground">{item.student.name || "-"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {[item.student.nim, item.student.prodi, finalPeriodYearText(item.period || null)].filter(Boolean).join(" | ") || "-"}
+                        </p>
+                      </div>
+                      <div className="grid gap-2">
+                        {(item.projects || []).map((project) => {
+                          const projectId = String(project.id || "");
+                          if (!projectId) return null;
+                          return (
+                            <label key={projectId} className="flex cursor-pointer items-start gap-2 rounded-[10px] border border-border bg-white px-3 py-2">
+                              <input
+                                type="radio"
+                                name={`primary-project-${key}`}
+                                checked={selectedProjectId === projectId}
+                                onChange={() => {
+                                  setPrimaryProjects((items) => ({ ...items, [key]: projectId }));
+                                  setRegisterSummary(null);
+                                }}
+                                className="mt-1"
+                              />
+                              <span>
+                                <span className="block font-bold text-foreground">{project.shortTitle || project.title || "Project"}</span>
+                                <span className="block text-[11px] text-muted-foreground">
+                                  {[project.role, project.membershipStatus || project.status, project.joinedAt && project.completedAt ? `${formatDateReadable(project.joinedAt)} - ${formatDateReadable(project.completedAt)}` : null]
+                                    .filter(Boolean)
+                                    .join(" | ") || "Project kandidat"}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPrimaryProjectDialogOpen(false)}>
+                Batal
+              </Button>
+              <Button
+                onClick={() => {
+                  setPrimaryProjectDialogOpen(false);
+                  void registerFinalCases();
+                }}
+                disabled={eligibleData.items
+                  .filter((item) => selectedEligible.includes(candidateKey(item)) && needsPrimaryProjectSelection(item))
+                  .some((item) => !selectedPrimaryProjectId(item))}
+              >
+                Lanjut Daftarkan
               </Button>
             </DialogFooter>
           </DialogContent>
