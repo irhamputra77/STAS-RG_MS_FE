@@ -515,7 +515,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
             {isAlumni && (
               <div className="mb-2 mx-1 px-3 py-2 rounded-[10px] bg-emerald-50 border border-emerald-200 flex items-center gap-2">
                 <GraduationCap size={14} className="text-emerald-600 shrink-0" />
-                <span className="text-[11px] font-black text-emerald-700">Mode Alumni — Hanya History</span>
+                <span className="text-[11px] font-black text-emerald-700">Alumni</span>
               </div>
             )}
             {navItems.map((item) => {
@@ -593,7 +593,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
             {isAlumni && (
               <div className="mb-2 mx-1 px-3 py-2 rounded-[10px] bg-emerald-50 border border-emerald-200 flex items-center gap-2">
                 <GraduationCap size={14} className="text-emerald-600 shrink-0" />
-                <span className="text-[11px] font-black text-emerald-700">Mode Alumni — Hanya History</span>
+                <span className="text-[11px] font-black text-emerald-700">Alumni</span>
               </div>
             )}
             {navItems.map((item) => {
