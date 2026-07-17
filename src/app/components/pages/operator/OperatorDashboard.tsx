@@ -630,7 +630,7 @@ export default function OperatorDashboard() {
         setSummary(summaryRes);
         setStudents(mappedStudents);
         setPendingCuti(mappedLeave);
-        setPendingKelulusan(mappedGraduations.slice(0, 2));
+        setPendingKelulusan(mappedGraduations);
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
         setAttendanceMonitor(attendanceMonitorRes);
@@ -1460,7 +1460,7 @@ export default function OperatorDashboard() {
                   {(cutiMenunggu + kelulusanMenunggu) > 0 && <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{cutiMenunggu + kelulusanMenunggu}</span>}
                 </h2>
               </div>
-              <div className="p-4 flex flex-col gap-3 max-h-[400px] overflow-y-auto">
+              <div className="p-4 flex flex-col gap-3 max-h-[400px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {pendingCuti.map(l => (
                   <div key={l.id} className="p-3.5 border border-amber-100 bg-amber-50/40 rounded-[12px]">
                     <div className="flex items-start gap-2 mb-2">
