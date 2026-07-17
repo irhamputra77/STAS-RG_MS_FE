@@ -553,17 +553,20 @@ export default function OperatorDashboard() {
           status: item.status
         }));
 
-        const mappedGraduations = graduationsRes.map((item: any) => ({
-          id: item.id,
-          mahasiswaId: item.student_id,
-          mahasiswaNama: item.student_name,
-          mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
-          mahasiswaColor: "bg-[#8B6FFF] text-white",
-          nim: item.nim,
-          jenis: "Berkas Kelulusan",
-          tanggal: formatDateYmd(item.submitted_at || item.created_at),
-          status: item.status
-        }));
+        const mappedGraduations = graduationsRes.map((item: any) => {
+          const sName = item.student?.name || item.student_name || "Mahasiswa";
+          return {
+            id: item.id,
+            mahasiswaId: item.student?.id || item.student_id,
+            mahasiswaNama: sName,
+            mahasiswaInitials: item.student?.initials || item.student_initials || sName.slice(0, 2).toUpperCase(),
+            mahasiswaColor: "bg-[#8B6FFF] text-white",
+            nim: item.student?.nim || item.nim || "-",
+            jenis: "Berkas Kelulusan",
+            tanggal: formatDateYmd(item.submitted_at || item.created_at),
+            status: item.status
+          };
+        });
 
         const mappedWithdrawals: WithdrawalRequestRecord[] = (withdrawalRes || []).map((item: any) => ({
           id: item.id,
@@ -1488,6 +1491,7 @@ export default function OperatorDashboard() {
                         <span className="text-[9px] font-black text-rose-700">{s.status}</span>
                       </div>
                     </div>
+                    <Link to="/operator/kelulusan" className="mt-2 flex items-center justify-center gap-1 py-1.5 text-[10px] font-black text-rose-600 hover:bg-rose-50 rounded-[8px] transition-colors border border-transparent hover:border-rose-100">Proses Kelulusan <ArrowRight size={10} strokeWidth={3} /></Link>
                   </div>
                 ))}
               </div>
