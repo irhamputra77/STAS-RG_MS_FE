@@ -169,6 +169,26 @@ export function DosenLayout({ children, title = "Dashboard Dosen" }: LayoutProps
     fallback: fallbackNotifs,
   });
 
+  const handleNotificationClick = (n: AppNotification) => {
+    markRead(n.id);
+    setPanelOpen(false);
+    
+    if (n.link) {
+      navigate(n.link);
+      return;
+    }
+    
+    switch (n.type) {
+      case "logbook": navigate("/dosen/logbook"); break;
+      case "riset": navigate("/dosen/riset"); break;
+      case "cuti":
+      case "wfh": navigate("/dosen/cuti"); break;
+      case "surat": navigate("/dosen/surat"); break;
+      case "kelulusan": navigate("/dosen/kelulusan"); break;
+      case "pengunduran": navigate("/dosen/resign"); break;
+    }
+  };
+
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (bellRef.current && !bellRef.current.contains(e.target as Node)) setPanelOpen(false);
@@ -253,7 +273,7 @@ export function DosenLayout({ children, title = "Dashboard Dosen" }: LayoutProps
                         {notifs.map((n) => (
                           <div
                             key={n.id}
-                            onClick={() => markRead(n.id)}
+                            onClick={() => handleNotificationClick(n)}
                             className={`group flex gap-3 px-5 py-3.5 cursor-pointer transition-colors relative ${n.read ? "hover:bg-slate-50" : "bg-green-50/40 hover:bg-green-50"}`}
                           >
                             {!n.read && <div className="absolute left-2 mt-2 w-1.5 h-1.5 rounded-full bg-primary" />}

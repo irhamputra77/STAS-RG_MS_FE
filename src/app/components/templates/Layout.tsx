@@ -111,6 +111,7 @@ function NotificationPanel({
   onDismiss: (id: string) => void;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const unreadCount = notifs.filter((n) => !n.read).length;
   const visible = filter === "unread" ? notifs.filter((n) => !n.read) : notifs;
@@ -192,6 +193,23 @@ function NotificationPanel({
                 onClick={() => {
                   onRead(n.id);
                   onClose();
+                  
+                  if (n.link) {
+                    navigate(n.link);
+                    return;
+                  }
+                  
+                  switch (n.type) {
+                    case "logbook": navigate("/logbook"); break;
+                    case "riset": navigate("/riset"); break;
+                    case "cuti":
+                    case "wfh": navigate("/cuti-izin"); break;
+                    case "surat": navigate("/persuratan"); break;
+                    case "kelulusan": navigate("/berkas-kelulusan"); break;
+                    case "piket": navigate("/piket"); break;
+                    case "absensi": navigate("/kehadiran"); break;
+                    case "pengunduran": navigate("/resign"); break;
+                  }
                 }}
               >
                 {!n.read && (

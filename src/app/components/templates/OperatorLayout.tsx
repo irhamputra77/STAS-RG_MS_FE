@@ -167,6 +167,29 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
     fallback: fallbackNotifs,
   });
 
+  const handleNotificationClick = (n: AppNotification) => {
+    markRead(n.id);
+    setPanelOpen(false);
+    
+    if (n.link) {
+      navigate(n.link);
+      return;
+    }
+    
+    switch (n.type) {
+      case "logbook": navigate("/operator/logbook"); break;
+      case "riset": navigate("/operator/riset"); break;
+      case "cuti":
+      case "wfh": navigate("/operator/cuti"); break;
+      case "surat": navigate("/operator/surat"); break;
+      case "kelulusan": navigate("/operator/kelulusan"); break;
+      case "dokumen": navigate("/operator/document-center"); break;
+      case "piket": navigate("/operator/picket"); break;
+      case "absensi": navigate("/operator/kehadiran"); break;
+      case "pengunduran": navigate("/operator/resign"); break;
+    }
+  };
+
   useEffect(() => {
     const loadHeaderProfile = async () => {
       if (!user?.id) {
@@ -320,7 +343,7 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
                           notifs.map((notification) => (
                             <div
                               key={notification.id}
-                              onClick={() => markRead(notification.id)}
+                              onClick={() => handleNotificationClick(notification)}
                               className={`group relative flex gap-3 px-5 py-3.5 cursor-pointer transition-colors ${
                                 notification.read ? "hover:bg-slate-50" : "bg-amber-50/40 hover:bg-amber-50"
                               }`}
