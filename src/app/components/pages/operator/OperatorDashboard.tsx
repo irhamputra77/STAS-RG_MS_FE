@@ -103,9 +103,12 @@ type EarlyCheckoutAlert = {
 
 type DashboardSummary = {
   totalMahasiswa: number;
+  totalAlumni?: number;
   totalRisetAktif: number;
   cutiMenunggu: number;
   suratMenunggu: number;
+  kelulusanMenunggu?: number;
+  totalDokumen?: number;
   logbookTerbaru: Array<any>;
 };
 
@@ -775,9 +778,12 @@ export default function OperatorDashboard() {
   };
 
   const aktifCount = summary?.totalMahasiswa ?? students.filter(m => m.status === "Aktif").length;
+  const alumniCount = summary?.totalAlumni ?? students.filter(m => m.status === "Alumni").length;
   const risetAktif = summary?.totalRisetAktif ?? researches.filter(r => r.status === "Aktif").length;
   const cutiMenunggu = pendingCuti.length;
   const suratMenunggu = summary?.suratMenunggu ?? pendingSurat.length;
+  const kelulusanMenunggu = summary?.kelulusanMenunggu ?? 0;
+  const totalDokumen = summary?.totalDokumen ?? 0;
   const logbookHariIni = summary?.logbookTerbaru?.length ?? 0;
   const resignCount = resignationRequests.filter(r => ["Menunggu", "Menunggu Dosen"].includes(r.finalStatus)).length;
   const lockVisibleAfter = attendanceMonitor?.lockVisibleAfter || "10:00";
@@ -1008,13 +1014,15 @@ export default function OperatorDashboard() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           <MiniStatCard icon={<Users size={22} className="text-blue-600" />} label="Mahasiswa Aktif" value={aktifCount} color="bg-blue-100" href="/operator/mahasiswa" />
+          <MiniStatCard icon={<Users size={22} className="text-violet-600" />} label="Mahasiswa Alumni" value={alumniCount} color="bg-violet-100" href="/operator/mahasiswa" />
           <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset" />
           <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti/Izin/WFH Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
-          <MiniStatCard icon={<FileText size={22} className="text-blue-500" />} label="Surat Menunggu" value={suratMenunggu} color="bg-blue-100" href="/operator/surat" urgent />
+          <MiniStatCard icon={<FileText size={22} className="text-rose-500" />} label="Berkas Kelulusan" value={kelulusanMenunggu} color="bg-rose-100" href="/operator/kelulusan" urgent />
           <MiniStatCard icon={<BookOpen size={22} className="text-emerald-600" />} label="Logbook Hari Ini" value={logbookHariIni} color="bg-emerald-100" href="/operator/logbook" />
           <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/riset" />
+          <MiniStatCard icon={<FileText size={22} className="text-teal-600" />} label="Pusat Dokumen" value={totalDokumen} color="bg-teal-100" href="/operator/document-center" />
         </div>
 
         {/* Alert Sections */}
