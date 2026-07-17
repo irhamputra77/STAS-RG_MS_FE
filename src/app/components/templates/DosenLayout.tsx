@@ -256,7 +256,7 @@ export function DosenLayout({ children, title = "Dashboard Dosen" }: LayoutProps
                       <div className="px-5 pt-4 pb-3 border-b border-border flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <h3 className="font-black text-sm text-foreground">Notifikasi</h3>
-                          {unread > 0 && <span className="px-2 py-0.5 bg-primary text-white rounded-full text-[10px] font-black">{unread}</span>}
+                          {unread > 0 && <span className="px-2 py-0.5 bg-primary text-white rounded-full text-[10px] font-black">{unread > 99 ? "99+" : unread}</span>}
                         </div>
                         <div className="flex items-center gap-1">
                           {unread > 0 && (
@@ -269,17 +269,30 @@ export function DosenLayout({ children, title = "Dashboard Dosen" }: LayoutProps
                           </button>
                         </div>
                       </div>
-                      <div className="max-h-[60vh] md:max-h-[320px] overflow-y-auto divide-y divide-border/50">
+                      <div className="max-h-[60vh] md:max-h-[320px] overflow-y-auto divide-y divide-border/50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                         {notifs.map((n) => (
                           <div
                             key={n.id}
                             onClick={() => handleNotificationClick(n)}
                             className={`group flex gap-3 px-5 py-3.5 cursor-pointer transition-colors relative ${n.read ? "hover:bg-slate-50" : "bg-green-50/40 hover:bg-green-50"}`}
                           >
-                            {!n.read && <div className="absolute left-2 mt-2 w-1.5 h-1.5 rounded-full bg-primary" />}
+                            {!n.read && <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary" />}
+                            
+                            <div className="shrink-0 mt-0.5">
+                              {n.senderPhotoUrl ? (
+                                <img src={n.senderPhotoUrl} alt={n.senderName} className="w-8 h-8 rounded-full object-cover shadow-sm border border-border" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black bg-green-100 text-green-700 border border-green-200">
+                                  {n.senderInitials}
+                                </div>
+                              )}
+                            </div>
+
                             <div className="flex-1 min-w-0">
                               <p className={`text-xs leading-snug mb-0.5 ${n.read ? "font-medium text-foreground/70" : "font-black text-foreground"}`}>{n.title}</p>
-                              <p className="text-[11px] text-muted-foreground line-clamp-2">{n.body}</p>
+                              <p className="text-[11px] text-muted-foreground line-clamp-2">
+                                <span className="font-semibold text-foreground/80">{n.senderName}</span>: {n.body}
+                              </p>
                               <p className={`text-[10px] font-bold mt-1 ${n.read ? "text-muted-foreground/60" : "text-primary"}`}>{n.time}</p>
                             </div>
                             <button

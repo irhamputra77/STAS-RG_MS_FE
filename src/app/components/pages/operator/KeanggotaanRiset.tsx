@@ -63,6 +63,7 @@ export default function KeanggotaanRiset() {
             memberId: member.user_id,
             nama: member.name,
             initials: member.initials,
+            photoUrl: member.photo_url || member.photoUrl || null,
             color: member.member_type === "Dosen" ? "bg-blue-500 text-white" : "bg-[#8B6FFF] text-white",
             tipe: member.member_type,
             peran: member.peran || "Anggota",
@@ -85,8 +86,8 @@ export default function KeanggotaanRiset() {
   });
 
   const allPeople = [
-    ...allStudents.map((m, index) => ({ id: m.id, nama: m.name, initials: m.initials || m.name?.slice(0, 2)?.toUpperCase(), color: ["bg-[#8B6FFF] text-white", "bg-emerald-500 text-white", "bg-pink-500 text-white"][index % 3], tipe: "Mahasiswa" as const })),
-    ...allLecturers.map((d, index) => ({ id: d.id, nama: d.name, initials: d.initials || d.name?.slice(0, 2)?.toUpperCase(), color: ["bg-blue-500 text-white", "bg-teal-500 text-white"][index % 2], tipe: "Dosen" as const })),
+    ...allStudents.map((m, index) => ({ id: m.id, nama: m.name, initials: m.initials || m.name?.slice(0, 2)?.toUpperCase(), photoUrl: m.photo_url || m.photoUrl || null, color: ["bg-[#8B6FFF] text-white", "bg-emerald-500 text-white", "bg-pink-500 text-white"][index % 3], tipe: "Mahasiswa" as const })),
+    ...allLecturers.map((d, index) => ({ id: d.id, nama: d.name, initials: d.initials || d.name?.slice(0, 2)?.toUpperCase(), photoUrl: d.photo_url || d.photoUrl || null, color: ["bg-blue-500 text-white", "bg-teal-500 text-white"][index % 2], tipe: "Dosen" as const })),
   ].filter(p => !members.some(m => m.memberId === p.id));
 
   const selectedEditMember = membersMap[selectedRiset]?.find((member) => member.memberId === editMember);
@@ -112,6 +113,7 @@ export default function KeanggotaanRiset() {
           memberId: member.user_id,
           nama: member.name,
           initials: member.initials,
+          photoUrl: member.photo_url || member.photoUrl || null,
           color: member.member_type === "Dosen" ? "bg-blue-500 text-white" : "bg-[#8B6FFF] text-white",
           tipe: member.member_type,
           peran: member.peran || "Anggota",
@@ -208,7 +210,11 @@ export default function KeanggotaanRiset() {
                   <tr key={m.memberId} className="hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${m.color}`}>{m.initials}</div>
+                        {m.photoUrl ? (
+                          <img src={m.photoUrl} alt={m.nama} className="w-8 h-8 rounded-full object-cover shrink-0 border border-gray-200" />
+                        ) : (
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${m.color}`}>{m.initials}</div>
+                        )}
                         <p className="font-black text-foreground text-sm">{m.nama}</p>
                       </div>
                     </td>
@@ -256,7 +262,11 @@ export default function KeanggotaanRiset() {
                 {allPeople.slice(0, 8).map(p => (
                   <label key={p.id} className="flex items-center gap-3 p-3 rounded-[10px] border border-border hover:bg-slate-50 cursor-pointer transition-colors">
                     <input type="checkbox" className="accent-amber-500 shrink-0" />
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${p.color}`}>{p.initials}</div>
+                    {p.photoUrl ? (
+                      <img src={p.photoUrl} alt={p.nama} className="w-8 h-8 rounded-full object-cover shrink-0 border border-gray-200" />
+                    ) : (
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${p.color}`}>{p.initials}</div>
+                    )}
                     <div className="flex-1">
                       <p className="text-sm font-black text-foreground">{p.nama}</p>
                       <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${p.tipe === "Dosen" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>{p.tipe}</span>

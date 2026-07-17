@@ -29,6 +29,9 @@ export interface AppNotification {
   readAt?: string | null;
   read_at?: string | null;
   link?: string;
+  senderName?: string;
+  senderInitials?: string;
+  senderPhotoUrl?: string | null;
 }
 
 const NOTIFICATION_POLL_MS = 15000;
@@ -203,6 +206,8 @@ function mapNotificationRows(rows: Array<any>, role?: string): AppNotification[]
     const type = normalizeType(item?.type);
     const id = String(item?.id || `notif-${timeMs}`);
     const readAt = item?.readAt || item?.read_at || null;
+    const senderName = item?.sender_name || item?.senderName || "Sistem";
+    const senderInitials = senderName.slice(0, 2).toUpperCase();
 
     return {
       id,
@@ -215,6 +220,9 @@ function mapNotificationRows(rows: Array<any>, role?: string): AppNotification[]
       readAt,
       read_at: item?.read_at || readAt,
       link: getLink(role, type),
+      senderName,
+      senderInitials,
+      senderPhotoUrl: item?.sender_photo_url || item?.senderPhotoUrl || null,
     };
   });
 }

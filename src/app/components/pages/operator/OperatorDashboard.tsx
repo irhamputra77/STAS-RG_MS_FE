@@ -540,6 +540,7 @@ export default function OperatorDashboard() {
           mahasiswaId: item.student_id,
           mahasiswaNama: item.student_name,
           mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
+          mahasiswaPhotoUrl: item.student_photo_url || null,
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
           jenis: item.jenis_pengajuan || item.jenis || item.jenisPengajuan || "cuti",
@@ -560,6 +561,7 @@ export default function OperatorDashboard() {
             mahasiswaId: item.student?.id || item.student_id,
             mahasiswaNama: sName,
             mahasiswaInitials: item.student?.initials || item.student_initials || sName.slice(0, 2).toUpperCase(),
+            mahasiswaPhotoUrl: item.student?.photoUrl || item.student_photo_url || null,
             mahasiswaColor: "bg-[#8B6FFF] text-white",
             nim: item.student?.nim || item.nim || "-",
             jenis: "Berkas Kelulusan",
@@ -1464,7 +1466,11 @@ export default function OperatorDashboard() {
                 {pendingCuti.map(l => (
                   <div key={l.id} className="p-3.5 border border-amber-100 bg-amber-50/40 rounded-[12px]">
                     <div className="flex items-start gap-2 mb-2">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${l.mahasiswaColor}`}>{l.mahasiswaInitials}</div>
+                      {l.mahasiswaPhotoUrl ? (
+                        <img src={l.mahasiswaPhotoUrl} alt={l.mahasiswaNama} className="w-8 h-8 rounded-full object-cover shrink-0 border border-amber-200" />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${l.mahasiswaColor}`}>{l.mahasiswaInitials}</div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground">{l.mahasiswaNama}</p>
                         <p className="text-[10px] text-muted-foreground">{l.periodeStart} {l.durasi} hari</p>
@@ -1480,7 +1486,11 @@ export default function OperatorDashboard() {
                 {pendingKelulusan.map(s => (
                   <div key={s.id} className="p-3.5 border border-rose-100 bg-rose-50/40 rounded-[12px]">
                     <div className="flex items-start gap-2">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${s.mahasiswaColor}`}>{s.mahasiswaInitials}</div>
+                      {s.mahasiswaPhotoUrl ? (
+                        <img src={s.mahasiswaPhotoUrl} alt={s.mahasiswaNama} className="w-8 h-8 rounded-full object-cover shrink-0 border border-rose-200" />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${s.mahasiswaColor}`}>{s.mahasiswaInitials}</div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground">{s.mahasiswaNama}</p>
                         <p className="text-[10px] font-bold text-muted-foreground mt-0.5 uppercase tracking-wide">{s.jenis}</p>

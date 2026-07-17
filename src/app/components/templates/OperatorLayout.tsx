@@ -309,7 +309,7 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
 
                           {unread > 0 && (
                             <span className="px-2 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-black">
-                              {unread}
+                              {unread > 99 ? "99+" : unread}
                             </span>
                           )}
                         </div>
@@ -334,7 +334,7 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
                         </div>
                       </div>
 
-                      <div className="max-h-[60vh] md:max-h-[340px] overflow-y-auto divide-y divide-border/50">
+                      <div className="max-h-[60vh] md:max-h-[340px] overflow-y-auto divide-y divide-border/50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                         {notifs.length === 0 ? (
                           <div className="px-5 py-8 text-center text-sm font-medium text-muted-foreground">
                             Tidak ada notifikasi.
@@ -352,6 +352,16 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
                                 <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-amber-500" />
                               )}
 
+                              <div className="shrink-0 mt-0.5">
+                                {notification.senderPhotoUrl ? (
+                                  <img src={notification.senderPhotoUrl} alt={notification.senderName} className="w-8 h-8 rounded-full object-cover shadow-sm border border-border" />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black bg-blue-100 text-blue-700 border border-blue-200">
+                                    {notification.senderInitials}
+                                  </div>
+                                )}
+                              </div>
+
                               <div className="flex-1 min-w-0">
                                 <p
                                   className={`text-xs leading-snug mb-0.5 ${
@@ -363,7 +373,7 @@ export function OperatorLayout({ children, title = "Dashboard Admin" }: LayoutPr
                                   {notification.title}
                                 </p>
                                 <p className="text-[11px] text-muted-foreground line-clamp-2">
-                                  {notification.body}
+                                  <span className="font-semibold text-foreground/80">{notification.senderName}</span>: {notification.body}
                                 </p>
                                 <p
                                   className={`text-[10px] font-bold mt-1 ${

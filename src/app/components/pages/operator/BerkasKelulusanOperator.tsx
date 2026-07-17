@@ -43,6 +43,7 @@ type GraduationSubmission = {
     nim?: string;
     name?: string;
     initials?: string;
+    photoUrl?: string | null;
     status?: string;
     tipe?: string;
   };
@@ -539,9 +540,13 @@ export default function BerkasKelulusanOperator() {
                     <tr key={item.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-black text-white">
-                            {getStudentInitials(item)}
-                          </div>
+                          {student.photoUrl ? (
+                            <img src={student.photoUrl} alt={text(student.name, "Mahasiswa")} className="h-9 w-9 shrink-0 rounded-full object-cover border border-gray-200" />
+                          ) : (
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-black text-white">
+                              {getStudentInitials(item)}
+                            </div>
+                          )}
                           <div>
                             <p className="text-xs font-black text-foreground">{text(student.name, "Mahasiswa")}</p>
                             <p className="text-[10px] font-semibold text-muted-foreground">{text(student.nim)}</p>
@@ -583,10 +588,19 @@ export default function BerkasKelulusanOperator() {
         <div className="fixed inset-0 z-[240] flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 pt-[5vh] backdrop-blur-sm" onClick={() => setSelected(null)}>
           <div className="w-full max-w-[940px] overflow-hidden rounded-[22px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">Detail Berkas Kelulusan</p>
-                <h3 className="mt-1 text-xl font-black text-foreground">{text(selected.student?.name, "Mahasiswa")}</h3>
-                <p className="text-xs font-semibold text-muted-foreground">{text(selected.student?.nim)} - {formatDateTimeJakarta(getSavedAt(selected))}</p>
+              <div className="flex gap-4">
+                {selected.student?.photoUrl ? (
+                  <img src={selected.student.photoUrl} alt="Photo" className="h-12 w-12 rounded-full object-cover border border-gray-200" />
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-lg font-black text-white">
+                    {getStudentInitials(selected)}
+                  </div>
+                )}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">Detail Berkas Kelulusan</p>
+                  <h3 className="mt-1 text-xl font-black text-foreground">{text(selected.student?.name, "Mahasiswa")}</h3>
+                  <p className="text-xs font-semibold text-muted-foreground">{text(selected.student?.nim)} - {formatDateTimeJakarta(getSavedAt(selected))}</p>
+                </div>
               </div>
               <button onClick={() => setSelected(null)} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200">
                 <X size={17} />

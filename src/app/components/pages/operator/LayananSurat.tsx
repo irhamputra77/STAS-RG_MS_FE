@@ -87,6 +87,7 @@ export default function LayananSurat() {
           mahasiswaId: item.student_id,
           mahasiswaNama: item.student_name,
           mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
+          mahasiswaPhotoUrl: item.student_photo_url || null,
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
           jenis: item.jenis,
@@ -562,7 +563,11 @@ export default function LayananSurat() {
                   <tr key={l.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${l.mahasiswaColor}`}>{l.mahasiswaInitials}</div>
+                        {l.mahasiswaPhotoUrl ? (
+                          <img src={l.mahasiswaPhotoUrl} alt={l.mahasiswaNama} className="w-8 h-8 rounded-full object-cover shrink-0 border border-gray-200" />
+                        ) : (
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${l.mahasiswaColor}`}>{l.mahasiswaInitials}</div>
+                        )}
                         <div>
                           <p className="font-black text-foreground text-xs">{l.mahasiswaNama}</p>
                           <p className="text-[10px] text-muted-foreground">{l.nim}</p>
@@ -682,7 +687,11 @@ export default function LayananSurat() {
             </div>
             <div className="p-6 flex flex-col gap-4">
               <div className="flex items-center gap-4">
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black ${detail.mahasiswaColor}`}>{detail.mahasiswaInitials}</div>
+                {detail.mahasiswaPhotoUrl ? (
+                  <img src={detail.mahasiswaPhotoUrl} alt={detail.mahasiswaNama} className="w-14 h-14 rounded-full object-cover shadow-sm border border-gray-200" />
+                ) : (
+                  <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black ${detail.mahasiswaColor}`}>{detail.mahasiswaInitials}</div>
+                )}
                 <div>
                   <p className="font-black text-foreground">{detail.mahasiswaNama}</p>
                   <p className="text-xs text-muted-foreground">{detail.nim}</p>

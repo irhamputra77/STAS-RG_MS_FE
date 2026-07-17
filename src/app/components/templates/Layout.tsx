@@ -169,7 +169,7 @@ function NotificationPanel({
         </div>
       </div>
 
-      <div className="max-h-[60vh] md:max-h-[380px] overflow-y-auto">
+      <div className="max-h-[60vh] md:max-h-[380px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <div className="w-14 h-14 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground">
@@ -216,7 +216,15 @@ function NotificationPanel({
                   <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#0AB600]" />
                 )}
 
-                <NotifIcon type={n.type} />
+                <div className="shrink-0 mt-0.5">
+                  {n.senderPhotoUrl ? (
+                    <img src={n.senderPhotoUrl} alt={n.senderName} className="w-8 h-8 rounded-full object-cover shadow-sm border border-border" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black bg-[#0AB600]/10 text-[#0AB600] border border-[#0AB600]/20">
+                      {n.senderInitials}
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex-1 min-w-0">
                   <p
@@ -227,7 +235,7 @@ function NotificationPanel({
                     {n.title}
                   </p>
                   <p className="text-[11px] md:text-[12px] font-medium text-muted-foreground leading-relaxed line-clamp-2">
-                    {n.body}
+                    <span className="font-semibold text-foreground/80">{n.senderName}</span>: {n.body}
                   </p>
                   <p
                     className={`text-[10px] md:text-[11px] font-bold mt-1.5 ${

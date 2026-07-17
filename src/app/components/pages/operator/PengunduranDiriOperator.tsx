@@ -8,6 +8,8 @@ type WithdrawalRow = {
   id: string;
   studentName: string;
   studentNim: string;
+  studentPhotoUrl: string | null;
+  studentInitials: string;
   advisorName: string;
   reason: string;
   submittedAt: string;
@@ -50,6 +52,8 @@ export default function PengunduranDiriOperator() {
             id: item.id,
             studentName: item.student_name || "Mahasiswa",
             studentNim: item.student_nim || "-",
+            studentPhotoUrl: item.student_photo_url || item.photoUrl || null,
+            studentInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
             advisorName: item.advisor_name || "-",
             reason: item.reason || "-",
             submittedAt: formatDateYmd(item.submitted_at),
@@ -171,13 +175,24 @@ export default function PengunduranDiriOperator() {
               <div key={item.id} className="rounded-[16px] border border-border bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-base font-black text-foreground">{item.studentName}</p>
-                      <span className="text-xs font-medium text-muted-foreground">{item.studentNim}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{displayStatus(item.finalStatus)}</span>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {item.studentPhotoUrl ? (
+                        <img src={item.studentPhotoUrl} alt={item.studentName} className="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 bg-[#8B6FFF] text-white">
+                          {item.studentInitials}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-base font-black text-foreground">{item.studentName}</p>
+                          <span className="text-xs font-medium text-muted-foreground">{item.studentNim}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge(item.finalStatus)}`}>{displayStatus(item.finalStatus)}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Dosen pembimbing: {item.advisorName}</p>
+                        <p className="text-xs text-muted-foreground">Diajukan {item.submittedAt}</p>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Dosen pembimbing: {item.advisorName}</p>
-                    <p className="text-xs text-muted-foreground">Diajukan {item.submittedAt}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {item.statusOperator === "Menunggu" && (
