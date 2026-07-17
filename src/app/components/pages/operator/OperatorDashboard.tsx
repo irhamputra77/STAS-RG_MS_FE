@@ -28,6 +28,7 @@ type WarningItem = {
   recipientUserId: string;
   studentName: string;
   studentInitials: string;
+  studentPhotoUrl?: string | null;
   studentColor: string;
   nim: string;
   referenceDate?: string | null;
@@ -78,6 +79,7 @@ type StudentAccessLock = {
   studentId: string;
   studentName: string;
   studentInitials?: string;
+  studentPhotoUrl?: string | null;
   nim?: string;
   studentType?: string | null;
   date?: string;
@@ -96,6 +98,7 @@ type EarlyCheckoutAlert = {
   body: string;
   studentName: string;
   studentInitials: string;
+  studentPhotoUrl?: string | null;
   durationHours?: number | null;
   requiredHours?: number | null;
   read: boolean;
@@ -117,6 +120,7 @@ type WeeklyPicketMiss = {
   studentId: string;
   studentName: string;
   studentInitials: string;
+  studentPhotoUrl?: string | null;
   nim: string;
   missedCount: number;
   missedDates: string[];
@@ -374,11 +378,12 @@ export default function OperatorDashboard() {
         studentId: String(item?.student_id || item?.studentId || ""),
         studentName,
         studentInitials: item?.student_initials || item?.studentInitials || studentName.slice(0, 2).toUpperCase(),
+        studentPhotoUrl: item?.student_photo_url || item?.studentPhotoUrl || null,
         nim: item?.nim || item?.student_nim || item?.studentNim || "-",
         missedCount: Number(item?.missed_count ?? item?.missedCount ?? item?.total ?? (Array.isArray(missedDates) ? missedDates.length : 0)) || 0,
         missedDates: Array.isArray(missedDates) ? missedDates.map(String).filter(Boolean) : [String(missedDates)].filter(Boolean),
         taskNames: Array.isArray(taskNames) ? taskNames.map(String).filter(Boolean) : [String(taskNames)].filter(Boolean),
-        lastMissedDate: item?.last_missed_date || item?.lastMissedDate || item?.lastDate || null,
+        lastMissedDate: item?.last_missed_date || item?.lastDate || null,
         status: item?.status || item?.submission_status || item?.submissionStatus || "Belum Submit",
       };
     };
@@ -518,6 +523,7 @@ export default function OperatorDashboard() {
           nim: item.nim,
           name: item.name,
           initials: item.initials || item.name?.slice(0, 2)?.toUpperCase() || "M",
+          photoUrl: item.photo_url || item.photoUrl || null,
           color: colorByIndex[index % colorByIndex.length],
           prodi: item.prodi || "-",
           angkatan: String(item.angkatan || "-"),
@@ -597,6 +603,7 @@ export default function OperatorDashboard() {
             studentId: String(item.student_id || item.studentId || ""),
             studentName: item.student_name || item.studentName || "Mahasiswa",
             studentInitials: item.student_initials || item.studentInitials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
+            studentPhotoUrl: item.student_photo_url || item.studentPhotoUrl || null,
             nim: item.nim || item.student_nim || "-",
             studentType: item.student_type || item.studentType || item.tipe || null,
             date: item.date || item.reference_date || item.referenceDate || null,
@@ -691,6 +698,7 @@ export default function OperatorDashboard() {
         : "-",
       userName: item.user_name || item.userName || "System",
       userInitials: item.user_initials || item.userInitials || "SY",
+      userPhotoUrl: item.user_photo_url || item.userPhotoUrl || null,
       userColor: "bg-amber-500 text-white",
       userRole: role === "operator" ? "Admin" : role === "dosen" ? "Dosen" : role === "mahasiswa" ? "Mahasiswa" : item.user_role || "System",
       action: item.action || "-",
@@ -758,6 +766,7 @@ export default function OperatorDashboard() {
           recipientUserId: String(item?.recipient_user_id || item?.recipientUserId || ""),
           studentName: item?.student_name || item?.studentName || "Mahasiswa",
           studentInitials: item?.student_initials || item?.studentInitials || item?.student_name?.slice(0, 2)?.toUpperCase() || "M",
+          studentPhotoUrl: item?.student_photo_url || item?.studentPhotoUrl || null,
           studentColor: colorByIndex[index % colorByIndex.length],
           nim: item?.nim || "-",
           referenceDate: item?.reference_date || item?.referenceDate || null,
@@ -835,6 +844,7 @@ export default function OperatorDashboard() {
       recipientUserId: String(lock.studentId || ""),
       studentName: lock.studentName || "Mahasiswa",
       studentInitials: lock.studentInitials || lock.studentName?.slice(0, 2)?.toUpperCase() || "M",
+      studentPhotoUrl: lock.studentPhotoUrl || null,
       studentColor: "bg-red-500 text-white",
       nim: lock.nim || "-",
       referenceDate: lock.date || getJakartaDateKey(),
@@ -882,6 +892,7 @@ export default function OperatorDashboard() {
         recipientUserId: String(student.id),
         studentName: student.name || "Mahasiswa Riset",
         studentInitials: student.initials || student.name?.slice(0, 2)?.toUpperCase() || "M",
+        studentPhotoUrl: student.photoUrl || student.photo_url || null,
         studentColor: student.color || "bg-orange-500 text-white",
         nim: student.nim || "-",
         referenceDate: attendanceMonitor?.date || getJakartaDateKey(),
@@ -1114,7 +1125,11 @@ export default function OperatorDashboard() {
                   return (
                     <div key={m.id} className="px-4 py-3 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
                       <div className="flex items-start gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                        {m.studentPhotoUrl ? (
+                          <img src={m.studentPhotoUrl} alt={m.studentName} className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200" />
+                        ) : (
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <p className="text-xs font-black text-foreground leading-snug break-words">{m.studentName}</p>
@@ -1162,7 +1177,11 @@ export default function OperatorDashboard() {
             </div>
             {earlyCheckoutDisplay.slice(0, 2).map(alert => (
               <div key={alert.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-orange-100 bg-orange-50/40 hover:bg-orange-50 transition-colors">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-orange-500 text-white">{alert.studentInitials}</div>
+                {alert.studentPhotoUrl ? (
+                  <img src={alert.studentPhotoUrl} alt={alert.studentName} className="w-8 h-8 rounded-full object-cover shrink-0 border border-orange-200" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-orange-500 text-white">{alert.studentInitials}</div>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black text-foreground">{alert.studentName}</p>
                   <p className="text-[10px] text-muted-foreground line-clamp-1">Checkout kurang dari batas magang</p>
@@ -1177,7 +1196,11 @@ export default function OperatorDashboard() {
             ))}
             {risetLowHours.slice(0, 3).map(m => (
               <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                {m.studentPhotoUrl ? (
+                  <img src={m.studentPhotoUrl} alt={m.studentName} className="w-7 h-7 rounded-full object-cover shrink-0 border border-slate-200" />
+                ) : (
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.studentColor}`}>{m.studentInitials}</div>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black text-foreground">{m.studentName}</p>
                   <p className="text-[10px] text-muted-foreground">
@@ -1237,9 +1260,13 @@ export default function OperatorDashboard() {
                 {filteredAccessLocks.map(lock => (
                   <div key={lock.id} className="px-4 py-3 border-b border-border/50 last:border-0 hover:bg-rose-50/30 transition-colors">
                     <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-rose-700 text-white">
-                        {lock.studentInitials}
-                      </div>
+                      {lock.studentPhotoUrl ? (
+                        <img src={lock.studentPhotoUrl} alt={lock.studentName} className="w-8 h-8 rounded-full object-cover shrink-0 border border-rose-200" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-rose-700 text-white">
+                          {lock.studentInitials}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground leading-snug break-words">{lock.studentName}</p>
                         <p className="text-[10px] text-muted-foreground">{lock.nim} Â· {getStudentTypeLabel(lock.studentId, lock.studentType)}</p>
@@ -1317,7 +1344,11 @@ export default function OperatorDashboard() {
                     <tr key={item.id} className="hover:bg-red-50/20 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">{item.studentInitials}</div>
+                          {item.studentPhotoUrl ? (
+                            <img src={item.studentPhotoUrl} alt={item.studentName} className="flex h-8 w-8 shrink-0 rounded-full object-cover border border-red-200" />
+                          ) : (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">{item.studentInitials}</div>
+                          )}
                           <div className="min-w-0">
                             <p className="truncate text-xs font-black text-foreground">{item.studentName}</p>
                             <p className="text-[10px] text-muted-foreground">{item.nim}</p>
@@ -1359,7 +1390,11 @@ export default function OperatorDashboard() {
                 </div>
                 {resignationRequests.map(r => (
                   <div key={r.id} className="px-5 py-4 flex items-center gap-4 border-b border-border/40 last:border-b-0">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${r.studentColor}`}>{r.studentInitials}</div>
+                    {r.studentPhotoUrl ? (
+                      <img src={r.studentPhotoUrl} alt={r.studentName} className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200" />
+                    ) : (
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${r.studentColor}`}>{r.studentInitials}</div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="font-black text-foreground text-sm">{r.studentName} <span className="text-xs font-medium text-muted-foreground">({r.studentNim})</span></p>
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{r.reason}</p>
@@ -1416,7 +1451,11 @@ export default function OperatorDashboard() {
                     <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-2.5">
                         <div className="flex items-center gap-2">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${log.userColor}`}>{log.userInitials}</div>
+                          {log.userPhotoUrl ? (
+                            <img src={log.userPhotoUrl} alt={log.userName} className="w-6 h-6 rounded-full object-cover shrink-0 border border-slate-200" />
+                          ) : (
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${log.userColor}`}>{log.userInitials}</div>
+                          )}
                           <span className="font-black text-foreground truncate max-w-[90px]">{log.userName.split(" ")[0]}</span>
                         </div>
                       </td>
