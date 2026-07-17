@@ -136,7 +136,7 @@ function SidebarContent({
               {item.name}
               {item.path === "/dosen/logbook" && unread > 0 && (
                 <span className="ml-auto w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-black flex items-center justify-center">
-                  {unread > 9 ? "9+" : unread}
+                  {unread > 99 ? "99+" : unread}
                 </span>
               )}
             </Link>
@@ -246,7 +246,7 @@ export function DosenLayout({ children, title = "Dashboard Dosen" }: LayoutProps
                     <Bell size={21} />
                     {unread > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white">
-                        {unread > 9 ? "9+" : unread}
+                        {unread > 99 ? "99+" : unread}
                       </span>
                     )}
                   </button>

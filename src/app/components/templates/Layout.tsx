@@ -691,7 +691,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
                     <Bell size={20} className="md:w-[22px] md:h-[22px]" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-destructive rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white shadow-sm">
-                        {unreadCount > 9 ? "9+" : unreadCount}
+                        {unreadCount > 99 ? "99+" : unreadCount}
                       </span>
                     )}
                   </button>
