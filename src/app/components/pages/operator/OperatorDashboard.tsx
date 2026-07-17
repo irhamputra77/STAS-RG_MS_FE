@@ -1058,7 +1058,11 @@ export default function OperatorDashboard() {
 
                   return (
                     <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-slate-50 transition-colors">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
+                      {m.photoUrl ? (
+                        <img src={m.photoUrl} alt={m.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-slate-200" />
+                      ) : (
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground truncate">{m.name}</p>
                         <p className="text-[10px] text-muted-foreground">{m.nim}</p>
