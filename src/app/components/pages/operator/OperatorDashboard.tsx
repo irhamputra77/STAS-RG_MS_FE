@@ -255,7 +255,7 @@ export default function OperatorDashboard() {
   const attendanceReadDate = getJakartaDateKey();
   const [students, setStudents] = useState<MahasiswaRecord[]>([]);
   const [pendingCuti, setPendingCuti] = useState<LeaveRequestAll[]>([]);
-  const [pendingSurat, setPendingSurat] = useState<LetterRequestAll[]>([]);
+  const [pendingKelulusan, setPendingKelulusan] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [researches, setResearches] = useState<ResearchFull[]>([]);
   const [resignationRequests, setResignationRequests] = useState<WithdrawalRequestRecord[]>([]);
@@ -403,9 +403,9 @@ export default function OperatorDashboard() {
             request: apiGet<Array<any>>("/leave-requests?status=Menunggu"),
           },
           {
-            key: "letters",
-            label: "pengajuan surat",
-            request: apiGet<Array<any>>("/letter-requests?status=Menunggu"),
+            key: "graduations",
+            label: "berkas kelulusan",
+            request: apiGet<Array<any>>("/graduation-submissions?status=Dikirim,Revisi"),
           },
           {
             key: "audit",
@@ -470,7 +470,7 @@ export default function OperatorDashboard() {
           settled[2].status === "fulfilled"
             ? settled[2].value
             : [];
-        const lettersRes =
+        const graduationsRes =
           settled[3].status === "fulfilled"
             ? settled[3].value
             : [];
@@ -553,19 +553,16 @@ export default function OperatorDashboard() {
           status: item.status
         }));
 
-        const mappedLetters: LetterRequestAll[] = lettersRes.map((item: any) => ({
+        const mappedGraduations = graduationsRes.map((item: any) => ({
           id: item.id,
           mahasiswaId: item.student_id,
           mahasiswaNama: item.student_name,
           mahasiswaInitials: item.student_initials || item.student_name?.slice(0, 2)?.toUpperCase() || "M",
           mahasiswaColor: "bg-[#8B6FFF] text-white",
           nim: item.nim,
-          jenis: item.jenis,
-          tanggal: formatDateYmd(item.tanggal),
-          tujuan: item.tujuan,
-          status: item.status,
-          estimasi: item.estimasi ? formatDateYmd(item.estimasi) : undefined,
-          nomorSurat: item.nomor_surat || undefined
+          jenis: "Berkas Kelulusan",
+          tanggal: formatDateYmd(item.submitted_at || item.created_at),
+          status: item.status
         }));
 
         const mappedWithdrawals: WithdrawalRequestRecord[] = (withdrawalRes || []).map((item: any) => ({
@@ -630,7 +627,7 @@ export default function OperatorDashboard() {
         setSummary(summaryRes);
         setStudents(mappedStudents);
         setPendingCuti(mappedLeave);
-        setPendingSurat(mappedLetters.slice(0, 2));
+        setPendingKelulusan(mappedGraduations.slice(0, 2));
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
         setAttendanceMonitor(attendanceMonitorRes);
@@ -781,7 +778,6 @@ export default function OperatorDashboard() {
   const alumniCount = summary?.totalAlumni ?? students.filter(m => m.status === "Alumni").length;
   const risetAktif = summary?.totalRisetAktif ?? researches.filter(r => r.status === "Aktif").length;
   const cutiMenunggu = pendingCuti.length;
-  const suratMenunggu = summary?.suratMenunggu ?? pendingSurat.length;
   const kelulusanMenunggu = summary?.kelulusanMenunggu ?? 0;
   const totalDokumen = summary?.totalDokumen ?? 0;
   const logbookHariIni = summary?.logbookTerbaru?.length ?? 0;
@@ -1458,7 +1454,7 @@ export default function OperatorDashboard() {
               <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                 <h2 className="text-sm font-black text-foreground flex items-center gap-2">
                   <AlertTriangle size={14} className="text-amber-500" /> Pengajuan Menunggu
-                  {(cutiMenunggu + suratMenunggu) > 0 && <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{cutiMenunggu + suratMenunggu}</span>}
+                  {(cutiMenunggu + kelulusanMenunggu) > 0 && <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{cutiMenunggu + kelulusanMenunggu}</span>}
                 </h2>
               </div>
               <div className="p-4 flex flex-col gap-3 max-h-[400px] overflow-y-auto">
@@ -1478,23 +1474,26 @@ export default function OperatorDashboard() {
                     </div>
                   </div>
                 ))}
-                {pendingSurat.map(s => (
-                  <div key={s.id} className="p-3.5 border border-blue-100 bg-blue-50/40 rounded-[12px]">
+                {pendingKelulusan.map(s => (
+                  <div key={s.id} className="p-3.5 border border-rose-100 bg-rose-50/40 rounded-[12px]">
                     <div className="flex items-start gap-2">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${s.mahasiswaColor}`}>{s.mahasiswaInitials}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-black text-foreground">{s.mahasiswaNama}</p>
-                        <p className="text-[10px] font-bold text-foreground mt-0.5 line-clamp-1">{s.jenis}</p>
-                        <span className="text-[9px] font-black text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Surat</span>
+                        <p className="text-[10px] font-bold text-muted-foreground mt-0.5 uppercase tracking-wide">{s.jenis}</p>
+                        <p className="text-[10px] font-medium text-muted-foreground mt-1">Diajukan: <span className="font-bold">{s.tanggal}</span></p>
+                      </div>
+                      <div className="flex items-center gap-1 bg-white border border-rose-200 px-2 py-1 rounded-[6px] shadow-sm">
+                        <Clock size={10} className="text-rose-500" />
+                        <span className="text-[9px] font-black text-rose-700">{s.status}</span>
                       </div>
                     </div>
-                    <Link to="/operator/surat" className="mt-2 flex items-center justify-center gap-1 py-1.5 text-[10px] font-black text-blue-600 hover:bg-blue-50 rounded-[8px] transition-colors">Proses Surat <ArrowRight size={10} strokeWidth={3} /></Link>
                   </div>
                 ))}
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-slate-50/50 grid grid-cols-2 gap-2">
-                <Link to="/operator/cuti" className="text-center text-[10px] font-bold text-amber-600 hover:underline">Semua Pengajuan</Link>
-                <Link to="/operator/surat" className="text-center text-[10px] font-bold text-blue-600 hover:underline">Semua Surat</Link>
+                <Link to="/operator/cuti" className="text-center text-[10px] font-bold text-amber-600 hover:underline">Semua Cuti</Link>
+                <Link to="/operator/kelulusan" className="text-center text-[10px] font-bold text-rose-600 hover:underline">Semua Kelulusan</Link>
               </div>
             </div>
           </div>
