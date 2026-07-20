@@ -349,6 +349,7 @@ type FinalRegisterResponse = {
     projectCount?: number;
     message?: string;
   }>;
+  autoPublish?: BulkPublishResponse;
 };
 
 type FinalDraftUpload = {
@@ -462,6 +463,21 @@ const statusVariant = (status: string) =>
     : status === "terbit" || status === "diarsipkan" || status === "approved" || status === "completed"
       ? "default"
       : "secondary";
+
+const finalCaseStatusLabel = (status?: string | null, fallback?: string | null) => {
+  if (status === "draft_created") return "Belum Terbit";
+  if (status === "pending") return "Belum Ada Draft";
+  if (status === "issued") return "Terbit";
+  if (status === "revoked") return "Dicabut";
+  return fallback || status || "-";
+};
+
+const finalDocumentStatusLabel = (status?: string | null) => {
+  if (status === "draft") return "Belum terbit";
+  if (status === "terbit") return "terbit";
+  if (status === "dicabut") return "tidak berlaku";
+  return status || "-";
+};
 
 const periodText = (period?: RequestPeriod | null, fallbackActivityType?: string | null) => {
   if (!period && !fallbackActivityType) return "-";
@@ -1261,9 +1277,9 @@ export default function DocumentCenter() {
       const caseIds = Array.from(new Set((result.items || [])
         .filter((item) => (item.status === "created" || item.status === "existing") && item.caseId)
         .map((item) => String(item.caseId))));
-      let bulkPublish: BulkPublishResponse | null = null;
+      let bulkPublish: BulkPublishResponse | null = result.autoPublish || null;
       let autoPublishError = "";
-      if (finalOutcome === "completed" && caseIds.length) {
+      if (finalOutcome === "completed" && caseIds.length && !bulkPublish) {
         try {
           bulkPublish = await autoGenerateAndPublishFinalCases(caseIds);
         } catch (err: any) {
@@ -1281,6 +1297,8 @@ export default function DocumentCenter() {
         : "";
       if (autoPublishError) {
         setError(`Registrasi berhasil, tetapi generate/publish otomatis belum selesai: ${autoPublishError}`);
+      } else if (finalOutcome === "completed" && (created + existing) > 0 && !documentNumbers.length) {
+        setError("Registrasi belum sepenuhnya terbit. Cek template aktif lalu ulangi pendaftaran kandidat yang masih belum terbit.");
       } else {
         setError("");
       }
@@ -2315,7 +2333,7 @@ export default function DocumentCenter() {
               <select value={finalCaseStatus} onChange={(event) => setFinalCaseStatus(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm">
                 <option value="">Semua status</option>
                 <option value="pending">Pending</option>
-                <option value="draft_created">Draft Dibuat</option>
+                <option value="draft_created">Belum Terbit</option>
                 <option value="issued">Terbit</option>
                 <option value="revoked">Dicabut</option>
               </select>
@@ -2374,9 +2392,9 @@ export default function DocumentCenter() {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{finalPeriodYearText(item.period)}</TableCell>
                       <TableCell>{finalOutcomeLabel(item.outcome)}</TableCell>
-                      <TableCell><Badge variant={statusVariant(item.status) as any}>{item.statusLabel || item.status}</Badge></TableCell>
+                      <TableCell><Badge variant={statusVariant(item.status) as any}>{finalCaseStatusLabel(item.status, item.statusLabel)}</Badge></TableCell>
                       <TableCell className="text-xs">
-                        {item.completionDocument ? item.completionDocument.status || "-" : "Belum ada draft"}
+                        {item.completionDocument ? finalDocumentStatusLabel(item.completionDocument.status) : "Belum ada draft"}
                       </TableCell>
                       <TableCell className="text-xs">
                         {Number(item.certificateCount || item.projects?.length || 0) > 0
@@ -3347,7 +3365,7 @@ export default function DocumentCenter() {
         </Dialog>
 
         <Dialog
-          open={Boolean(selectedFinalCase) || finalCaseDetailLoading}
+          open={!finalCorrectionOpen && (Boolean(selectedFinalCase) || finalCaseDetailLoading)}
           onOpenChange={(open) => {
             if (!open) setSelectedFinalCase(null);
           }}
@@ -3367,7 +3385,7 @@ export default function DocumentCenter() {
                     <p><b>Activity type:</b> {selectedFinalCase.activityType}</p>
                   </div>
                   <div>
-                    <p><b>Status:</b> {selectedFinalCase.statusLabel || selectedFinalCase.status}</p>
+                    <p><b>Status:</b> {finalCaseStatusLabel(selectedFinalCase.status, selectedFinalCase.statusLabel)}</p>
                     <p><b>Outcome:</b> {finalOutcomeLabel(selectedFinalCase.outcome)}</p>
                     <p><b>Periode:</b> {finalPeriodText(selectedFinalCase.period)}</p>
                     <p><b>{selectedFinalCase.outcome === "withdrawn_early" ? "Tanggal efektif:" : "Selesai:"}</b> {formatDateReadable(selectedFinalCase.completedAt)}</p>
