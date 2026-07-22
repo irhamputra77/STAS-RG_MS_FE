@@ -48,7 +48,9 @@ export default function PengunduranDiriOperator() {
       try {
         const data = await apiGet<Array<any>>("/withdrawal-requests");
         setRows(
-          (data || []).map((item) => ({
+          (data || [])
+            .filter((item) => item.student_status !== "Alumni")
+            .map((item) => ({
             id: item.id,
             studentName: item.student_name || "Mahasiswa",
             studentNim: item.student_nim || "-",
