@@ -363,7 +363,9 @@ export default function KehadiranMahasiswa() {
         findHolidayForDate(settingHolidays, monitorRows?.date);
       const nextIsHoliday = Boolean(excludeHolidaysFromWorkdays && (monitorRows?.isHoliday || nextHoliday));
 
-      const mappedStudents = (studentRows || []).map((item: any, index: number) => ({
+      const mappedStudents = (studentRows || [])
+        .filter((item: any) => item?.status !== "Alumni")
+        .map((item: any, index: number) => ({
         id: String(item?.id || ""),
         nim: item?.nim || "-",
         name: item?.name || "Mahasiswa",
