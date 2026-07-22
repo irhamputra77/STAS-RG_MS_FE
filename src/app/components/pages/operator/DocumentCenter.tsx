@@ -80,6 +80,7 @@ type BulkPublishResponse = {
     sequence: number;
     documentNumber: string;
     issuedAt: string;
+    reserved?: boolean;
   }>;
 };
 
@@ -93,10 +94,65 @@ type Definition = {
   name: string;
   typeName: string;
   typeCode?: string | null;
+  documentPurpose?: string | null;
   requestMode: string;
+  activityType?: string | null;
   canBeCollective: boolean;
   requiresProject: boolean;
   requiresPeriod: boolean;
+  isActive?: boolean;
+};
+
+type ReservedNumber = {
+  id: string;
+  documentNumber: string;
+  typeCode: string;
+  sequence: number;
+  issuedAt: string;
+  definition: {
+    id: string;
+    name: string;
+    typeName?: string | null;
+    documentPurpose?: string | null;
+    requestMode?: string | null;
+    isActive?: boolean;
+  };
+  note?: string | null;
+};
+
+const FINAL_RESERVED_NUMBERS_STORAGE_KEY = "stasrg.documentCenter.finalReservedNumbers";
+
+const isReservedNumber = (value: any): value is ReservedNumber =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof value.id === "string" &&
+      typeof value.documentNumber === "string" &&
+      typeof value.typeCode === "string" &&
+      typeof value.sequence === "number" &&
+      typeof value.issuedAt === "string" &&
+      value.definition &&
+      typeof value.definition === "object" &&
+      typeof value.definition.id === "string" &&
+      typeof value.definition.name === "string",
+  );
+
+const loadStoredFinalReservedNumbers = (): Record<string, ReservedNumber> => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(FINAL_RESERVED_NUMBERS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.entries(parsed).reduce<Record<string, ReservedNumber>>((items, [typeCode, value]) => {
+      if (/^[0-9]{2}$/.test(typeCode) && isReservedNumber(value)) {
+        items[typeCode] = value;
+      }
+      return items;
+    }, {});
+  } catch {
+    return {};
+  }
 };
 
 type Student = {
@@ -123,6 +179,10 @@ type Project = {
 };
 
 type UploadParticipant = {
+  participantType: "internal" | "external";
+  externalName: string;
+  externalIdentifier: string;
+  externalInstitution: string;
   search: string;
   results: Student[];
   student: Student | null;
@@ -426,6 +486,10 @@ type TemplateUploadState = {
 type ReviewAction = "revision" | "approve" | "reject";
 
 const emptyParticipant = (): UploadParticipant => ({
+  participantType: "internal",
+  externalName: "",
+  externalIdentifier: "",
+  externalInstitution: "",
   search: "",
   results: [],
   student: null,
@@ -570,7 +634,7 @@ const actionTitle = (action: ReviewAction) =>
 
 export default function DocumentCenter() {
   const { confirm, confirmDialog } = useConfirmDialog();
-  const [activeTab, setActiveTab] = useState<"requests" | "final" | "archive" | "templates">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "final" | "archive" | "templates" | "numbering">("requests");
 
   const [data, setData] = useState<ListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
   const [status, setStatus] = useState("");
@@ -580,6 +644,7 @@ export default function DocumentCenter() {
   const [selected, setSelected] = useState<DocumentItem | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
 
   const [requests, setRequests] = useState<RequestListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
@@ -596,9 +661,9 @@ export default function DocumentCenter() {
   const [finalSubTab, setFinalSubTab] = useState<"eligible" | "cases">("eligible");
   const [finalOutcome, setFinalOutcome] = useState<FinalOutcomeFilter>("completed");
   const [finalActivityType, setFinalActivityType] = useState<FinalActivityType | "">("");
-  const [finalPeriodId, setFinalPeriodId] = useState("");
   const [finalSearch, setFinalSearch] = useState("");
-  const [eligibleData, setEligibleData] = useState<FinalEligibleResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+  const [eligiblePageSize, setEligiblePageSize] = useState(100);
+  const [eligibleData, setEligibleData] = useState<FinalEligibleResponse>({ items: [], pagination: { limit: 100, offset: 0, total: 0 } });
   const [eligibleLoading, setEligibleLoading] = useState(false);
   const [selectedEligible, setSelectedEligible] = useState<string[]>([]);
   const [withdrawalPeriods, setWithdrawalPeriods] = useState<Record<string, string>>({});
@@ -606,8 +671,6 @@ export default function DocumentCenter() {
   const [primaryProjects, setPrimaryProjects] = useState<Record<string, string>>({});
   const [primaryProjectDialogOpen, setPrimaryProjectDialogOpen] = useState(false);
   const [registeringFinalCases, setRegisteringFinalCases] = useState(false);
-  const [registerResult, setRegisterResult] = useState<FinalRegisterResponse["items"]>([]);
-  const [registerSummary, setRegisterSummary] = useState<{ created: number; existing: number; invalid: number; documentNumbers: string[] } | null>(null);
   const [finalCases, setFinalCases] = useState<FinalCaseListResponse>({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
   const [finalCasesLoading, setFinalCasesLoading] = useState(false);
   const [finalCasesLoaded, setFinalCasesLoaded] = useState(false);
@@ -650,6 +713,13 @@ export default function DocumentCenter() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [definitionsLoading, setDefinitionsLoading] = useState(false);
+  const [manualNumberDefinitionId, setManualNumberDefinitionId] = useState("");
+  const [manualNumberNote, setManualNumberNote] = useState("");
+  const [manualNumberLoading, setManualNumberLoading] = useState(false);
+  const [manualNumberError, setManualNumberError] = useState("");
+  const [manualNumberResult, setManualNumberResult] = useState<ReservedNumber | null>(null);
+  const [reservedFinalNumbers, setReservedFinalNumbers] = useState<Record<string, ReservedNumber>>(() => loadStoredFinalReservedNumbers());
+  const [reservedFinalNumbersLoaded, setReservedFinalNumbersLoaded] = useState(false);
   const [definitionId, setDefinitionId] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -664,6 +734,7 @@ export default function DocumentCenter() {
   const currentEligible = eligibleData.pagination;
   const currentFinalCases = finalCases.pagination;
   const definition = definitions.find((item) => item.id === definitionId) || null;
+  const uploadReservedNumber = definition?.typeCode ? reservedFinalNumbers[definition.typeCode] || null : null;
   const shouldShowCandidates = selectedRequest?.status === "approved" && !selectedRequest.officialDocument;
 
   const showToast = (message: string) => {
@@ -788,6 +859,32 @@ export default function DocumentCenter() {
     }
   };
 
+  const preview = async (document: { id: string; canDownload: boolean }) => {
+    if (!document.canDownload || previewingId) return;
+    const previewWindow = window.open("", "_blank");
+    if (previewWindow) {
+      previewWindow.document.title = "Memuat preview...";
+      previewWindow.document.body.innerHTML = '<p style="font-family:sans-serif;padding:24px">Memuat preview PDF...</p>';
+    }
+    setPreviewingId(document.id);
+    setError("");
+    try {
+      const file = await apiGetBlob(`/document-center/documents/${encodePathSegment(document.id)}/download`);
+      const pdfBlob = file.blob.type === "application/pdf"
+        ? file.blob
+        : new Blob([file.blob], { type: "application/pdf" });
+      const previewUrl = URL.createObjectURL(pdfBlob);
+      if (previewWindow) previewWindow.location.href = previewUrl;
+      else window.open(previewUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
+    } catch (err: any) {
+      previewWindow?.close();
+      setError(errorMessage(err));
+    } finally {
+      setPreviewingId(null);
+    }
+  };
+
   const canPublish = (document: { status?: string | null; currentVersionNumber?: number | null; id: string }) =>
     document.status === "draft" && Number(document.currentVersionNumber) > 0 && publishingId !== document.id;
 
@@ -847,6 +944,62 @@ export default function DocumentCenter() {
     }
   };
 
+  const reserveManualNumber = async () => {
+    if (!manualNumberDefinitionId || manualNumberLoading) {
+      setManualNumberError("Pilih jenis dokumen dulu.");
+      return;
+    }
+    setManualNumberLoading(true);
+    setManualNumberError("");
+    setError("");
+    try {
+      const result = await apiPost<ReservedNumber>("/document-center/operator/numbering/reserve", {
+        documentDefinitionId: manualNumberDefinitionId,
+        note: manualNumberNote.trim() || null,
+      });
+      setManualNumberResult(result);
+      setReservedFinalNumbers((items) => ({ ...items, [result.typeCode]: result }));
+      setReservedFinalNumbersLoaded(true);
+      setManualNumberNote("");
+      showToast(`Nomor berhasil dibuat: ${result.documentNumber}`);
+    } catch (err: any) {
+      setManualNumberError(errorMessage(err));
+    } finally {
+      setManualNumberLoading(false);
+    }
+  };
+
+  const loadReservedFinalNumbers = async () => {
+    try {
+      const result = await apiGet<{ items: ReservedNumber[] }>("/document-center/operator/numbering/reserved-final");
+      const next = result.items.reduce<Record<string, ReservedNumber>>((items, batch) => {
+        items[batch.typeCode] = batch;
+        return items;
+      }, {});
+      setReservedFinalNumbers(next);
+      setReservedFinalNumbersLoaded(true);
+    } catch (err: any) {
+      setReservedFinalNumbersLoaded(true);
+      setError(errorMessage(err));
+    }
+  };
+
+  const releaseReservedFinalNumber = async (batch: ReservedNumber) => {
+    setError("");
+    try {
+      await apiPost("/document-center/operator/numbering/release", { issueBatchId: batch.id });
+      setReservedFinalNumbers((items) => {
+        const next = { ...items };
+        delete next[batch.typeCode];
+        return next;
+      });
+      setReservedFinalNumbersLoaded(true);
+      showToast(`Nomor dilepas: ${batch.documentNumber}`);
+    } catch (err: any) {
+      setError(errorMessage(err));
+    }
+  };
+
   const candidateKey = (item: FinalEligibleItem) =>
     finalOutcome === "withdrawn_early"
       ? String(item.withdrawalRequestId || item.student.id)
@@ -874,9 +1027,9 @@ export default function DocumentCenter() {
     return "";
   };
 
-  const loadEligible = async (offset = eligibleData.pagination.offset) => {
+  const loadEligible = async (offset = eligibleData.pagination.offset, limitOverride = eligiblePageSize) => {
     if (!finalActivityType) {
-      setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+      setEligibleData({ items: [], pagination: { limit: limitOverride, offset: 0, total: 0 } });
       setSelectedEligible([]);
       setWithdrawalPeriods({});
       setWithdrawalProjects({});
@@ -893,9 +1046,8 @@ export default function DocumentCenter() {
       const result = await apiGet<FinalEligibleResponse>(
         buildQueryPath(endpoint, {
           activityType: finalActivityType,
-          periodId: finalOutcome === "completed" ? finalPeriodId || null : null,
           search: finalSearch || null,
-          limit: 20,
+          limit: limitOverride,
           offset,
           _r: requestId,
         }),
@@ -1166,46 +1318,11 @@ export default function DocumentCenter() {
     setSelectedEligible((items) => (items.includes(key) ? items.filter((value) => value !== key) : [...items, key]));
   };
 
-  const autoGenerateAndPublishFinalCases = async (caseIds: string[]) => {
-    const documentIds: string[] = [];
-    for (const caseId of caseIds) {
-      let detail = await apiGet<FinalCase>(`/document-center/operator/final-activity/cases/${encodePathSegment(caseId)}`);
-      if (detail.completionDocument && detail.capabilities?.canPublishCompletion) {
-        documentIds.push(detail.completionDocument.id);
-      }
-
-      for (const project of detail.projects || []) {
-        let certificateDocument = project.certificateDocument || null;
-        if (
-          detail.outcome === "completed" &&
-          ["Magang", "Riset"].includes(detail.activityType) &&
-          project.certificateRequired &&
-          project.certificateStatus === "pending" &&
-          !certificateDocument
-        ) {
-          const generated = await apiPost<{ document?: FinalDocument }>(
-            `/document-center/operator/final-activity/case-projects/${encodePathSegment(project.id)}/generate-certificate-draft`,
-            {},
-          );
-          certificateDocument = generated.document || null;
-        }
-
-        if (!certificateDocument) {
-          detail = await apiGet<FinalCase>(`/document-center/operator/final-activity/cases/${encodePathSegment(caseId)}`);
-          certificateDocument = detail.projects?.find((item) => item.id === project.id)?.certificateDocument || null;
-        }
-
-        if (certificateDocument?.status === "draft" && Number(certificateDocument.currentVersionNumber) > 0) {
-          documentIds.push(certificateDocument.id);
-        }
-      }
-    }
-
-    const uniqueDocumentIds = Array.from(new Set(documentIds));
-    if (!uniqueDocumentIds.length) return null;
-    return apiPost<BulkPublishResponse>("/document-center/operator/documents/bulk-publish", {
-      documentIds: uniqueDocumentIds,
-    });
+  const buildReservedFinalIssueBatchMap = () => {
+    const entries = Object.entries(reservedFinalNumbers)
+      .filter(([typeCode, batch]) => ["09", "13"].includes(typeCode) && batch?.id)
+      .map(([typeCode, batch]) => [typeCode, batch.id]);
+    return Object.fromEntries(entries) as Record<string, string>;
   };
 
   const registerFinalCases = async () => {
@@ -1223,6 +1340,19 @@ export default function DocumentCenter() {
       }
     }
     if (finalOutcome === "completed") {
+      const requiredFinalNumberCodes = finalActivityType === "Riset" ? ["13"] : ["09", "13"];
+      const missingFinalNumbers = requiredFinalNumberCodes.filter((typeCode) => !reservedFinalNumbers[typeCode]?.id);
+      if (missingFinalNumbers.length) {
+        setError(
+          missingFinalNumbers.length === 2
+            ? "Ambil nomor SKS kode 09 dan nomor Sertifikat kode 13 dulu di tab Jenis & Penomoran sebelum Daftarkan."
+            : missingFinalNumbers[0] === "09"
+              ? "Ambil nomor SKS kode 09 dulu di tab Jenis & Penomoran sebelum Daftarkan."
+              : "Ambil nomor Sertifikat kode 13 dulu di tab Jenis & Penomoran sebelum Daftarkan."
+        );
+        setActiveTab("numbering");
+        return;
+      }
       const missingPrimaryProject = selectedItems.find((item) => needsPrimaryProjectSelection(item) && !selectedPrimaryProjectId(item));
       if (missingPrimaryProject) {
         setError("");
@@ -1245,6 +1375,7 @@ export default function DocumentCenter() {
     setRegisteringFinalCases(true);
     setError("");
     try {
+      const issueBatchIdsByTypeCode = buildReservedFinalIssueBatchMap();
       const result = finalOutcome === "withdrawn_early"
         ? await apiPost<FinalRegisterResponse>("/document-center/operator/final-activity/early-exit/cases", {
             items: selectedItems.map((item) => {
@@ -1258,6 +1389,7 @@ export default function DocumentCenter() {
             }),
           })
         : await apiPost<FinalRegisterResponse>("/document-center/operator/final-activity/cases", {
+            ...(Object.keys(issueBatchIdsByTypeCode).length ? { issueBatchIdsByTypeCode } : {}),
             items: selectedItems.map((item) => {
               const primaryProjectId = selectedPrimaryProjectId(item);
               return {
@@ -1267,37 +1399,35 @@ export default function DocumentCenter() {
               };
             }),
           });
-      setRegisterResult(result.items || []);
       const successful = new Set(
         (result.items || [])
           .filter((item) => item.status === "created" || item.status === "existing")
           .map((item) => finalOutcome === "withdrawn_early" ? String(item.withdrawalRequestId || "") : `${item.studentId}::${item.periodId}`),
       );
-      setSelectedEligible((items) => items.filter((key) => !successful.has(key)));
+      // Registration for completed final documents is atomic. Once the
+      // request succeeds, none of the previous checkboxes may remain selected;
+      // retaining stale keys makes the next batch count accumulate.
+      if (finalOutcome === "completed") {
+        setSelectedEligible([]);
+      } else {
+        setSelectedEligible((items) => items.filter((key) => !successful.has(key)));
+      }
       const caseIds = Array.from(new Set((result.items || [])
         .filter((item) => (item.status === "created" || item.status === "existing") && item.caseId)
         .map((item) => String(item.caseId))));
-      let bulkPublish: BulkPublishResponse | null = result.autoPublish || null;
-      let autoPublishError = "";
+      const bulkPublish: BulkPublishResponse | null = result.autoPublish || null;
       if (finalOutcome === "completed" && caseIds.length && !bulkPublish) {
-        try {
-          bulkPublish = await autoGenerateAndPublishFinalCases(caseIds);
-        } catch (err: any) {
-          autoPublishError = err instanceof ApiError && err.message ? err.message : errorMessage(err);
-        }
+        throw new Error("Generate/publish otomatis belum selesai. Tidak ada draft yang dianggap berhasil.");
       }
       await Promise.all([loadEligible(0), loadFinalCases(0)]);
       const created = result.items?.filter((item) => item.status === "created").length || 0;
       const existing = result.items?.filter((item) => item.status === "existing").length || 0;
       const invalid = result.items?.filter((item) => !["created", "existing"].includes(item.status)).length || 0;
       const documentNumbers = Array.from(new Set((bulkPublish?.batches || []).map((batch) => batch.documentNumber).filter(Boolean)));
-      setRegisterSummary({ created, existing, invalid, documentNumbers });
       const batchText = bulkPublish?.batches?.length
         ? ` Nomor batch: ${bulkPublish.batches.map((batch) => batch.documentNumber).join(", ")}.`
         : "";
-      if (autoPublishError) {
-        setError(`Registrasi berhasil, tetapi generate/publish otomatis belum selesai: ${autoPublishError}`);
-      } else if (finalOutcome === "completed" && (created + existing) > 0 && !documentNumbers.length) {
+      if (finalOutcome === "completed" && (created + existing) > 0 && !documentNumbers.length) {
         setError("Registrasi belum sepenuhnya terbit. Cek template aktif lalu ulangi pendaftaran kandidat yang masih belum terbit.");
       } else {
         setError("");
@@ -1652,6 +1782,21 @@ export default function DocumentCenter() {
   };
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (Object.keys(reservedFinalNumbers).length === 0) {
+      window.localStorage.removeItem(FINAL_RESERVED_NUMBERS_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(FINAL_RESERVED_NUMBERS_STORAGE_KEY, JSON.stringify(reservedFinalNumbers));
+  }, [reservedFinalNumbers]);
+
+  useEffect(() => {
+    if ((activeTab === "final" || activeTab === "numbering") && !reservedFinalNumbersLoaded) {
+      void loadReservedFinalNumbers();
+    }
+  }, [activeTab, reservedFinalNumbersLoaded]);
+
+  useEffect(() => {
     void load(0);
   }, [status]);
 
@@ -1674,6 +1819,16 @@ export default function DocumentCenter() {
   }, [activeTab, templatesLoaded]);
 
   useEffect(() => {
+    if (activeTab === "numbering" && definitions.length === 0) {
+      setDefinitionsLoading(true);
+      apiGet<{ items: Definition[] }>("/document-center/operator/definitions")
+        .then((result) => setDefinitions(result.items.filter((item) => item)))
+        .catch((err: any) => setError(errorMessage(err)))
+        .finally(() => setDefinitionsLoading(false));
+    }
+  }, [activeTab, definitions.length]);
+
+  useEffect(() => {
     if (activeTab === "final" && !templatesLoaded) {
       void loadTemplates(0);
     }
@@ -1683,13 +1838,13 @@ export default function DocumentCenter() {
     if (activeTab === "final" && finalSubTab === "eligible") {
       if (finalActivityType) void loadEligible(0);
       else {
-        setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+        setEligibleData({ items: [], pagination: { limit: eligiblePageSize, offset: 0, total: 0 } });
         setSelectedEligible([]);
         setWithdrawalPeriods({});
         setWithdrawalProjects({});
       }
     }
-  }, [activeTab, finalSubTab, finalOutcome, finalActivityType, finalPeriodId]);
+  }, [activeTab, finalSubTab, finalOutcome, finalActivityType, eligiblePageSize]);
 
   useEffect(() => {
     if (activeTab === "final" && finalSubTab === "cases") {
@@ -1721,6 +1876,7 @@ export default function DocumentCenter() {
   const openUpload = async () => {
     setUploadOpen(true);
     setSubmitError("");
+    if (!reservedFinalNumbersLoaded) void loadReservedFinalNumbers();
     if (definitions.length) return;
     setDefinitionsLoading(true);
     try {
@@ -1784,6 +1940,9 @@ export default function DocumentCenter() {
     if (uploadFile.type !== "application/pdf" || !/\.pdf$/i.test(uploadFile.name) || uploadFile.size === 0 || uploadFile.size > 8 * 1024 * 1024) {
       return setSubmitError("File harus PDF dan maksimal 8 MB.");
     }
+    if (!uploadReservedNumber) {
+      return setSubmitError(`Ambil nomor kode ${definition.typeCode || "dokumen"} di tab Jenis & Penomoran terlebih dahulu.`);
+    }
     const activityOutcome =
       definition.requestMode === "alumni_sync" ? "completed" : definition.requestMode === "early_exit_review" ? outcome : null;
     if (definition.requestMode === "early_exit_review" && !activityOutcome) {
@@ -1792,8 +1951,20 @@ export default function DocumentCenter() {
 
     const payloadParticipants: any[] = [];
     for (const participant of participants) {
+      if (participant.participantType === "external") {
+        if (!participant.externalName.trim()) return setSubmitError("Isi nama peserta eksternal.");
+        if (definition.requiresProject || definition.requiresPeriod) {
+          return setSubmitError("Jenis dokumen ini memerlukan mahasiswa internal beserta data kegiatan.");
+        }
+        payloadParticipants.push({
+          externalName: participant.externalName.trim(),
+          externalIdentifier: participant.externalIdentifier.trim() || null,
+          externalInstitution: participant.externalInstitution.trim() || null,
+        });
+        continue;
+      }
       if (!participant.student) return setSubmitError("Pilih mahasiswa untuk setiap peserta.");
-      if (participants.filter((item) => item.student?.id === participant.student?.id).length > 1) {
+      if (participants.filter((item) => item.participantType === "internal" && item.student?.id === participant.student?.id).length > 1) {
         return setSubmitError("Mahasiswa tidak boleh duplikat.");
       }
       if (definition.requiresProject && !participant.projectId) return setSubmitError("Pilih proyek peserta.");
@@ -1818,6 +1989,7 @@ export default function DocumentCenter() {
     const types = payloadParticipants
       .map((_, index) => {
         const participant = participants[index];
+        if (participant.participantType === "external") return null;
         return participant.periods.length === 1
           ? participant.periods[0].activityType
           : participant.periods.length > 1
@@ -1836,7 +2008,8 @@ export default function DocumentCenter() {
         reader.onerror = reject;
         reader.readAsDataURL(uploadFile);
       });
-      await apiPost("/document-center/operator/documents/upload", {
+      await apiPost("/document-center/operator/documents/upload-and-publish", {
+        issueBatchId: uploadReservedNumber.id,
         documentDefinitionId: definition.id,
         title: uploadTitle.trim(),
         activityOutcome,
@@ -1846,8 +2019,8 @@ export default function DocumentCenter() {
       });
       setUploadOpen(false);
       resetUpload();
-      await load(0);
-      showToast("Draft dokumen berhasil diunggah.");
+      await Promise.all([load(0), loadReservedFinalNumbers()]);
+      showToast(`Dokumen berhasil diterbitkan dengan nomor ${uploadReservedNumber.documentNumber}.`);
     } catch (err: any) {
       setSubmitError(errorMessage(err));
     } finally {
@@ -1985,13 +2158,6 @@ export default function DocumentCenter() {
   };
 
   const renderFinalActivity = () => {
-    const availablePeriods = Array.from(
-      new Map(
-        eligibleData.items
-          .flatMap((item) => finalOutcome === "withdrawn_early" ? item.periods || [] : item.period ? [item.period] : [])
-          .map((period) => [period.id, period]),
-      ).values(),
-    );
     const visibleEligibleItems = eligibleData.items.filter((item) => finalOutcome === "withdrawn_early" ? item.canRegister !== false : !item.existingCase);
     const selectableEligibleKeys = visibleEligibleItems
       .filter((item) => {
@@ -2008,27 +2174,29 @@ export default function DocumentCenter() {
 
     return (
       <div className="grid gap-4">
-        <div className="flex gap-2 overflow-x-auto rounded-[12px] border border-border bg-white p-1 shadow-sm w-fit max-w-full">
-          {[
-            { key: "eligible", label: "1. Kandidat" },
-            { key: "cases", label: "2. Dokumen Terdaftar" },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setFinalSubTab(tab.key as "eligible" | "cases")}
-              className={`whitespace-nowrap rounded-[9px] border px-3 py-1.5 text-xs font-black ${
-                finalSubTab === tab.key ? "border-emerald-300 bg-emerald-50 text-foreground shadow-sm" : "border-transparent text-muted-foreground hover:bg-slate-50"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex">
+          <div className="inline-flex max-w-full overflow-x-auto rounded-xl bg-slate-100 p-1">
+            {[
+              { key: "eligible", label: "1. Kandidat" },
+              { key: "cases", label: "2. Dokumen Terdaftar" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setFinalSubTab(tab.key as "eligible" | "cases")}
+                className={`whitespace-nowrap rounded-lg px-5 py-2 text-xs font-black transition ${
+                  finalSubTab === tab.key ? "bg-white text-emerald-700 shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {finalSubTab === "eligible" ? (
-          <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="overflow-hidden rounded-[18px] border border-emerald-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-border bg-white px-5 py-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Kandidat Mahasiswa</p>
                 <h2 className="text-sm font-black text-foreground">Mahasiswa eligible untuk Dokumen Akhir Kegiatan</h2>
@@ -2048,22 +2216,19 @@ export default function DocumentCenter() {
                 </Button>
               </div>
             </div>
-            <form onSubmit={submitFinalSearch} className="grid gap-2 border-b border-border p-4 md:grid-cols-[180px_160px_220px_1fr_auto]">
+            <form onSubmit={submitFinalSearch} className="grid gap-3 border-b border-border bg-slate-50/40 p-4 md:grid-cols-[180px_160px_1fr_auto]">
               <select
                 value={finalOutcome}
                 onChange={(event) => {
                   setFinalOutcome(event.target.value as FinalOutcomeFilter);
-                  setFinalPeriodId("");
                   setSelectedEligible([]);
                   setWithdrawalPeriods({});
                   setWithdrawalProjects({});
                   setPrimaryProjects({});
                   setPrimaryProjectDialogOpen(false);
-                  setRegisterResult([]);
-                  setRegisterSummary(null);
-                  setEligibleData({ items: [], pagination: { limit: 20, offset: 0, total: 0 } });
+                  setEligibleData({ items: [], pagination: { limit: eligiblePageSize, offset: 0, total: 0 } });
                 }}
-                className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
+                className="h-11 rounded-[14px] border border-emerald-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-400"
               >
                 <option value="completed">Selesai Kegiatan</option>
                 <option value="withdrawn_early">Mengundurkan Diri</option>
@@ -2072,38 +2237,17 @@ export default function DocumentCenter() {
                 value={finalActivityType}
                 onChange={(event) => {
                   setFinalActivityType(event.target.value as FinalActivityType | "");
-                  setFinalPeriodId("");
                   setSelectedEligible([]);
                   setPrimaryProjects({});
                   setPrimaryProjectDialogOpen(false);
-                  setRegisterSummary(null);
                 }}
-                className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
+                className="h-11 rounded-[14px] border border-emerald-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-400"
               >
                 <option value="">Pilih activity type</option>
                 <option value="Magang">Magang</option>
                 <option value="Riset">Riset</option>
               </select>
-              <select
-                value={finalPeriodId}
-                onChange={(event) => {
-                  setFinalPeriodId(event.target.value);
-                  setSelectedEligible([]);
-                  setPrimaryProjects({});
-                  setPrimaryProjectDialogOpen(false);
-                  setRegisterSummary(null);
-                }}
-                disabled={finalOutcome !== "completed" || !finalActivityType || availablePeriods.length === 0}
-                className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm"
-              >
-                <option value="">{finalOutcome === "withdrawn_early" ? "Periode dipilih per kandidat" : "Semua periode tampil"}</option>
-                {availablePeriods.map((period) => (
-                  <option key={period.id} value={period.id}>
-                    {finalPeriodYearText(period)}
-                  </option>
-                ))}
-              </select>
-              <div className="flex items-center gap-2 rounded-[10px] border border-border bg-white px-3">
+              <div className="flex h-11 items-center gap-2 rounded-[14px] border border-emerald-200 bg-white px-3 shadow-sm focus-within:border-emerald-400">
                 <Search size={15} className="text-muted-foreground" />
                 <input
                   value={finalSearch}
@@ -2116,32 +2260,46 @@ export default function DocumentCenter() {
                 Cari
               </Button>
             </form>
+            {Object.values(reservedFinalNumbers).some(
+              (batch) => ["09", "13"].includes(batch.typeCode) && (finalActivityType !== "Riset" || batch.typeCode === "13"),
+            ) && (
+              <div className="grid gap-2 border-b border-emerald-100 bg-emerald-50/50 px-4 py-3 text-xs text-emerald-800 md:flex md:items-center md:justify-between">
+                <div>
+                  <p className="font-black">Nomor yang akan dipakai untuk batch Dokumen Akhir berikutnya</p>
+                  <p className="text-emerald-700">
+                    {finalActivityType === "Riset" ? "Riset hanya memakai kode 13 untuk sertifikat." : "Kode 09 untuk SKS, kode 13 untuk sertifikat."}
+                    {" "}Kalau tidak sesuai, lepas dulu sebelum Daftarkan.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.values(reservedFinalNumbers)
+                    .filter(
+                      (batch) => ["09", "13"].includes(batch.typeCode) && (finalActivityType !== "Riset" || batch.typeCode === "13"),
+                    )
+                    .map((batch) => (
+                    <span key={batch.id} className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 font-black text-emerald-800 shadow-sm">
+                      {batch.typeCode === "09" ? "SKS" : batch.typeCode === "13" ? "Sertifikat" : batch.definition.name}: {batch.documentNumber}
+                      <button
+                        type="button"
+                        className="rounded-full px-1 text-emerald-600 hover:bg-emerald-50"
+                        onClick={() => void releaseReservedFinalNumber(batch)}
+                        aria-label={`Lepas nomor ${batch.documentNumber}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                    ))}
+                </div>
+              </div>
+            )}
             {!finalActivityType ? (
               <div className="p-6 text-sm text-muted-foreground">Pilih activity type Magang atau Riset untuk memuat kandidat.</div>
             ) : (
               <>
-                {registerSummary && (
-                  <div className="border-b border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">
-                    <p className="font-black text-emerald-900">Dokumen akhir berhasil diproses</p>
-                    <p className="mt-1 font-semibold">
-                      {registerSummary.created} kandidat baru berhasil didaftarkan
-                      {registerSummary.existing ? ", " + registerSummary.existing + " sudah terdaftar sebelumnya" : ""}
-                      {registerSummary.invalid ? ", " + registerSummary.invalid + " perlu dicek" : ""}.
-                    </p>
-                    {registerSummary.documentNumbers.length > 0 && (
-                      <p className="mt-2">
-                        Nomor dokumen terbit: <b>{registerSummary.documentNumbers.join(", ")}</b>
-                      </p>
-                    )}
-                    {registerSummary.documentNumbers.length === 0 && registerResult.length > 0 && (
-                      <p className="mt-2">Dokumen sudah masuk ke tab Dokumen Terdaftar.</p>
-                    )}
-                  </div>
-                )}
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-slate-50">
-                      <TableHead className="w-12">
+                    <TableRow className="bg-slate-50/90">
+                      <TableHead className="w-12 px-5 py-3">
                         <input
                           type="checkbox"
                           checked={allSelectableChecked}
@@ -2157,10 +2315,10 @@ export default function DocumentCenter() {
                           aria-label="Pilih semua kandidat yang bisa didaftarkan"
                         />
                       </TableHead>
-                      <TableHead>Mahasiswa</TableHead>
-                      <TableHead className="w-40">Periode</TableHead>
-                      <TableHead>Project</TableHead>
-                      <TableHead className="w-36">Status</TableHead>
+                      <TableHead className="min-w-[280px] px-5 py-3">Mahasiswa</TableHead>
+                      <TableHead className="w-44 px-5 py-3">Periode</TableHead>
+                      <TableHead className="min-w-[300px] px-5 py-3">Project</TableHead>
+                      <TableHead className="w-40 px-5 py-3">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2191,8 +2349,8 @@ export default function DocumentCenter() {
                           ? Boolean(item.period && !item.existingCase)
                           : item.canRegister !== false && periods.length > 0 && (periods.length === 1 || Boolean(withdrawalPeriods[key]));
                         return (
-                          <TableRow key={key}>
-                            <TableCell>
+                          <TableRow key={key} className="align-top hover:bg-emerald-50/30">
+                            <TableCell className="px-5 py-3">
                               <input
                                 type="checkbox"
                                 checked={selectedEligible.includes(key)}
@@ -2201,13 +2359,13 @@ export default function DocumentCenter() {
                                 aria-label="Pilih kandidat"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-5 py-3">
                               <p className="font-black text-foreground">{item.student.name || "-"}</p>
                               <p className="text-xs text-muted-foreground">
                                 {[item.student.nim, item.student.prodi].filter(Boolean).join(" | ") || "-"}
                               </p>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
+                            <TableCell className="px-5 py-3 text-xs text-muted-foreground">
                               {finalOutcome === "withdrawn_early" ? (
                                 <div className="grid gap-1">
                                   <p>{finalPeriodText(effectivePeriod)}</p>
@@ -2235,7 +2393,7 @@ export default function DocumentCenter() {
                                 finalPeriodYearText(effectivePeriod)
                               )}
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
+                            <TableCell className="px-5 py-3 text-xs text-muted-foreground">
                               {finalOutcome === "withdrawn_early" ? (
                                 item.projects?.length ? (
                                   <div className="grid gap-1">
@@ -2288,7 +2446,7 @@ export default function DocumentCenter() {
                                 ) : "Tidak ada project"
                               )}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-5 py-3">
                               {item.existingCase ? (
                                 <Badge variant={statusVariant(item.existingCase.status || "") as any}>{item.existingCase.status || "existing"}</Badge>
                               ) : (
@@ -2303,12 +2461,39 @@ export default function DocumentCenter() {
                 </Table>
                 <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
                   <span>{currentEligible.total} kandidat</span>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={eligibleLoading || currentEligible.offset === 0} onClick={() => void loadEligible(Math.max(0, currentEligible.offset - currentEligible.limit))}>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <label className="flex items-center gap-2">
+                      <span>Tampilkan</span>
+                      <select
+                        value={eligiblePageSize}
+                        onChange={(event) => {
+                          const nextLimit = Number(event.target.value);
+                          setEligiblePageSize(nextLimit);
+                        }}
+                        className="h-8 rounded-[10px] border border-border bg-white px-2 text-xs"
+                      >
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void loadEligible(Math.max(0, currentEligible.offset - eligiblePageSize))}
+                      disabled={eligibleLoading || currentEligible.offset <= 0}
+                    >
                       <ChevronLeft size={14} />
                       Sebelumnya
                     </Button>
-                    <Button variant="outline" size="sm" disabled={eligibleLoading || currentEligible.offset + currentEligible.limit >= currentEligible.total} onClick={() => void loadEligible(currentEligible.offset + currentEligible.limit)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void loadEligible(currentEligible.offset + eligiblePageSize)}
+                      disabled={eligibleLoading || currentEligible.offset + eligibleData.items.length >= currentEligible.total}
+                    >
                       Berikutnya
                       <ChevronRight size={14} />
                     </Button>
@@ -2318,58 +2503,49 @@ export default function DocumentCenter() {
             )}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="overflow-hidden rounded-[18px] border border-emerald-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-border bg-white px-5 py-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Daftar Dokumen Akhir</p>
-                <h2 className="text-sm font-black text-foreground">Case final activity dan dokumen terkait</h2>
+                <h2 className="text-sm font-black text-foreground">Dokumen akhir mahasiswa yang sudah terdaftar</h2>
               </div>
               <Button variant="outline" size="sm" onClick={() => void loadFinalCases()} disabled={finalCasesLoading}>
                 <RefreshCw size={14} className={finalCasesLoading ? "animate-spin" : ""} />
                 Refresh
               </Button>
             </div>
-            <form onSubmit={submitFinalCaseSearch} className="grid gap-2 border-b border-border p-4 md:grid-cols-[160px_160px_190px_1fr_auto]">
-              <select value={finalCaseStatus} onChange={(event) => setFinalCaseStatus(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm">
+            <form onSubmit={submitFinalCaseSearch} className="grid gap-3 border-b border-border bg-slate-50/40 p-4 md:grid-cols-[160px_160px_190px_1fr_auto]">
+              <select value={finalCaseStatus} onChange={(event) => setFinalCaseStatus(event.target.value)} className="h-11 rounded-[14px] border border-emerald-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-400">
                 <option value="">Semua status</option>
-                <option value="pending">Pending</option>
-                <option value="draft_created">Belum Terbit</option>
                 <option value="issued">Terbit</option>
                 <option value="revoked">Dicabut</option>
               </select>
-              <select value={finalCaseActivityType} onChange={(event) => setFinalCaseActivityType(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm">
+              <select value={finalCaseActivityType} onChange={(event) => setFinalCaseActivityType(event.target.value)} className="h-11 rounded-[14px] border border-emerald-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-400">
                 <option value="">Semua tipe</option>
                 <option value="Magang">Magang</option>
                 <option value="Riset">Riset</option>
               </select>
-              <select value={finalCasePurpose} onChange={(event) => setFinalCasePurpose(event.target.value)} className="h-10 rounded-[10px] border border-border bg-white px-3 text-sm">
+              <select value={finalCasePurpose} onChange={(event) => setFinalCasePurpose(event.target.value)} className="h-11 rounded-[14px] border border-emerald-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-emerald-400">
                 <option value="">Semua dokumen</option>
                 <option value="completion_letter">Surat Keterangan</option>
                 <option value="certificate">Sertifikat</option>
               </select>
-              <div className="flex items-center gap-2 rounded-[10px] border border-border bg-white px-3">
+              <div className="flex h-11 items-center gap-2 rounded-[14px] border border-emerald-200 bg-white px-3 shadow-sm focus-within:border-emerald-400">
                 <Search size={15} className="text-muted-foreground" />
                 <input value={finalCaseSearch} onChange={(event) => setFinalCaseSearch(event.target.value)} placeholder="Cari nama atau NIM" className="h-10 w-full border-none bg-transparent text-sm outline-none" />
               </div>
               <Button type="submit" size="sm">Cari</Button>
             </form>
-            {finalBatchSummaries.length > 0 && (
-              <div className="border-b border-border bg-emerald-50/40 px-4 py-3 text-xs text-muted-foreground">
-                <span className="font-black text-emerald-700">Ringkasan nomor halaman ini: </span>
-                {finalBatchSummaries.slice(0, 4).map((batch) => `${batch.kind} ${batch.documentNumber} (${batch.count})`).join(" · ")}
-                {finalBatchSummaries.length > 4 ? ` · +${finalBatchSummaries.length - 4} nomor lain` : ""}
-              </div>
-            )}
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-50">
-                  <TableHead>Mahasiswa</TableHead>
-                  <TableHead>Periode</TableHead>
-                  <TableHead>Outcome</TableHead>
-                  <TableHead>Status Case</TableHead>
-                  <TableHead>SKS</TableHead>
-                  <TableHead>Sertifikat</TableHead>
-                  <TableHead>Aksi</TableHead>
+                <TableRow className="bg-slate-50/90">
+                  <TableHead className="min-w-[260px] px-5 py-3">Mahasiswa</TableHead>
+                  <TableHead className="w-40 px-5 py-3">Periode</TableHead>
+                  <TableHead className="w-40 px-5 py-3">Outcome</TableHead>
+                  <TableHead className="w-40 px-5 py-3">Status</TableHead>
+                  <TableHead className="w-32 px-5 py-3">SKS</TableHead>
+                  <TableHead className="w-32 px-5 py-3">Sertifikat</TableHead>
+                  <TableHead className="w-40 px-5 py-3 text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2385,24 +2561,24 @@ export default function DocumentCenter() {
                   </TableRow>
                 ) : (
                   finalCases.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
+                    <TableRow key={item.id} className="align-top hover:bg-emerald-50/30">
+                      <TableCell className="px-5 py-3">
                         <p className="font-black text-foreground">{item.student.name || "-"}</p>
                         <p className="text-xs text-muted-foreground">{[item.student.nim, item.student.prodi].filter(Boolean).join(" | ") || "-"}</p>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{finalPeriodYearText(item.period)}</TableCell>
-                      <TableCell>{finalOutcomeLabel(item.outcome)}</TableCell>
-                      <TableCell><Badge variant={statusVariant(item.status) as any}>{finalCaseStatusLabel(item.status, item.statusLabel)}</Badge></TableCell>
-                      <TableCell className="text-xs">
+                      <TableCell className="px-5 py-3 text-xs text-muted-foreground">{finalPeriodYearText(item.period)}</TableCell>
+                      <TableCell className="px-5 py-3 text-sm">{finalOutcomeLabel(item.outcome)}</TableCell>
+                      <TableCell className="px-5 py-3"><Badge variant={statusVariant(item.status) as any}>{finalCaseStatusLabel(item.status, item.statusLabel)}</Badge></TableCell>
+                      <TableCell className="px-5 py-3 text-xs">
                         {item.completionDocument ? finalDocumentStatusLabel(item.completionDocument.status) : "Belum ada draft"}
                       </TableCell>
-                      <TableCell className="text-xs">
+                      <TableCell className="px-5 py-3 text-xs">
                         {Number(item.certificateCount || item.projects?.length || 0) > 0
                           ? `${Number(item.certificateCount || item.projects?.length)} sertif`
                           : "Belum ada sertif"}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
+                      <TableCell className="px-5 py-3">
+                        <div className="flex flex-wrap justify-end gap-1">
                           <Button variant="ghost" size="sm" onClick={() => void openFinalCaseDetail(item.id)} aria-label="Detail case">
                             <Eye size={14} />
                             Detail
@@ -2440,7 +2616,7 @@ export default function DocumentCenter() {
 
   const renderArchive = () => (
     <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 border-b border-border px-5 py-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Arsip Dokumen</p>
           <h2 className="text-sm font-black text-foreground">Dokumen resmi STAS-RG</h2>
@@ -2579,7 +2755,7 @@ export default function DocumentCenter() {
 
   const renderRequests = () => (
     <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 border-b border-border px-5 py-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Permintaan Surat</p>
           <h2 className="text-sm font-black text-foreground">Review permintaan surat mahasiswa</h2>
@@ -2703,7 +2879,7 @@ export default function DocumentCenter() {
   const renderTemplates = () => (
     <div className="grid gap-4">
       <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Template Dokumen</p>
             <h2 className="text-sm font-black text-foreground">Template PDF sertifikat dan surat keterangan</h2>
@@ -2787,6 +2963,177 @@ export default function DocumentCenter() {
     </div>
   );
 
+  const renderNumbering = () => {
+    const numberingDefinitions = definitions.filter((item) => item.typeCode);
+    const selectedNumberDefinition = definitions.find((item) => item.id === manualNumberDefinitionId) || null;
+
+    return (
+    <div className="grid gap-4">
+      <div className="rounded-[14px] border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Ambil Nomor Surat</p>
+            <h2 className="text-sm font-black text-foreground">Generate nomor resmi untuk surat manual</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pakai ini kalau operator membuat surat di luar Document Center. Untuk kode 09 atau 13, nomor yang baru diambil juga
+              disiapkan untuk batch Dokumen Akhir berikutnya.
+            </p>
+            {manualNumberResult && ["09", "13"].includes(manualNumberResult.typeCode) && (
+              <p className="mt-2 rounded-[8px] bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
+                Nomor ini sudah disiapkan untuk batch Dokumen Akhir berikutnya pada kode {manualNumberResult.typeCode}.
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            onClick={() => void reserveManualNumber()}
+            disabled={!manualNumberDefinitionId || manualNumberLoading || definitionsLoading}
+          >
+            {manualNumberLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Ambil Nomor
+          </Button>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(240px,1fr)_minmax(220px,1fr)]">
+          <label className="grid gap-1 text-xs font-bold text-foreground">
+            Jenis dokumen
+            <select
+              value={manualNumberDefinitionId}
+              onChange={(event) => {
+                setManualNumberDefinitionId(event.target.value);
+                setManualNumberError("");
+                setManualNumberResult(null);
+              }}
+              className="rounded-[10px] border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-emerald-400"
+              disabled={definitionsLoading}
+            >
+              <option value="">Pilih jenis dokumen</option>
+              {numberingDefinitions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.typeCode} - {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-bold text-foreground">
+            Catatan opsional
+            <input
+              value={manualNumberNote}
+              onChange={(event) => setManualNumberNote(event.target.value)}
+              maxLength={500}
+              placeholder="Contoh: surat penerimaan batch Magang Juli"
+              className="rounded-[10px] border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-400"
+            />
+          </label>
+        </div>
+        {selectedNumberDefinition && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Kode <span className="font-mono font-black text-emerald-700">{selectedNumberDefinition.typeCode}</span>
+            {" "}akan dipakai untuk {selectedNumberDefinition.typeName || selectedNumberDefinition.name}.
+          </p>
+        )}
+        {manualNumberError && (
+          <div className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
+            {manualNumberError}
+          </div>
+        )}
+        {manualNumberResult && (
+          <div className="mt-3 rounded-[10px] border border-emerald-300 bg-white px-3 py-3 text-sm shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Nomor berhasil dibuat</p>
+            <p className="mt-1 font-mono text-lg font-black text-foreground">{manualNumberResult.documentNumber}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {manualNumberResult.definition.name} · sequence {manualNumberResult.sequence} · {formatDateReadable(manualNumberResult.issuedAt)}
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="overflow-hidden rounded-[14px] border border-border bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Jenis & Penomoran</p>
+            <h2 className="text-sm font-black text-foreground">Daftar jenis dokumen dan kode penomoran</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Nomor resmi tetap dibuat backend saat dokumen diterbitkan atau saat pendaftaran dokumen akhir otomatis.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setDefinitions([]);
+              setDefinitionsLoading(true);
+              apiGet<{ items: Definition[] }>("/document-center/operator/definitions")
+                .then((result) => setDefinitions(result.items.filter((item) => item)))
+                .catch((err: any) => setError(errorMessage(err)))
+                .finally(() => setDefinitionsLoading(false));
+            }}
+            disabled={definitionsLoading}
+          >
+            <RefreshCw size={14} className={definitionsLoading ? "animate-spin" : ""} />
+            Refresh
+          </Button>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-slate-50">
+              <TableHead>Jenis dokumen</TableHead>
+              <TableHead className="w-28">Kode</TableHead>
+              <TableHead>Mode</TableHead>
+              <TableHead className="w-32">Kolektif</TableHead>
+              <TableHead>Syarat konteks</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {definitionsLoading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                  <Loader2 className="mx-auto animate-spin" size={20} />
+                </TableCell>
+              </TableRow>
+            ) : definitions.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-32 text-center text-sm text-muted-foreground">
+                  Belum ada definition Document Center.
+                </TableCell>
+              </TableRow>
+            ) : (
+              definitions.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <p className="font-black text-foreground">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.id}</p>
+                  </TableCell>
+                  <TableCell>
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 font-mono text-xs font-black text-emerald-700">
+                      {item.typeCode || "-"}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <p>{item.typeName || "-"}</p>
+                    <p className="text-xs text-muted-foreground">{item.requestMode === "student_request" ? "Pengajuan mahasiswa" : item.requestMode === "operator_only" ? "Operator" : item.requestMode || "-"}</p>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={item.canBeCollective ? "default" : "secondary"}>{item.canBeCollective ? "Bisa" : "Tidak"}</Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {[
+                      item.requiresProject ? "wajib project" : null,
+                      item.requiresPeriod ? "wajib periode" : null,
+                    ].filter(Boolean).join(", ") || "tanpa syarat tambahan"}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <span>{definitions.length} jenis dokumen</span>
+          <span>Halaman ini read-only; konfigurasi nomor tetap dijaga backend.</span>
+        </div>
+      </div>
+    </div>
+    );
+  };
+
   return (
     <OperatorLayout title="Pusat Dokumen">
       <div className="flex flex-col gap-5 pb-4">
@@ -2797,36 +3144,44 @@ export default function DocumentCenter() {
           </div>
         )}
 
-        <div className="flex gap-2 overflow-x-auto rounded-[12px] border border-border bg-white p-1 shadow-sm w-fit max-w-full">
-          {[
-            { key: "requests", label: "Pengajuan Surat", enabled: true },
-            { key: "final", label: "Dokumen Akhir", enabled: true },
-            { key: "archive", label: "Arsip Resmi", enabled: true },
-            { key: "templates", label: "Template", enabled: true },
-            { key: "numbering", label: "Jenis & Penomoran", enabled: false },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              disabled={!tab.enabled}
-              onClick={() => {
-                if (!tab.enabled) return;
-                setActiveTab(tab.key as "requests" | "final" | "archive" | "templates");
-              }}
-              className={`whitespace-nowrap rounded-[9px] border px-3 py-1.5 text-xs font-black ${
-                activeTab === tab.key
-                  ? "border-emerald-300 bg-emerald-50 text-foreground shadow-sm"
-                  : tab.enabled
-                    ? "border-transparent text-muted-foreground hover:bg-slate-50"
-                    : "cursor-not-allowed border-transparent text-muted-foreground opacity-55"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="grid w-full overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm md:grid-cols-5">
+            {[
+              { key: "requests", label: "Pengajuan Surat", enabled: true },
+              { key: "final", label: "Dokumen Akhir", enabled: true },
+              { key: "archive", label: "Arsip Resmi", enabled: true },
+              { key: "templates", label: "Template", enabled: true },
+              { key: "numbering", label: "Jenis & Penomoran", enabled: true },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                disabled={!tab.enabled}
+                onClick={() => {
+                  if (!tab.enabled) return;
+                  setActiveTab(tab.key as "requests" | "final" | "archive" | "templates" | "numbering");
+                }}
+                className={`whitespace-nowrap border-b border-r border-emerald-50 px-4 py-3 text-center text-xs font-black transition last:border-r-0 md:border-b-0 ${
+                  activeTab === tab.key
+                    ? "bg-emerald-50 text-emerald-700"
+                    : tab.enabled
+                      ? "text-muted-foreground hover:bg-slate-50 hover:text-foreground"
+                      : "cursor-not-allowed text-muted-foreground opacity-55"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
         </div>
 
-        {activeTab === "requests" ? renderRequests() : activeTab === "final" ? renderFinalActivity() : activeTab === "templates" ? renderTemplates() : renderArchive()}
+        {activeTab === "requests"
+          ? renderRequests()
+          : activeTab === "final"
+            ? renderFinalActivity()
+            : activeTab === "templates"
+              ? renderTemplates()
+              : activeTab === "numbering"
+                ? renderNumbering()
+                : renderArchive()}
 
         <Dialog
           open={Boolean(selectedTemplate) || templateDetailLoading}
@@ -2965,8 +3320,8 @@ export default function DocumentCenter() {
         <Dialog open={uploadOpen} onOpenChange={(open) => { setUploadOpen(open); if (!open) resetUpload(); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Upload Draft Dokumen</DialogTitle>
-              <DialogDescription>Dokumen disimpan sebagai draft dan belum diterbitkan.</DialogDescription>
+              <DialogTitle>Upload & Terbitkan Dokumen</DialogTitle>
+              <DialogDescription>Upload PDF yang sudah memuat nomor surat. Dokumen akan langsung diterbitkan.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 text-sm">
               {submitError && <p className="rounded-lg border border-red-200 bg-red-50 p-3 font-semibold text-red-600">{submitError}</p>}
@@ -2988,6 +3343,14 @@ export default function DocumentCenter() {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="grid gap-1 font-bold">
+                Nomor dokumen
+                <div className={`rounded-[10px] border px-3 py-2 font-mono text-sm ${uploadReservedNumber ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                  {definition
+                    ? uploadReservedNumber?.documentNumber || `Belum ada nomor kode ${definition.typeCode || "-"}. Ambil dulu di Jenis & Penomoran.`
+                    : "Pilih jenis dokumen untuk melihat nomor."}
+                </div>
               </label>
               <label className="grid gap-1 font-bold">
                 Judul dokumen
@@ -3026,6 +3389,31 @@ export default function DocumentCenter() {
                 <p className="font-black">Peserta</p>
                 {participants.map((participant, index) => (
                   <div key={index} className="grid gap-2 rounded-[12px] border border-border bg-slate-50 p-3">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={participant.participantType}
+                        onChange={(event) => updateParticipant(index, {
+                          ...emptyParticipant(),
+                          participantType: event.target.value as "internal" | "external",
+                        })}
+                        className="h-9 flex-1 rounded-[8px] border border-border bg-white px-3 font-semibold"
+                      >
+                        <option value="internal">Mahasiswa internal</option>
+                        <option value="external">Peserta eksternal</option>
+                      </select>
+                      {participants.length > 1 && (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setParticipants((items) => items.filter((_, itemIndex) => itemIndex !== index))}
+                          aria-label="Hapus peserta"
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      )}
+                    </div>
+                    {participant.participantType === "internal" ? <>
                     <div className="flex gap-2">
                       <input
                         value={participant.search}
@@ -3043,17 +3431,6 @@ export default function DocumentCenter() {
                         {participant.loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
                         Cari
                       </Button>
-                      {participants.length > 1 && (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setParticipants((items) => items.filter((_, itemIndex) => itemIndex !== index))}
-                          aria-label="Hapus peserta"
-                        >
-                          <Trash2 size={15} />
-                        </Button>
-                      )}
                     </div>
                     {participant.results.length > 0 && (
                       <div className="rounded-[8px] border border-border bg-white">
@@ -3137,6 +3514,45 @@ export default function DocumentCenter() {
                         )}
                       </label>
                     )}
+                    </> : (
+                      <div className="grid gap-2">
+                        <label className="grid gap-1 text-xs font-bold">
+                          Nama peserta <span className="text-red-500">*</span>
+                          <input
+                            value={participant.externalName}
+                            onChange={(event) => updateParticipant(index, { externalName: event.target.value })}
+                            maxLength={200}
+                            className="h-9 rounded-[8px] border border-border bg-white px-3 font-normal"
+                            placeholder="Nama orang atau pihak luar"
+                          />
+                        </label>
+                        <label className="grid gap-1 text-xs font-bold">
+                          Nomor identitas / email <span className="font-normal text-muted-foreground">(opsional)</span>
+                          <input
+                            value={participant.externalIdentifier}
+                            onChange={(event) => updateParticipant(index, { externalIdentifier: event.target.value })}
+                            maxLength={100}
+                            className="h-9 rounded-[8px] border border-border bg-white px-3 font-normal"
+                            placeholder="NIK, nomor pegawai, atau email"
+                          />
+                        </label>
+                        <label className="grid gap-1 text-xs font-bold">
+                          Instansi <span className="font-normal text-muted-foreground">(opsional)</span>
+                          <input
+                            value={participant.externalInstitution}
+                            onChange={(event) => updateParticipant(index, { externalInstitution: event.target.value })}
+                            maxLength={200}
+                            className="h-9 rounded-[8px] border border-border bg-white px-3 font-normal"
+                            placeholder="Nama perusahaan, kampus, atau lembaga"
+                          />
+                        </label>
+                        {(definition?.requiresProject || definition?.requiresPeriod) && (
+                          <p className="rounded-[8px] border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-700">
+                            Jenis dokumen ini membutuhkan data kegiatan mahasiswa internal.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {definition?.canBeCollective && (
@@ -3151,9 +3567,9 @@ export default function DocumentCenter() {
               <Button type="button" variant="outline" onClick={() => { setUploadOpen(false); resetUpload(); }} disabled={submitting}>
                 Batal
               </Button>
-              <Button type="button" onClick={() => void submitUpload()} disabled={submitting || !definition}>
+              <Button type="button" onClick={() => void submitUpload()} disabled={submitting || !definition || !uploadReservedNumber}>
                 {submitting ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                Upload Draft
+                Upload & Terbitkan
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -3193,10 +3609,16 @@ export default function DocumentCenter() {
             )}
             <DialogFooter>
               {selected?.canDownload && (
-                <Button onClick={() => void download(selected)} disabled={downloadingId === selected.id}>
-                  {downloadingId === selected.id ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                  Unduh
-                </Button>
+                <>
+                  <Button variant="outline" onClick={() => void preview(selected)} disabled={previewingId === selected.id}>
+                    {previewingId === selected.id ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
+                    Preview
+                  </Button>
+                  <Button onClick={() => void download(selected)} disabled={downloadingId === selected.id}>
+                    {downloadingId === selected.id ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                    Unduh
+                  </Button>
+                </>
               )}
             </DialogFooter>
           </DialogContent>
@@ -3710,7 +4132,6 @@ export default function DocumentCenter() {
                                 checked={selectedProjectId === projectId}
                                 onChange={() => {
                                   setPrimaryProjects((items) => ({ ...items, [key]: projectId }));
-                                  setRegisterSummary(null);
                                 }}
                                 className="mt-1"
                               />
