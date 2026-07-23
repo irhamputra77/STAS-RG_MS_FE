@@ -364,7 +364,7 @@ export default function KehadiranMahasiswa() {
       const nextIsHoliday = Boolean(excludeHolidaysFromWorkdays && (monitorRows?.isHoliday || nextHoliday));
 
       const mappedStudents = (studentRows || [])
-        .filter((item: any) => item?.status !== "Alumni")
+        .filter((item: any) => item?.status !== "Alumni" && item?.status !== "Mengundurkan Diri")
         .map((item: any, index: number) => ({
         id: String(item?.id || ""),
         nim: item?.nim || "-",
