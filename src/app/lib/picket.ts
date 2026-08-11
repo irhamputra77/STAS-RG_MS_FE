@@ -92,6 +92,19 @@ export type PicketLeaveRequest = {
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   reviewNote?: string | null;
+  replacementScheduleId?: string | null;
+  replacementDate?: string | null;
+};
+
+export type PicketStudentDay = {
+  studentId: string;
+  studentName: string;
+  nim?: string | null;
+  dayId: number;
+  dayName?: string | null;
+  assignedBy?: string | null;
+  assignedAt?: string | null;
+  effectiveFrom?: string | null;
 };
 
 export function getJakartaDateKey(date = new Date()) {
@@ -140,35 +153,8 @@ export type ManualPicketTaskInput = {
   description?: string | null;
 };
 
-export function getNextWeeklyReshuffleDate(date: string) {
-  const current = new Date(`${date}T00:00:00`);
-  if (current.getDay() !== 0) return date;
-  current.setDate(current.getDate() + 1);
-  const year = current.getFullYear();
-  const month = String(current.getMonth() + 1).padStart(2, "0");
-  const day = String(current.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function getPicketScheduleGeneratePayload(date: string, settings: PicketScheduleSettings) {
-  const dateDay = new Date(`${date}T00:00:00`).getDay();
-  const dayRule = settings.weeklySchedule.find((day) => Number(day.dayOfWeek) === dateDay);
-  const weekdayStudentIds = Array.isArray(dayRule?.studentIds) ? dayRule.studentIds.filter(Boolean).map(String) : [];
-
-  if (weekdayStudentIds.length > 0) {
-    return {
-      date,
-      studentIds: weekdayStudentIds,
-      replaceExisting: true,
-      randomize: false,
-    };
-  }
-
-  return {
-    date,
-    peoplePerDay: settings.peoplePerDay,
-    randomize: settings.randomizeEnabled,
-  };
+export function getPicketScheduleGeneratePayload(date: string, _settings?: PicketScheduleSettings) {
+  return { date };
 }
 
 export function getManualPicketSchedulePayloads(input: ManualPicketScheduleInput) {
@@ -321,6 +307,24 @@ export function mapPicketHoliday(row: any): PicketHoliday {
   };
 }
 
+export function mapPicketStudentDay(row: any): PicketStudentDay {
+  return {
+    studentId: text(row?.student_id || row?.studentId || row?.id),
+    studentName: text(row?.student_name || row?.studentName || row?.name, "Mahasiswa"),
+    nim: row?.nim || row?.student_nim || row?.studentNim || null,
+    dayId: Number(row?.day_id ?? row?.dayId ?? row?.day_of_week ?? row?.dayOfWeek),
+    dayName: row?.day_name || row?.dayName || row?.label || null,
+    assignedBy: row?.assigned_by || row?.assignedBy || null,
+    assignedAt: row?.assigned_at || row?.assignedAt || null,
+    effectiveFrom: row?.effective_from || row?.effectiveFrom || null,
+  };
+}
+
+export function getPicketStudentDayFromTodayResponse(value: any): PicketStudentDay | null {
+  const fixedDay = value?.fixedDay || value?.fixed_day;
+  return fixedDay ? mapPicketStudentDay(fixedDay) : null;
+}
+
 export function getPicketHolidayFromTodayResponse(value: any): PicketHoliday | null {
   const holiday = value?.holiday || value?.assignment?.holiday || value?.todayAssignment?.holiday;
   return holiday ? mapPicketHoliday(holiday) : null;
@@ -418,5 +422,7 @@ export function mapPicketLeaveRequest(row: any): PicketLeaveRequest {
     reviewedBy: row?.reviewed_by || row?.reviewedBy || null,
     reviewedAt: row?.reviewed_at || row?.reviewedAt || null,
     reviewNote: row?.review_note || row?.reviewNote || null,
+    replacementScheduleId: row?.replacement_schedule_id || row?.replacementScheduleId || null,
+    replacementDate: row?.replacement_date || row?.replacementDate || null,
   };
 }

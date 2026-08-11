@@ -8,7 +8,6 @@ import {
   ImageIcon,
   Loader2,
   Plus,
-  RefreshCw,
   Search,
   Shuffle,
   Trash2,
@@ -24,17 +23,18 @@ import {
   PicketAssignment,
   PicketHoliday,
   PicketLeaveRequest,
+  PicketStudentDay,
   PicketSubmission,
   PicketTask,
   getJakartaDateKey,
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
-  getNextWeeklyReshuffleDate,
   getPicketScheduleGeneratePayload,
   isPicketAssignmentSubmitted,
   mapPicketAssignment,
   mapPicketHoliday,
   mapPicketLeaveRequest,
+  mapPicketStudentDay,
   mapPicketSubmission,
   mapPicketTask,
   mergePicketAssignmentsWithSubmissions,
@@ -101,6 +101,7 @@ const statusStyle: Record<string, string> = {
   Ditugaskan: "border-slate-200 bg-slate-50 text-slate-700",
   Menunggu: "border-amber-200 bg-amber-50 text-amber-700",
   Disetujui: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  Izin: "border-cyan-200 bg-cyan-50 text-cyan-700",
   Ditolak: "border-red-200 bg-red-50 text-red-600",
   Terkirim: "border-blue-200 bg-blue-50 text-blue-700",
   Valid: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -161,21 +162,19 @@ export default function PiketOperator() {
   const [taskName, setTaskName] = React.useState("");
   const [taskDescription, setTaskDescription] = React.useState("");
   const [students, setStudents] = React.useState<StudentOption[]>([]);
+  const [studentDays, setStudentDays] = React.useState<PicketStudentDay[]>([]);
   const [managerIds, setManagerIds] = React.useState<string[]>([]);
   const [assignments, setAssignments] = React.useState<PicketAssignment[]>([]);
   const [submissions, setSubmissions] = React.useState<PicketSubmission[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<PicketLeaveRequest[]>([]);
   const [query, setQuery] = React.useState("");
-  const [studentQuery, setStudentQuery] = React.useState("");
   const [selectedDayOfWeek, setSelectedDayOfWeek] = React.useState(1);
-  const [isEditingWeekdayMembers, setIsEditingWeekdayMembers] = React.useState(false);
   const [editingScheduleId, setEditingScheduleId] = React.useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = React.useState<ScheduleForm>(emptyScheduleForm);
   const [scheduleTaskMode, setScheduleTaskMode] = React.useState<"existing" | "manual">("existing");
   const [manualScheduleTaskName, setManualScheduleTaskName] = React.useState("");
   const [manualScheduleTaskDescription, setManualScheduleTaskDescription] = React.useState("");
   const [allowed, setAllowed] = React.useState(user?.role === "operator");
-  const [hasAutoReshuffledForDate, setHasAutoReshuffledForDate] = React.useState<string | null>(null);
   const [holidays, setHolidays] = React.useState<PicketHoliday[]>([]);
   const [holidayForm, setHolidayForm] = React.useState({ date: "", name: "", notes: "" });
   const [editingHolidayId, setEditingHolidayId] = React.useState<string | null>(null);
@@ -211,16 +210,17 @@ export default function PiketOperator() {
         setAllowed(true);
       }
 
-      const [settingsRes, taskRes, studentRes, managerRes, overviewRes, schedulesRes, leaveRes, holidayRes, submissionsRes] = await Promise.allSettled([
+      const [settingsRes, taskRes, studentRes, managerRes, overviewRes, schedulesRes, leaveRes, holidayRes, submissionsRes, studentDaysRes] = await Promise.allSettled([
         apiGet<any>("/picket/settings"),
         apiGet<any>("/picket/tasks?includeInactive=true"),
         apiGet<any>("/picket/students"),
         apiGet<any>("/picket/managers"),
         apiGet<any>(`/picket/operator/overview?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/schedules?date=${encodeURIComponent(date)}&_=${Date.now()}`),
-        apiGet<any>(`/picket/leave-requests?date=${encodeURIComponent(date)}&_=${Date.now()}`),
+        apiGet<any>(`/picket/leave-requests?_=${Date.now()}`),
         apiGet<any>(`/picket/holidays?startDate=${holidayRange.startDate}&endDate=${holidayRange.endDate}&_=${Date.now()}`),
         apiGet<any>(`/picket/submissions?date=${encodeURIComponent(date)}&status=${encodeURIComponent("Menunggu")}&_=${Date.now()}`),
+        apiGet<any>(`/picket/student-days?_=${Date.now()}`),
       ]);
       let overviewAssignmentRowsLoaded = false;
       let overviewSubmissions: PicketSubmission[] | null = null;
@@ -234,8 +234,29 @@ export default function PiketOperator() {
           randomizeEnabled: Boolean(raw.randomizeEnabled ?? raw.randomize_enabled ?? true),
           weeklySchedule: normalizeWeeklySchedule(raw.weeklySchedule ?? raw.weekly_schedule ?? raw.recurringSchedule ?? raw.recurring_schedule, peoplePerDay),
         };
-        setSettings(loadedSettings);
       }
+
+      if (studentDaysRes.status === "fulfilled") {
+        const rows = Array.isArray(studentDaysRes.value)
+          ? studentDaysRes.value
+          : studentDaysRes.value?.items || studentDaysRes.value?.assignments || [];
+        const mappedStudentDays = rows.map(mapPicketStudentDay).filter((item: PicketStudentDay) => item.studentId && Number.isInteger(item.dayId));
+        setStudentDays(mappedStudentDays);
+        const baseSettings = loadedSettings || {
+          peoplePerDay: 2,
+          randomizeEnabled: false,
+          weeklySchedule: normalizeWeeklySchedule([], 2),
+        };
+        loadedSettings = {
+          ...baseSettings,
+          weeklySchedule: baseSettings.weeklySchedule.map((day) => ({
+            ...day,
+            peoplePerDay: Math.max(1, mappedStudentDays.filter((item: PicketStudentDay) => item.dayId === day.dayOfWeek).length),
+            studentIds: mappedStudentDays.filter((item: PicketStudentDay) => item.dayId === day.dayOfWeek).map((item: PicketStudentDay) => item.studentId),
+          })),
+        };
+      }
+      if (loadedSettings) setSettings(loadedSettings);
 
       if (taskRes.status === "fulfilled") {
         const rows = Array.isArray(taskRes.value) ? taskRes.value : taskRes.value?.tasks || taskRes.value?.items || [];
@@ -315,62 +336,8 @@ export default function PiketOperator() {
     const dateDay = new Date(`${date}T00:00:00`).getDay();
     if (dateDay >= 1 && dateDay <= 5) {
       setSelectedDayOfWeek(dateDay);
-      setIsEditingWeekdayMembers(false);
     }
   }, [date]);
-
-  const buildSettingsPayload = (nextSettings: PicketSettings = settings, syncDate?: string | null) => {
-    const weeklySchedule = nextSettings.weeklySchedule.map((day) => ({
-      dayOfWeek: day.dayOfWeek,
-      label: day.label,
-      enabled: true,
-      peoplePerDay: day.peoplePerDay,
-      studentIds: day.studentIds,
-    }));
-
-    return {
-      peoplePerDay: nextSettings.peoplePerDay,
-      randomizeEnabled: nextSettings.randomizeEnabled,
-      weeklySchedule,
-      weekly_schedule: weeklySchedule,
-      recurringSchedule: weeklySchedule,
-      recurring_schedule: weeklySchedule,
-      ...(syncDate ? { syncDate } : {}),
-    };
-  };
-
-  const responseKeepsWeekdayMembers = (value: any, dayOfWeek: number, expectedStudentIds: string[]) => {
-    const raw = value?.settings || value || {};
-    const schedule = raw.weeklySchedule ?? raw.weekly_schedule ?? raw.recurringSchedule ?? raw.recurring_schedule;
-    if (!Array.isArray(schedule)) return null;
-
-    const match = schedule.find((day: any) => Number(day?.dayOfWeek ?? day?.day_of_week ?? day?.weekday) === dayOfWeek);
-    const savedStudentIds = normalizeStudentIds(match?.studentIds ?? match?.student_ids ?? match?.memberIds ?? match?.member_ids ?? match?.students ?? match?.members);
-    return expectedStudentIds.every((id) => savedStudentIds.includes(id));
-  };
-
-  const saveSettings = async () => {
-    try {
-      setSaving(true);
-      setError("");
-      await apiPatch("/picket/settings", buildSettingsPayload(settings, date));
-      await loadData();
-      setInfo("Pengaturan piket berhasil disimpan.");
-    } catch (err: any) {
-      setError(getPicketScheduleErrorMessage(err, "Gagal menyimpan pengaturan piket."));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const updateWeeklyDay = (dayOfWeek: number, patch: Partial<WeeklyPicketDay>) => {
-    setSettings((prev) => ({
-      ...prev,
-      weeklySchedule: prev.weeklySchedule.map((day) =>
-        day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day
-      ),
-    }));
-  };
 
   const addTask = async () => {
     if (!taskName.trim()) {
@@ -413,50 +380,33 @@ export default function PiketOperator() {
     try {
       setSaving(true);
       setError("");
-      const payload = getPicketScheduleGeneratePayload(targetDate, {
-        peoplePerDay: settings.peoplePerDay,
-        randomizeEnabled: settings.randomizeEnabled,
-        weeklySchedule: settings.weeklySchedule,
-      });
+      const payload = getPicketScheduleGeneratePayload(targetDate);
       await apiPost("/picket/schedules/generate", payload);
-      if (targetDate !== date) {
-        setInfo(`Jadwal piket minggu depan berhasil di-reshuffle untuk tanggal ${targetDate}.`);
-      } else {
-        const targetDateDay = new Date(`${targetDate}T00:00:00`).getDay();
-        const dayRule = settings.weeklySchedule.find((day) => day.dayOfWeek === targetDateDay);
-        const weekdayStudentIds = dayRule?.studentIds || [];
-        setInfo(weekdayStudentIds.length > 0 ? `Jadwal piket dibuat dari anggota hari ${dayRule?.label}.` : "Jadwal piket berhasil dibuat oleh random picker.");
-      }
+      setInfo(`Jadwal tanggal ${targetDate} disinkronkan dari hari piket tetap. Jenis tugas untuk jadwal baru dipilih secara acak.`);
       await loadData();
     } catch (err: any) {
       setError(getPicketScheduleErrorMessage(err, "Gagal generate jadwal piket."));
     } finally {
       setSaving(false);
     }
-  }, [date, settings, loadData]);
+  }, [date, loadData]);
 
-  const generateWeeklyReshuffle = React.useCallback(async () => {
-    const targetDate = getNextWeeklyReshuffleDate(date);
-    await generateSchedule(targetDate);
-  }, [date, generateSchedule]);
-
-  React.useEffect(() => {
-    const dateDay = new Date(`${date}T00:00:00`).getDay();
-    if (!loading && allowed && dateDay === 0 && hasAutoReshuffledForDate !== date) {
-      setHasAutoReshuffledForDate(date);
-      void generateWeeklyReshuffle();
-    }
-  }, [allowed, date, generateWeeklyReshuffle, hasAutoReshuffledForDate, loading]);
-
-  const resyncSchedule = async () => {
+  const randomizeFixedStudentDays = async () => {
+    const approved = await confirm({
+      title: "Acak ulang seluruh hari piket tetap?",
+      description: "Semua mahasiswa aktif akan memperoleh hari piket tetap baru yang berlaku mulai besok. Jadwal lama dan jadwal yang sudah memiliki submission tidak diubah.",
+      confirmLabel: "Acak Ulang Hari Tetap",
+      variant: "danger",
+    });
+    if (!approved) return;
     try {
       setSaving(true);
       setError("");
-      await apiPost("/picket/schedules/resync", { date });
+      await apiPost("/picket/student-days/randomize", {});
       await loadData();
-      setInfo("Jadwal piket berhasil disinkronkan.");
+      setInfo("Hari piket tetap seluruh mahasiswa berhasil diacak ulang dan berlaku mulai besok.");
     } catch (err: any) {
-      setError(getPicketScheduleErrorMessage(err, "Gagal resync jadwal piket."));
+      setError(err?.message || "Gagal mengacak ulang hari piket tetap.");
     } finally {
       setSaving(false);
     }
@@ -543,43 +493,16 @@ export default function PiketOperator() {
     }
   };
 
-  const saveWeekdayMembers = async () => {
-    const selectedDay = settings.weeklySchedule.find((day) => day.dayOfWeek === selectedDayOfWeek);
-    if (!selectedDay || selectedDay.studentIds.length === 0) {
-      setError("Pilih minimal satu mahasiswa untuk jadwal piket hari yang dipilih.");
-      return;
-    }
-
+  const updateFixedStudentDay = async (studentId: string, dayId: number) => {
     try {
       setSaving(true);
       setError("");
-      const nextSettings: PicketSettings = {
-        ...settings,
-        weeklySchedule: settings.weeklySchedule.map((day) =>
-          day.dayOfWeek === selectedDayOfWeek
-            ? { ...day, enabled: true, peoplePerDay: selectedDay.studentIds.length }
-            : { ...day, enabled: true }
-        ),
-      };
-      const response = await apiPatch<any>("/picket/settings", buildSettingsPayload(nextSettings, date));
-      const keepsMembers = responseKeepsWeekdayMembers(response, selectedDayOfWeek, selectedDay.studentIds);
-      const selectedDateDay = new Date(`${date}T00:00:00`).getDay();
-      const shouldSyncSelectedDate = selectedDateDay === selectedDayOfWeek;
-      setSettings(nextSettings);
-      setIsEditingWeekdayMembers(false);
-      const loadedSettings = await loadData();
-      const loadedKeepsMembers = responseKeepsWeekdayMembers(loadedSettings, selectedDayOfWeek, selectedDay.studentIds);
-      if (keepsMembers === false || loadedKeepsMembers === false) {
-        setError("Backend belum menyimpan daftar anggota piket per hari. Field studentIds tidak muncul lagi saat GET /picket/settings.");
-      } else {
-        setInfo(
-          shouldSyncSelectedDate
-            ? `Anggota piket hari ${selectedDay.label} berhasil disimpan dan jadwal tanggal ${date} disinkronkan.`
-            : `Anggota piket hari ${selectedDay.label} berhasil disimpan.`
-        );
-      }
+      await apiPatch(`/picket/student-days/${encodeURIComponent(studentId)}`, { dayId });
+      await loadData();
+      const dayName = WEEKDAY_OPTIONS.find((day) => day.dayOfWeek === dayId)?.label || `hari ${dayId}`;
+      setInfo(`Hari piket tetap mahasiswa berhasil dipindahkan ke ${dayName} dan berlaku mulai besok.`);
     } catch (err: any) {
-      setError(getPicketScheduleErrorMessage(err, "Gagal menyimpan anggota piket hari yang dipilih."));
+      setError(err?.message || "Gagal mengubah hari piket tetap mahasiswa.");
     } finally {
       setSaving(false);
     }
@@ -624,16 +547,59 @@ export default function PiketOperator() {
     setInfo(`Submission ${submission.studentName} ditandai bermasalah. Backend akan membuat access lock otomatis.`);
   };
 
-  const reviewLeave = async (request: PicketLeaveRequest, status: "Disetujui" | "Ditolak") => {
-    try {
-      await apiPatch(`/picket/leave-requests/${encodeURIComponent(request.id)}/status`, {
-        status,
-        reviewNote: null,
-        reviewedBy: user?.id,
+  const reviewLeave = async (request: PicketLeaveRequest, status: "Menunggu" | "Disetujui" | "Ditolak") => {
+    if (status === "Menunggu" && request.status === "Disetujui") {
+      const approved = await confirm({
+        title: "Batalkan persetujuan izin?",
+        description: "Jadwal pengganti akan dihapus dan jadwal asal kembali menjadi Ditugaskan. Pembatalan akan ditolak jika jadwal pengganti sudah memiliki submission.",
+        confirmLabel: "Batalkan Persetujuan",
+        variant: "danger",
       });
-      setLeaveRequests((prev) => prev.map((item) => item.id === request.id ? { ...item, status } : item));
+      if (!approved) return;
+    }
+    try {
+      setSaving(true);
+      setError("");
+      const response = await apiPatch<any>(`/picket/leave-requests/${encodeURIComponent(request.id)}/status`, {
+        status,
+        reviewNote: status === "Disetujui"
+          ? "Izin disetujui"
+          : status === "Ditolak"
+            ? "Izin ditolak"
+            : "Persetujuan izin dibatalkan",
+      });
+      const reviewed = mapPicketLeaveRequest(response);
+      const replacementDate = reviewed.replacementDate || request.replacementDate;
+      await Promise.allSettled([
+        apiGet<any>(`/picket/leave-requests?_=${Date.now()}`),
+        apiGet<any>(`/picket/schedules?date=${encodeURIComponent(request.date)}&_=${Date.now()}`),
+        replacementDate
+          ? apiGet<any>(`/picket/schedules?date=${encodeURIComponent(replacementDate)}&_=${Date.now()}`)
+          : Promise.resolve(null),
+        request.studentId
+          ? apiGet<any>(`/picket/history?studentId=${encodeURIComponent(request.studentId)}&_=${Date.now()}`)
+          : Promise.resolve(null),
+        request.studentId
+          ? apiGet<any>(`/picket/today?studentId=${encodeURIComponent(request.studentId)}&_=${Date.now()}`)
+          : Promise.resolve(null),
+      ]);
+      await loadData();
+      window.dispatchEvent(new Event("stas:picket-refresh"));
+      if (status === "Disetujui") {
+        setInfo(reviewed.replacementDate
+          ? `Izin disetujui. Jadwal pengganti dibuat pada ${reviewed.replacementDate}.`
+          : "Izin disetujui. Jadwal pengganti sedang diproses backend.");
+      } else if (status === "Menunggu") {
+        setInfo("Persetujuan izin dibatalkan. Jadwal asal kembali Ditugaskan dan jadwal pengganti dihapus.");
+      } else {
+        setInfo("Izin tidak piket ditolak.");
+      }
     } catch (err: any) {
-      setError(err?.message || "Gagal memproses izin tidak piket.");
+      setError(err?.status === 409
+        ? err?.message || "Status izin tidak dapat dibatalkan karena jadwal pengganti sudah memiliki submission."
+        : err?.message || "Gagal memproses izin tidak piket.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -713,23 +679,8 @@ export default function PiketOperator() {
     const haystack = `${item.studentName} ${item.nim || ""} ${item.taskName} ${item.status}`.toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
-  const filteredStudents = students.filter((student) => {
-    const haystack = `${student.name} ${student.nim || ""} ${student.tipe || ""}`.toLowerCase();
-    return haystack.includes(studentQuery.trim().toLowerCase());
-  });
   const selectedWeekday = settings.weeklySchedule.find((day) => day.dayOfWeek === selectedDayOfWeek) || settings.weeklySchedule[0];
   const selectedWeekdayStudentIds = selectedWeekday?.studentIds || [];
-  const selectedWeekdayStudents = students.filter((student) => selectedWeekdayStudentIds.includes(student.id));
-  const toggleWeekdayStudent = (studentId: string, checked: boolean) => {
-    if (!isEditingWeekdayMembers) return;
-    const nextStudentIds = checked
-      ? selectedWeekdayStudentIds.includes(studentId) ? selectedWeekdayStudentIds : [...selectedWeekdayStudentIds, studentId]
-      : selectedWeekdayStudentIds.filter((id) => id !== studentId);
-    updateWeeklyDay(selectedDayOfWeek, {
-      studentIds: nextStudentIds,
-      peoplePerDay: Math.max(1, nextStudentIds.length || selectedWeekday?.peoplePerDay || 1),
-    });
-  };
 
   const Shell = isStudentPicShell ? Layout : OperatorLayout;
   const scrollToReviewSubmissions = () => {
@@ -889,76 +840,24 @@ export default function PiketOperator() {
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
           <div className="flex flex-col gap-5">
             <section className="rounded-[16px] border border-border bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-black text-foreground">Aturan Random Picker</h2>
-              <div className="mt-4 flex flex-col gap-3">
-                <label className="text-xs font-black text-muted-foreground">Jumlah orang piket per hari</label>
-                <input type="number" min={1} value={settings.peoplePerDay} onChange={(event) => setSettings((prev) => ({ ...prev, peoplePerDay: Number(event.target.value) || 1 }))} className="h-10 rounded-[10px] border border-border px-3 text-sm font-bold outline-none" />
-                <label className="flex items-center gap-2 text-sm font-bold text-foreground">
-                  <input type="checkbox" checked={settings.randomizeEnabled} onChange={(event) => setSettings((prev) => ({ ...prev, randomizeEnabled: event.target.checked }))} className="accent-[#0AB600]" />
-                  Aktifkan random picker sistem
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={saveSettings} disabled={saving} className="h-10 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60">Simpan</button>
-                  <button onClick={() => void generateSchedule()} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"><Shuffle size={15} /> Generate</button>
-                </div>
-                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button onClick={generateWeeklyReshuffle} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-[#0B61B6] text-sm font-black text-white hover:bg-[#094F96] disabled:opacity-60"><Shuffle size={15} /> Reshuffle Minggu</button>
-                </div>
-                <div className="mt-2 rounded-[12px] border border-emerald-200 bg-emerald-50 p-3">
-                  <div className="mb-3">
-                    <p className="text-xs font-black text-emerald-800">Jadwal Mingguan Berulang</p>
-                    <p className="mt-1 text-[11px] font-semibold text-emerald-700/80">
-                      Klik card hari untuk mengatur siapa saja anggota piket di hari tersebut.
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {settings.weeklySchedule.map((day) => (
-                      <div
-                        key={day.dayOfWeek}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => {
-                          setSelectedDayOfWeek(day.dayOfWeek);
-                          setIsEditingWeekdayMembers(false);
-                          if (isEditingWeekdayMembers) void loadData();
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            setSelectedDayOfWeek(day.dayOfWeek);
-                            setIsEditingWeekdayMembers(false);
-                            if (isEditingWeekdayMembers) void loadData();
-                          }
-                        }}
-                        className={`grid cursor-pointer grid-cols-[minmax(0,1fr)_92px] items-center gap-2 rounded-[10px] border px-3 py-2 transition ${
-                          selectedDayOfWeek === day.dayOfWeek
-                            ? "border-emerald-500 bg-emerald-100 ring-2 ring-emerald-200"
-                            : "border-emerald-200 bg-white hover:border-emerald-300"
-                        }`}
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-black text-emerald-700">{day.dayOfWeek}</span>
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-black text-foreground">{day.label}</span>
-                            <span className="block text-[10px] font-bold text-emerald-700">{day.studentIds.length} anggota</span>
-                          </span>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-[9px] font-black uppercase tracking-wide text-muted-foreground">Orang</label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={day.peoplePerDay}
-                            onChange={(event) => updateWeeklyDay(day.dayOfWeek, { peoplePerDay: Number(event.target.value) || 1 })}
-                            className="h-8 w-full rounded-[8px] border border-border px-2 text-xs font-bold outline-none"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={saveSettings} disabled={saving} className="mt-3 h-9 w-full rounded-[9px] bg-emerald-600 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-60">
-                    Simpan Jadwal Mingguan
+              <h2 className="text-sm font-black text-foreground">Hari Piket Tetap</h2>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Hari mahasiswa tidak berubah setiap minggu. Random picker hanya dijalankan manual atau saat mahasiswa baru ditambahkan.</p>
+              <div className="mt-4 grid grid-cols-1 gap-2">
+                <button onClick={() => void generateSchedule()} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"><CalendarDays size={15} /> Sinkronkan Tanggal Terpilih</button>
+                <button onClick={() => void randomizeFixedStudentDays()} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-[#0B61B6] text-sm font-black text-white hover:bg-[#094F96] disabled:opacity-60"><Shuffle size={15} /> Acak Ulang Hari Tetap</button>
+              </div>
+              <div className="mt-4 flex flex-col gap-2 rounded-[12px] border border-emerald-200 bg-emerald-50 p-3">
+                {settings.weeklySchedule.map((day) => (
+                  <button
+                    key={day.dayOfWeek}
+                    type="button"
+                    onClick={() => setSelectedDayOfWeek(day.dayOfWeek)}
+                    className={`flex items-center justify-between rounded-[10px] border px-3 py-2 text-left transition ${selectedDayOfWeek === day.dayOfWeek ? "border-emerald-500 bg-emerald-100 ring-2 ring-emerald-200" : "border-emerald-200 bg-white hover:border-emerald-300"}`}
+                  >
+                    <span className="text-sm font-black text-foreground">{day.label}</span>
+                    <span className="text-[10px] font-black text-emerald-700">{day.studentIds.length} mahasiswa</span>
                   </button>
-                </div>
+                ))}
               </div>
             </section>
 
@@ -1015,115 +914,37 @@ export default function PiketOperator() {
             <section className="rounded-[16px] border border-border bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <h2 className="text-sm font-black text-foreground">Anggota Piket Hari {selectedWeekday?.label}</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {isEditingWeekdayMembers
-                      ? `Pilih mahasiswa untuk pola piket setiap hari ${selectedWeekday?.label}.`
-                      : "Mode baca aktif. Tekan Edit untuk mengganti anggota piket hari ini."}
-                  </p>
+                  <h2 className="text-sm font-black text-foreground">Hari Piket Tetap Mahasiswa</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Perubahan hari berlaku mulai besok dan tidak memindahkan kejadian izin sementara.</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">
-                    {selectedWeekdayStudentIds.length} terpilih
-                  </span>
-                  {isEditingWeekdayMembers ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditingWeekdayMembers(false);
-                        void loadData();
-                      }}
-                      className="h-8 rounded-[8px] border border-border bg-white px-3 text-xs font-black text-slate-600 hover:bg-slate-50"
-                    >
-                      Batal
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingWeekdayMembers(true)}
-                      className="h-8 rounded-[8px] bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800"
-                    >
-                      Edit Anggota
-                    </button>
-                  )}
-                </div>
+                <span className="w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">{selectedWeekday?.label}: {selectedWeekdayStudentIds.length} mahasiswa</span>
               </div>
-
-              <div className="mt-4">
-                {isEditingWeekdayMembers && (
-                  <div className="mb-3 flex h-10 items-center gap-2 rounded-[10px] border border-border bg-white px-3">
-                    <Search size={15} className="text-muted-foreground" />
-                    <input
-                      value={studentQuery}
-                      onChange={(event) => setStudentQuery(event.target.value)}
-                      placeholder="Cari nama atau NIM mahasiswa..."
-                      className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                    />
-                    {selectedWeekdayStudentIds.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => updateWeeklyDay(selectedDayOfWeek, { studentIds: [] })}
-                        className="shrink-0 text-[10px] font-black text-red-600 hover:underline"
-                      >
-                        Kosongkan
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <div className="max-h-[360px] overflow-y-auto rounded-[12px] border border-border">
-                  {isEditingWeekdayMembers ? (
-                    filteredStudents.length === 0 ? (
-                      <div className="p-5 text-center text-sm font-semibold text-muted-foreground">Mahasiswa tidak ditemukan.</div>
-                    ) : (
-                      filteredStudents.map((student) => (
-                        <label key={student.id} className="flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2.5 hover:bg-slate-50 last:border-b-0">
-                          <input
-                            type="checkbox"
-                            checked={selectedWeekdayStudentIds.includes(student.id)}
-                            onChange={(event) => toggleWeekdayStudent(student.id, event.target.checked)}
-                            className="accent-[#0AB600]"
-                          />
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-700">
-                            {student.initials}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-black text-foreground">{student.name}</span>
-                            <span className="block truncate text-[10px] text-muted-foreground">
-                              {student.nim || "-"} {student.tipe ? `- ${student.tipe}` : ""}
-                            </span>
-                          </span>
-                        </label>
-                      ))
-                    )
-                  ) : selectedWeekdayStudents.length === 0 ? (
-                    <div className="p-5 text-center text-sm font-semibold text-muted-foreground">Belum ada anggota dipilih.</div>
-                  ) : (
-                    selectedWeekdayStudents.map((student) => (
-                      <div key={student.id} className="flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-700">
-                          {student.initials}
-                        </span>
-                        <span className="min-w-0 flex-1">
+              <div className="mt-4 max-h-[420px] overflow-y-auto rounded-[12px] border border-border">
+                {students.length === 0 ? (
+                  <div className="p-5 text-center text-sm font-semibold text-muted-foreground">Belum ada mahasiswa aktif.</div>
+                ) : students.map((student) => {
+                  const fixedDay = studentDays.find((item) => item.studentId === student.id);
+                  return (
+                    <div key={student.id} className="grid grid-cols-1 gap-3 border-b border-border px-3 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-700">{student.initials}</span>
+                        <span className="min-w-0">
                           <span className="block truncate text-xs font-black text-foreground">{student.name}</span>
-                          <span className="block truncate text-[10px] text-muted-foreground">
-                            {student.nim || "-"} {student.tipe ? `- ${student.tipe}` : ""}
-                          </span>
+                          <span className="block truncate text-[10px] text-muted-foreground">{student.nim || "-"}{fixedDay?.effectiveFrom ? ` · berlaku ${fixedDay.effectiveFrom}` : ""}</span>
                         </span>
                       </div>
-                    ))
-                  )}
-                </div>
-
-                {isEditingWeekdayMembers && (
-                  <button
-                    onClick={saveWeekdayMembers}
-                    disabled={saving || selectedWeekdayStudentIds.length === 0}
-                    className="mt-3 h-10 w-full rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60"
-                  >
-                    Simpan Anggota Hari {selectedWeekday?.label}
-                  </button>
-                )}
+                      <select
+                        value={Number.isInteger(fixedDay?.dayId) ? String(fixedDay?.dayId) : ""}
+                        disabled={saving}
+                        onChange={(event) => void updateFixedStudentDay(student.id, Number(event.target.value))}
+                        className="h-9 rounded-[9px] border border-border bg-white px-3 text-xs font-black outline-none disabled:opacity-60"
+                      >
+                        <option value="" disabled>Pilih hari tetap</option>
+                        {WEEKDAY_OPTIONS.map((day) => <option key={day.dayOfWeek} value={day.dayOfWeek}>{day.label}</option>)}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
@@ -1313,14 +1134,20 @@ export default function PiketOperator() {
                       <div>
                         <p className="font-black text-foreground">{item.studentName}</p>
                         <p className="text-xs text-muted-foreground">{item.date} - {item.reason}</p>
+                        {item.replacementDate && (
+                          <p className="mt-1 text-xs font-black text-blue-700">Jadwal pengganti: {item.replacementDate}{item.replacementScheduleId ? ` · ${item.replacementScheduleId}` : ""}</p>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge status={item.status} />
                         {item.status === "Menunggu" && (
                           <>
-                            <button onClick={() => reviewLeave(item, "Disetujui")} className="h-8 rounded-[8px] bg-emerald-500 px-3 text-xs font-black text-white">Setujui</button>
-                            <button onClick={() => reviewLeave(item, "Ditolak")} className="h-8 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white">Tolak</button>
+                            <button disabled={saving} onClick={() => void reviewLeave(item, "Disetujui")} className="h-8 rounded-[8px] bg-emerald-500 px-3 text-xs font-black text-white disabled:opacity-60">Setujui</button>
+                            <button disabled={saving} onClick={() => void reviewLeave(item, "Ditolak")} className="h-8 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white disabled:opacity-60">Tolak</button>
                           </>
+                        )}
+                        {item.status === "Disetujui" && (
+                          <button disabled={saving} onClick={() => void reviewLeave(item, "Menunggu")} className="h-8 rounded-[8px] border border-red-200 bg-red-50 px-3 text-xs font-black text-red-600 disabled:opacity-60">Batalkan Persetujuan</button>
                         )}
                       </div>
                     </div>

@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  getNextWeeklyReshuffleDate,
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
   getPicketScheduleGeneratePayload,
@@ -12,6 +11,7 @@ import {
   mapPicketLeaveRequest,
   mapPicketSubmission,
   mapPicketSubmissionResult,
+  mapPicketStudentDay,
   mapPicketTask,
   validatePicketPhoto,
 } from "../../src/app/lib/picket";
@@ -114,8 +114,47 @@ test("picket holiday helpers read top-level today response", () => {
   assert.deepEqual(getPicketHolidayFromTodayResponse(response), mapPicketHoliday(response.holiday));
 });
 
-test("mapPicketLeaveRequest reads Indonesian aliases", () => {
-  assert.equal(mapPicketLeaveRequest({ tanggal: "2026-05-24", alasan: "Sakit" }).reason, "Sakit");
+test("mapPicketLeaveRequest reads replacement schedule aliases", () => {
+  const camel = mapPicketLeaveRequest({
+    id: "LV-1",
+    tanggal: "2026-05-24",
+    alasan: "Sakit",
+    replacementScheduleId: "SCH-RPL-1",
+    replacementDate: "2026-05-26",
+  });
+  const snake = mapPicketLeaveRequest({
+    id: "LV-2",
+    date: "2026-05-25",
+    reason: "Kegiatan kampus",
+    replacement_schedule_id: "SCH-RPL-2",
+    replacement_date: "2026-05-27",
+  });
+
+  assert.equal(camel.reason, "Sakit");
+  assert.equal(camel.replacementScheduleId, "SCH-RPL-1");
+  assert.equal(camel.replacementDate, "2026-05-26");
+  assert.equal(snake.replacementScheduleId, "SCH-RPL-2");
+  assert.equal(snake.replacementDate, "2026-05-27");
+});
+
+test("mapPicketStudentDay normalizes fixed weekday response", () => {
+  assert.deepEqual(mapPicketStudentDay({
+    student_id: "STD-1",
+    student_name: "Alya",
+    nim: "12345",
+    day_id: 4,
+    day_name: "Kamis",
+    effective_from: "2026-08-11",
+  }), {
+    studentId: "STD-1",
+    studentName: "Alya",
+    nim: "12345",
+    dayId: 4,
+    dayName: "Kamis",
+    assignedBy: null,
+    assignedAt: null,
+    effectiveFrom: "2026-08-11",
+  });
 });
 
 test("mapPicketAssignment reads submission review fields", () => {
@@ -177,6 +216,7 @@ test("mapPicketSubmissionResult reads nested submission response", () => {
   }), {
     id: "SUB1",
     status: "Terkirim",
+    assignmentStatus: null,
     photoUrl: "https://ms-api.stas-rg.com/uploads/piket.jpg",
     submittedAt: "2026-06-11T03:00:00.000Z",
   });
@@ -197,38 +237,14 @@ test("validatePicketPhoto rejects unsupported image formats", () => {
   assert.match(validatePicketPhoto(file) || "", /JPG, PNG, atau WEBP/);
 });
 
-test("getNextWeeklyReshuffleDate returns next Monday when date is Sunday", () => {
-  assert.equal(getNextWeeklyReshuffleDate("2026-06-07"), "2026-06-08");
-  assert.equal(getNextWeeklyReshuffleDate("2026-06-08"), "2026-06-08");
-});
-
-test("getPicketScheduleGeneratePayload uses weekday studentIds and replaces existing schedule", () => {
+test("getPicketScheduleGeneratePayload delegates fixed-day selection to backend", () => {
   const payload = getPicketScheduleGeneratePayload("2026-06-08", {
     peoplePerDay: 2,
     randomizeEnabled: true,
     weeklySchedule: [{ dayOfWeek: 1, studentIds: ["S1", "S2"] }],
   });
 
-  assert.deepEqual(payload, {
-    date: "2026-06-08",
-    studentIds: ["S1", "S2"],
-    replaceExisting: true,
-    randomize: false,
-  });
-});
-
-test("getPicketScheduleGeneratePayload uses randomize fallback when no weekday rule exists", () => {
-  const payload = getPicketScheduleGeneratePayload("2026-06-07", {
-    peoplePerDay: 3,
-    randomizeEnabled: false,
-    weeklySchedule: [{ dayOfWeek: 1, studentIds: ["S1"] }],
-  });
-
-  assert.deepEqual(payload, {
-    date: "2026-06-07",
-    peoplePerDay: 3,
-    randomize: false,
-  });
+  assert.deepEqual(payload, { date: "2026-06-08" });
 });
 
 test("getManualPicketSchedulePayloads creates one manual schedule payload per unique student", () => {

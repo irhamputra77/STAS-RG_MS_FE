@@ -8,10 +8,12 @@ import {
   PicketAssignment,
   PicketHoliday,
   PicketLeaveRequest,
+  PicketStudentDay,
   ensurePicketPhotoPreviewable,
   fileToDataUrl,
   getJakartaDateKey,
   getPicketHolidayFromTodayResponse,
+  getPicketStudentDayFromTodayResponse,
   isPicketAssignmentSubmitted,
   isPicketHolidayResponse,
   mapPicketAssignment,
@@ -43,6 +45,7 @@ export default function Piket() {
   const [todayAssignment, setTodayAssignment] = React.useState<PicketAssignment | null>(null);
   const [history, setHistory] = React.useState<PicketAssignment[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<PicketLeaveRequest[]>([]);
+  const [fixedDay, setFixedDay] = React.useState<PicketStudentDay | null>(null);
   const [isManager, setIsManager] = React.useState(false);
   const [reason, setReason] = React.useState("");
   const [photoFile, setPhotoFile] = React.useState<File | null>(null);
@@ -69,6 +72,7 @@ export default function Piket() {
 
       if (todayRes.status === "fulfilled") {
         setTodayAssignment(mapPicketTodayAssignment(todayRes.value));
+        setFixedDay(getPicketStudentDayFromTodayResponse(todayRes.value));
         setTodayHoliday(isPicketHolidayResponse(todayRes.value) ? getPicketHolidayFromTodayResponse(todayRes.value) : null);
       }
 
@@ -98,6 +102,12 @@ export default function Piket() {
 
   React.useEffect(() => {
     void loadData();
+  }, [loadData]);
+
+  React.useEffect(() => {
+    const refresh = () => void loadData();
+    window.addEventListener("stas:picket-refresh", refresh);
+    return () => window.removeEventListener("stas:picket-refresh", refresh);
   }, [loadData]);
 
   React.useEffect(() => {
@@ -246,6 +256,13 @@ export default function Piket() {
           </div>
         ) : (
           <>
+            {fixedDay && (
+              <div className="rounded-[16px] border border-blue-200 bg-blue-50 px-5 py-4">
+                <p className="text-xs font-black uppercase tracking-wide text-blue-600">Hari Piket Tetap</p>
+                <p className="mt-1 font-black text-blue-900">{fixedDay.dayName || `Hari ke-${fixedDay.dayId}`}</p>
+                <p className="mt-1 text-xs font-semibold text-blue-700">Jadwal pengganti karena izin bersifat satu kali; minggu berikutnya Anda kembali ke hari ini.</p>
+              </div>
+            )}
             {todayHoliday && (
               <div className="rounded-[16px] border border-violet-200 bg-violet-50 px-5 py-4">
                 <div className="flex items-start gap-3">
@@ -404,6 +421,9 @@ export default function Piket() {
                           <div>
                             <p className="font-black text-foreground">{item.date}</p>
                             <p className="mt-1 text-sm text-muted-foreground">{item.reason}</p>
+                            {item.replacementDate && (
+                              <p className="mt-2 text-xs font-black text-blue-700">Jadwal pengganti: {item.replacementDate}</p>
+                            )}
                           </div>
                           <Badge status={item.status} />
                         </div>
