@@ -233,29 +233,35 @@ export default function KeanggotaanRiset() {
                 <div className="text-[11px] text-white/60">anggota</div>
               </div>
             </div>
-          </div>
-
-          {requests.length > 0 && (
-            <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden mb-4">
+            <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden mb-4 mt-4">
               <div className="px-5 py-3 border-b border-amber-200 bg-amber-50">
                 <h3 className="text-sm font-black text-amber-800">Permintaan Join Kembali ({requests.length})</h3>
               </div>
               <div className="divide-y divide-amber-100">
-                {requests.map(req => (
-                  <div key={req.id} className="flex items-center justify-between p-4 bg-amber-50/30">
-                    <div>
-                      <p className="font-black text-sm text-foreground">{req.student_name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">NIM: {req.nim}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleRejectJoinRequest(req.id)} className="px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-colors">Tolak</button>
-                      <button onClick={() => handleApproveJoinRequest(req.id)} className="px-3 py-1.5 bg-emerald-500 text-white hover:bg-emerald-600 rounded-lg text-xs font-bold transition-colors">Terima (Aktifkan)</button>
-                    </div>
+                {requests.length === 0 ? (
+                  <div className="p-5 text-center text-amber-600/70 text-xs font-semibold">
+                    Tidak ada permintaan join kembali saat ini.
                   </div>
-                ))}
+                ) : (
+                  requests.map((req) => (
+                    <div key={req.id} className="flex items-center justify-between p-4 bg-amber-50/30">
+                      <div>
+                        <p className="font-black text-sm text-foreground">{req.student_name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">NIM: {req.nim}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleApproveJoinRequest(req.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black rounded-lg transition-colors shadow-sm shadow-emerald-200">
+                          <CheckCheck size={14} /> Terima
+                        </button>
+                        <button onClick={() => handleRejectJoinRequest(req.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg transition-colors">
+                          <X size={14} /> Tolak
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-          )}
 
           {/* Members Table */}
           <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
