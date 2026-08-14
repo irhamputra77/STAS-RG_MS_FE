@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Search, Plus, X, Trash2, Pencil, Users } from "lucide-react";
-import { apiGet, apiPatch } from "../../../lib/api";
+import { apiGet, apiPatch, apiPost } from "../../../lib/api";
 import { getResearchRoleOptions, MAHASISWA_LEADER_ROLE, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
 
 const PERAN_COLOR: Record<string, string> = {
@@ -20,6 +20,7 @@ const PERAN_COLOR: Record<string, string> = {
 export default function KeanggotaanRiset() {
   const [researchList, setResearchList] = useState<Array<any>>([]);
   const [membersMap, setMembersMap] = useState<Record<string, any[]>>({});
+  const [joinRequestsMap, setJoinRequestsMap] = useState<Record<string, any[]>>({});
   const [selectedRiset, setSelectedRiset] = useState("");
   const [allStudents, setAllStudents] = useState<Array<any>>([]);
   const [allLecturers, setAllLecturers] = useState<Array<any>>([]);
@@ -56,7 +57,11 @@ export default function KeanggotaanRiset() {
     const loadMembers = async () => {
       if (!selectedRiset) return;
       try {
-        const members = await apiGet<Array<any>>(`/research/${selectedRiset}/members`);
+        const [members, requests] = await Promise.all([
+          apiGet<Array<any>>(`/research/${selectedRiset}/members`),
+          apiGet<Array<any>>(`/research/${selectedRiset}/join-requests`).catch(() => [])
+        ]);
+
         setMembersMap((prev) => ({
           ...prev,
           [selectedRiset]: (members || []).map((member) => ({
@@ -71,6 +76,11 @@ export default function KeanggotaanRiset() {
             status: member.status || "Aktif"
           }))
         }));
+
+        setJoinRequestsMap((prev) => ({
+          ...prev,
+          [selectedRiset]: requests || []
+        }));
       } catch (err: any) {
         setError(err?.message || "Gagal memuat anggota riset");
       }
@@ -80,6 +90,7 @@ export default function KeanggotaanRiset() {
   }, [selectedRiset]);
 
   const riset = researchList.find(r => r.id === selectedRiset);
+  const requests = joinRequestsMap[selectedRiset] || [];
   const members = (membersMap[selectedRiset] || []).filter(m => {
     const q = search.toLowerCase();
     return !q || m.nama.toLowerCase().includes(q);
@@ -125,6 +136,44 @@ export default function KeanggotaanRiset() {
       setEditRole("");
     } catch (err: any) {
       setError(err?.message || "Gagal memperbarui peran anggota");
+    }
+  };
+
+  const handleApproveJoinRequest = async (requestId: string) => {
+    try {
+      await apiPatch(`/research/${selectedRiset}/join-requests/${requestId}/approve`, {});
+      // Refresh members and requests
+      const [members, reqs] = await Promise.all([
+        apiGet<Array<any>>(`/research/${selectedRiset}/members`),
+        apiGet<Array<any>>(`/research/${selectedRiset}/join-requests`).catch(() => [])
+      ]);
+      setMembersMap((prev) => ({
+        ...prev,
+        [selectedRiset]: (members || []).map((member) => ({
+          memberId: member.user_id,
+          nama: member.name,
+          initials: member.initials,
+          photoUrl: member.photo_url || member.photoUrl || null,
+          color: member.member_type === "Dosen" ? "bg-blue-500 text-white" : "bg-[#8B6FFF] text-white",
+          tipe: member.member_type,
+          peran: member.peran || "Anggota",
+          bergabung: member.bergabung || "-",
+          status: member.status || "Aktif"
+        }))
+      }));
+      setJoinRequestsMap((prev) => ({ ...prev, [selectedRiset]: reqs || [] }));
+    } catch (err: any) {
+      setError(err?.message || "Gagal menyetujui permintaan");
+    }
+  };
+
+  const handleRejectJoinRequest = async (requestId: string) => {
+    try {
+      await apiPatch(`/research/${selectedRiset}/join-requests/${requestId}/reject`, {});
+      const reqs = await apiGet<Array<any>>(`/research/${selectedRiset}/join-requests`);
+      setJoinRequestsMap((prev) => ({ ...prev, [selectedRiset]: reqs || [] }));
+    } catch (err: any) {
+      setError(err?.message || "Gagal menolak permintaan");
     }
   };
 
@@ -185,6 +234,28 @@ export default function KeanggotaanRiset() {
               </div>
             </div>
           </div>
+
+          {requests.length > 0 && (
+            <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden mb-4">
+              <div className="px-5 py-3 border-b border-amber-200 bg-amber-50">
+                <h3 className="text-sm font-black text-amber-800">Permintaan Join Kembali ({requests.length})</h3>
+              </div>
+              <div className="divide-y divide-amber-100">
+                {requests.map(req => (
+                  <div key={req.id} className="flex items-center justify-between p-4 bg-amber-50/30">
+                    <div>
+                      <p className="font-black text-sm text-foreground">{req.student_name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">NIM: {req.nim}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleRejectJoinRequest(req.id)} className="px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-colors">Tolak</button>
+                      <button onClick={() => handleApproveJoinRequest(req.id)} className="px-3 py-1.5 bg-emerald-500 text-white hover:bg-emerald-600 rounded-lg text-xs font-bold transition-colors">Terima (Aktifkan)</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Members Table */}
           <div className="bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">

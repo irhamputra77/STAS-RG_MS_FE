@@ -12,6 +12,7 @@ import {
   Loader2,
   Save,
   Send,
+  History,
   Sparkles,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
@@ -369,6 +370,7 @@ export default function GraduationSubmission() {
   const [becomingAlumni, setBecomingAlumni] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<any[]>([]);
   const { login } = useAuth();
 
   const completion = useMemo(() => {
@@ -417,6 +419,10 @@ export default function GraduationSubmission() {
         setSubmittedAt(data?.submission?.submittedAt || data?.submission?.submitted_at || "");
         setGraduationAllowedAt(data?.submission?.graduationAllowedAt || data?.submission?.graduation_allowed_at || "");
         setLastSavedAt(data?.submission?.updatedAt || data?.submission?.updated_at || data?.submission?.createdAt || data?.submission?.created_at || "");
+
+        // Load History
+        const histData = await apiGet<any[]>("/graduation-submissions/me/history");
+        setHistory(histData || []);
       } catch (err: any) {
         setError(err?.message || "Gagal memuat form berkas kelulusan.");
       } finally {
@@ -821,6 +827,42 @@ export default function GraduationSubmission() {
           </p>
         )}
       </div>
+
+      {history.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-4 text-xl font-black text-slate-900 flex items-center gap-2">
+            <History size={24} className="text-emerald-600" /> Riwayat Berkas Kelulusan
+          </h2>
+          <div className="flex flex-col gap-4">
+            {history.map((histItem, idx) => (
+              <div key={idx} className="rounded-[16px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase text-slate-600 mb-2">
+                      {new Date(histItem.submission.submittedAt || histItem.submission.submitted_at || histItem.submission.created_at).toLocaleDateString('id-ID')}
+                    </span>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Disetujui menjadi Alumni: {histItem.submission.graduationAllowedAt || histItem.submission.graduation_allowed_at ? "Ya" : "Belum"}
+                    </h3>
+                  </div>
+                  <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                    Selesai
+                  </span>
+                </div>
+                <div className="grid gap-2 text-xs text-slate-600 font-medium">
+                  {histItem.savedProjects?.map((p: any) => (
+                    <div key={p.id} className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                      <span className="font-bold text-slate-800">{p.projectTitle || p.project_title}</span>
+                      <br />
+                      Posisi: {p.positionLabel || p.position_label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

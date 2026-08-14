@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Layout } from "../../templates/Layout";
-import { apiGet, getStoredUser } from "../../../lib/api";
+import { apiGet, apiPost, getStoredUser } from "../../../lib/api";
 import { FlaskConical, ChevronRight } from "lucide-react";
 
 interface ResearchProject {
@@ -18,6 +18,7 @@ interface ResearchProject {
   description?: string;
   funding?: string;
   my_peran?: string;
+  join_request_status?: string;
 }
 
 export default function MyResearch() {
@@ -49,6 +50,21 @@ export default function MyResearch() {
 
   const handleOpenResearchBoard = (researchId: string) => {
     navigate(`/scrum-board/${researchId}`);
+  };
+
+  const handleJoinRequest = async (e: React.MouseEvent, researchId: string) => {
+    e.stopPropagation();
+    try {
+      await apiPost(`/research/${researchId}/join-requests`, {});
+      setResearch((prev) =>
+        prev.map((r) =>
+          r.id === researchId ? { ...r, join_request_status: "Menunggu" } : r
+        )
+      );
+      alert("Permintaan join berhasil dikirim. Menunggu persetujuan Admin/Dosen.");
+    } catch (err: any) {
+      alert(err?.message || "Gagal mengirim permintaan join.");
+    }
   };
 
   if (loading) {
@@ -148,9 +164,24 @@ export default function MyResearch() {
 
                   <div className="flex items-center gap-3 shrink-0">
                     {r.my_peran === "Alumni" ? (
-                      <span className="text-xs font-black px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
-                        Alumni
-                      </span>
+                      <>
+                        <span className="text-xs font-black px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                          Alumni
+                        </span>
+                        {r.join_request_status === "Menunggu" ? (
+                          <span className="text-xs font-bold px-3 py-1.5 rounded-[10px] bg-amber-100 text-amber-700">
+                            Menunggu ACC
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => handleJoinRequest(e, r.id)}
+                            className="text-xs font-black px-3 py-1.5 rounded-[10px] bg-sky-100 text-sky-700 hover:bg-sky-200 transition-colors"
+                          >
+                            Join Kembali
+                          </button>
+                        )}
+                      </>
                     ) : (
                       <span
                         className={`text-xs font-black px-2 py-1 rounded-full ${r.status === "Aktif"
