@@ -18,6 +18,8 @@ interface ResearchProject {
   description?: string;
   funding?: string;
   my_peran?: string;
+  my_selesai?: string | null;
+  membership_status?: string;
   join_request_status?: string;
 }
 
@@ -163,7 +165,7 @@ export default function MyResearch() {
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    {r.my_peran === "Alumni" ? (
+                    {r.my_peran === "Alumni" || r.membership_status === "Alumni" || (r.my_selesai && new Date(r.my_selesai) < new Date()) ? (
                       <>
                         <span className="text-xs font-black px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
                           Alumni
