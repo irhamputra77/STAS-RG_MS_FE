@@ -4,7 +4,9 @@ import {
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
   getPicketScheduleGeneratePayload,
+  getPicketAssignmentStatus,
   getPicketHolidayFromTodayResponse,
+  hasPicketPhotoSubmission,
   isPicketHolidayResponse,
   mapPicketAssignment,
   mapPicketHoliday,
@@ -13,6 +15,8 @@ import {
   mapPicketSubmissionResult,
   mapPicketStudentDay,
   mapPicketTask,
+  mapPicketTodayAssignment,
+  shouldRequirePicketPhoto,
   validatePicketPhoto,
 } from "../../src/app/lib/picket";
 
@@ -62,6 +66,9 @@ test("mapPicketAssignment normalizes assignment and submission aliases", () => {
     submissionStatus: null,
     leaveStatus: null,
     submitted: true,
+    autoCompletedByWfh: false,
+    autoLeaveType: null,
+    autoLeaveRequestId: null,
     submissionId: "S1",
     photoUrl: null,
     submittedAt: null,
@@ -72,6 +79,90 @@ test("mapPicketAssignment normalizes assignment and submission aliases", () => {
     isExempt: false,
     holiday: null,
   });
+});
+
+test("WFH on a picket day maps auto-completion aliases without treating it as a photo submission", () => {
+  const snake = mapPicketAssignment({
+    schedule_id: "SCH-WFH-1",
+    assignment_id: "ASN-WFH-1",
+    schedule_date: "2026-08-14",
+    task_name: "Bersihkan lab",
+    submitted: true,
+    status: "Selesai",
+    auto_completed_by_wfh: true,
+    auto_leave_type: "wfh",
+    auto_leave_request_id: "LEAVE-WFH-1",
+    submission_id: null,
+    submission_status: null,
+    photo_url: null,
+  });
+  const camel = mapPicketAssignment({
+    scheduleId: "SCH-WFH-2",
+    scheduleDate: "2026-08-21",
+    taskName: "Rapikan meja",
+    submitted: true,
+    status: "Selesai",
+    autoCompletedByWfh: true,
+    autoLeaveType: "wfh",
+    autoLeaveRequestId: "LEAVE-WFH-2",
+  });
+
+  assert.equal(snake.autoCompletedByWfh, true);
+  assert.equal(snake.autoLeaveType, "wfh");
+  assert.equal(snake.autoLeaveRequestId, "LEAVE-WFH-1");
+  assert.equal(camel.autoCompletedByWfh, true);
+  assert.equal(camel.autoLeaveType, "wfh");
+  assert.equal(camel.autoLeaveRequestId, "LEAVE-WFH-2");
+  assert.equal(getPicketAssignmentStatus(snake), "Selesai Otomatis — WFH");
+  assert.equal(hasPicketPhotoSubmission(snake), false);
+  assert.equal(shouldRequirePicketPhoto(snake), false);
+});
+
+test("WFH outside a picket day keeps today's assignment empty", () => {
+  assert.equal(mapPicketTodayAssignment({
+    assignment: null,
+    approvedLeave: {
+      type: "wfh",
+      date: "2026-08-14",
+    },
+  }), null);
+});
+
+test("ordinary picket photo submission keeps the Terkirim behavior", () => {
+  const item = mapPicketAssignment({
+    schedule_id: "SCH-PHOTO-1",
+    schedule_date: "2026-08-14",
+    task_name: "Bersihkan lab",
+    submitted: true,
+    submission_status: "Terkirim",
+    submission_id: "SUB-PHOTO-1",
+    photo_url: "/uploads/piket/photo-1.jpg",
+  });
+
+  assert.equal(item.autoCompletedByWfh, false);
+  assert.equal(hasPicketPhotoSubmission(item), true);
+  assert.equal(shouldRequirePicketPhoto(item), false);
+  assert.equal(getPicketAssignmentStatus(item), "Terkirim");
+  assert.equal(getPicketAssignmentStatus(mapPicketAssignment({
+    schedule_id: "SCH-PHOTO-2",
+    task_name: "Rapikan lab",
+    submitted: true,
+  })), "Terkirim");
+});
+
+test("approved non-WFH picket leave does not require a photo", () => {
+  const item = mapPicketAssignment({
+    schedule_id: "SCH-LEAVE-1",
+    schedule_date: "2026-08-14",
+    task_name: "Bersihkan lab",
+    leave_status: "Disetujui",
+    submitted: false,
+  });
+
+  assert.equal(item.autoCompletedByWfh, false);
+  assert.equal(hasPicketPhotoSubmission(item), false);
+  assert.equal(shouldRequirePicketPhoto(item), false);
+  assert.equal(getPicketAssignmentStatus(item), "Dijadwalkan");
 });
 
 test("mapPicketAssignment normalizes holiday and exemption aliases", () => {

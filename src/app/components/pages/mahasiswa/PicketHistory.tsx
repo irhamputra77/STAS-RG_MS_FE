@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { Layout } from "../../templates/Layout";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { apiGet, getStoredUser } from "../../../lib/api";
-import { PicketAssignment, isPicketAssignmentSubmitted, mapPicketAssignment } from "../../../lib/picket";
+import { PicketAssignment, getPicketAssignmentStatus, isPicketAssignmentSubmitted, mapPicketAssignment } from "../../../lib/picket";
 
 type PicketHistoryProps = {
   management?: boolean;
@@ -23,6 +23,7 @@ const statusStyle: Record<string, string> = {
   Ditugaskan: "border-slate-200 bg-slate-50 text-slate-600",
   Dijadwalkan: "border-slate-200 bg-slate-50 text-slate-600",
   Libur: "border-violet-200 bg-violet-50 text-violet-700",
+  "Selesai Otomatis — WFH": "border-indigo-200 bg-indigo-50 text-indigo-700",
 };
 
 function Badge({ status }: { status?: string | null }) {
@@ -48,8 +49,7 @@ function formatDateTime(value?: string | null) {
 }
 
 function getSubmissionStatus(item: PicketAssignment) {
-  if (item.isHoliday || item.isExempt) return "Libur";
-  return item.submissionStatus || (isPicketAssignmentSubmitted(item) ? "Terkirim" : item.status) || "Dijadwalkan";
+  return getPicketAssignmentStatus(item, "Dijadwalkan");
 }
 
 function normalizeStudent(row: any): StudentOption {
@@ -231,6 +231,7 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
               <option value="Terkirim">Terkirim</option>
               <option value="Valid">Valid</option>
               <option value="Bermasalah">Bermasalah</option>
+              <option value="Selesai Otomatis — WFH">Selesai Otomatis — WFH</option>
               <option value="Libur">Libur</option>
             </select>
             {management && (
@@ -269,7 +270,9 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
                     {management && <p className="mt-1 text-xs font-black text-slate-700">{item.studentName} {item.nim ? `- ${item.nim}` : ""}</p>}
                     {item.taskDescription && <p className="mt-1 text-sm text-muted-foreground">{item.taskDescription}</p>}
                     <p className="mt-2 text-xs font-bold text-muted-foreground">Jadwal: {item.date}</p>
-                    {item.isHoliday || item.isExempt ? (
+                    {item.autoCompletedByWfh ? (
+                      <p className="mt-1 text-xs font-bold text-indigo-700">Piket otomatis selesai karena WFH yang disetujui.</p>
+                    ) : item.isHoliday || item.isExempt ? (
                       <p className="mt-1 text-xs font-bold text-violet-700">Piket diliburkan: {item.holiday?.name || "Hari Libur Piket"}</p>
                     ) : (
                       <>
@@ -286,10 +289,12 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
                     )}
                   </div>
                   <div className="text-xs font-semibold text-muted-foreground">
-                    <p>ID Submission</p>
-                    <p className="mt-1 truncate font-mono text-[11px] text-foreground">{item.submissionId || "-"}</p>
+                    <p>{item.autoCompletedByWfh ? "ID Izin WFH" : "ID Submission"}</p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-foreground">{item.autoCompletedByWfh ? item.autoLeaveRequestId || "-" : item.submissionId || "-"}</p>
                   </div>
-                  {item.photoUrl ? (
+                  {item.autoCompletedByWfh ? (
+                    <span className="text-xs font-semibold text-indigo-700">Foto tidak diperlukan</span>
+                  ) : item.photoUrl ? (
                     <a
                       href={item.photoUrl}
                       target="_blank"

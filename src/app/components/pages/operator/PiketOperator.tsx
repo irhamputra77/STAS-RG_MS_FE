@@ -29,6 +29,7 @@ import {
   getJakartaDateKey,
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
+  getPicketAssignmentStatus,
   getPicketScheduleGeneratePayload,
   isPicketAssignmentSubmitted,
   mapPicketAssignment,
@@ -107,6 +108,7 @@ const statusStyle: Record<string, string> = {
   Valid: "border-emerald-200 bg-emerald-50 text-emerald-700",
   Bermasalah: "border-red-200 bg-red-50 text-red-600",
   Libur: "border-violet-200 bg-violet-50 text-violet-700",
+  "Selesai Otomatis — WFH": "border-indigo-200 bg-indigo-50 text-indigo-700",
 };
 
 const emptyScheduleForm: ScheduleForm = {
@@ -1063,8 +1065,8 @@ export default function PiketOperator() {
                         <tr key={item.id}>
                           <td className="px-5 py-3"><p className="font-black text-foreground">{item.studentName}</p><p className="text-xs text-muted-foreground">{item.nim || "-"}</p></td>
                           <td className="px-5 py-3"><p className="font-bold text-foreground">{item.taskName}</p>{item.taskDescription && <p className="text-xs text-muted-foreground">{item.taskDescription}</p>}{item.notes && <p className="text-xs text-muted-foreground">Catatan: {item.notes}</p>}</td>
-                          <td className="px-5 py-3"><Badge status={item.isHoliday || item.isExempt ? "Libur" : isPicketAssignmentSubmitted(item) ? item.submissionStatus || "Terkirim" : item.status} /></td>
-                          <td className="px-5 py-3">{item.photoUrl ? <a href={item.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-600 hover:underline">Lihat Foto</a> : <span className="text-xs text-muted-foreground">Belum submit</span>}</td>
+                          <td className="px-5 py-3"><Badge status={getPicketAssignmentStatus(item)} /></td>
+                          <td className="px-5 py-3">{item.autoCompletedByWfh ? <span className="text-xs font-semibold text-indigo-700">Otomatis via WFH</span> : item.photoUrl ? <a href={item.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-600 hover:underline">Lihat Foto</a> : <span className="text-xs text-muted-foreground">Belum submit</span>}</td>
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap gap-2">
                               <button onClick={() => startEditSchedule(item)} className="h-8 rounded-[8px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">Edit</button>

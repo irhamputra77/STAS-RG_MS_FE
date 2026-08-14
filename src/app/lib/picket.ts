@@ -1,6 +1,7 @@
 import { resolveApiAssetUrl } from "./api";
 
 export const PICKET_BLOCK_REASON = "PICKET_SUBMISSION_INVALID";
+export const PICKET_AUTO_WFH_STATUS = "Selesai Otomatis — WFH";
 export const MAX_PICKET_PHOTO_BYTES = 5 * 1024 * 1024;
 const PICKET_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const PICKET_PHOTO_EXTENSION_TYPES: Record<string, string> = {
@@ -37,6 +38,9 @@ export type PicketAssignment = {
   submissionStatus?: string | null;
   leaveStatus?: string | null;
   submitted: boolean;
+  autoCompletedByWfh: boolean;
+  autoLeaveType?: string | null;
+  autoLeaveRequestId?: string | null;
   submissionId?: string | null;
   photoUrl?: string | null;
   submittedAt?: string | null;
@@ -285,6 +289,9 @@ export function mapPicketAssignment(row: any): PicketAssignment {
     submissionStatus,
     leaveStatus: row?.leave_status || row?.leaveStatus || row?.picket_leave_status || row?.picketLeaveStatus || null,
     submitted: bool(row?.submitted ?? row?.has_submission ?? row?.hasSubmission, Boolean(submissionId || submission)),
+    autoCompletedByWfh: bool(row?.auto_completed_by_wfh ?? row?.autoCompletedByWfh, false),
+    autoLeaveType: row?.auto_leave_type ?? row?.autoLeaveType ?? null,
+    autoLeaveRequestId: row?.auto_leave_request_id ?? row?.autoLeaveRequestId ?? null,
     submissionId,
     photoUrl,
     submittedAt,
@@ -371,6 +378,28 @@ export function mapPicketSubmission(row: any): PicketSubmission {
 
 export function isPicketAssignmentSubmitted(item: Pick<PicketAssignment, "submitted" | "submissionId" | "photoUrl" | "submittedAt"> | null | undefined) {
   return Boolean(item?.submitted || item?.submissionId || item?.photoUrl || item?.submittedAt);
+}
+
+export function hasPicketPhotoSubmission(
+  item: Pick<PicketAssignment, "autoCompletedByWfh" | "submitted" | "submissionId" | "photoUrl" | "submittedAt"> | null | undefined
+) {
+  if (item?.autoCompletedByWfh) return false;
+  return isPicketAssignmentSubmitted(item);
+}
+
+export function shouldRequirePicketPhoto(
+  item: Pick<PicketAssignment, "autoCompletedByWfh" | "submitted" | "submissionId" | "photoUrl" | "submittedAt" | "isHoliday" | "isExempt" | "leaveStatus"> | null | undefined
+) {
+  if (!item || item.autoCompletedByWfh || item.isHoliday || item.isExempt) return false;
+  if (String(item.leaveStatus || "").toLowerCase() === "disetujui") return false;
+  return !hasPicketPhotoSubmission(item);
+}
+
+export function getPicketAssignmentStatus(item: PicketAssignment, fallback = "Ditugaskan") {
+  if (item.autoCompletedByWfh) return PICKET_AUTO_WFH_STATUS;
+  if (item.isHoliday || item.isExempt) return "Libur";
+  if (isPicketAssignmentSubmitted(item)) return item.submissionStatus || "Terkirim";
+  return item.status || fallback;
 }
 
 function submissionMatchesAssignment(submission: PicketSubmission, assignment: PicketAssignment) {

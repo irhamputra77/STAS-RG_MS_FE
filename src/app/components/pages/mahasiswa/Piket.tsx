@@ -12,8 +12,10 @@ import {
   ensurePicketPhotoPreviewable,
   fileToDataUrl,
   getJakartaDateKey,
+  getPicketAssignmentStatus,
   getPicketHolidayFromTodayResponse,
   getPicketStudentDayFromTodayResponse,
+  hasPicketPhotoSubmission,
   isPicketAssignmentSubmitted,
   isPicketHolidayResponse,
   mapPicketAssignment,
@@ -33,6 +35,7 @@ const statusStyle: Record<string, string> = {
   Bermasalah: "border-red-200 bg-red-50 text-red-600",
   Dijadwalkan: "border-slate-200 bg-slate-50 text-slate-600",
   Libur: "border-violet-200 bg-violet-50 text-violet-700",
+  "Selesai Otomatis — WFH": "border-indigo-200 bg-indigo-50 text-indigo-700",
 };
 
 function Badge({ status }: { status?: string | null }) {
@@ -150,6 +153,10 @@ export default function Piket() {
       setError("Bukti piket tidak perlu dikirim karena jadwal hari ini berstatus Libur.");
       return;
     }
+    if (todayAssignment.autoCompletedByWfh) {
+      setError("Bukti piket tidak perlu dikirim karena piket otomatis selesai melalui WFH yang disetujui.");
+      return;
+    }
     if (String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui") {
       setError("Bukti piket tidak perlu dikirim karena izin piket sudah disetujui.");
       return;
@@ -201,6 +208,10 @@ export default function Piket() {
     }
     if (todayAssignment.isHoliday || todayAssignment.isExempt) {
       setError("Izin tidak perlu diajukan karena jadwal hari ini berstatus Libur.");
+      return;
+    }
+    if (todayAssignment.autoCompletedByWfh) {
+      setError("Izin tidak piket tidak perlu diajukan karena piket otomatis selesai melalui WFH yang disetujui.");
       return;
     }
     if (!reason.trim()) {
@@ -279,7 +290,7 @@ export default function Piket() {
                 <h2 className="text-sm font-black text-foreground">Jadwal Hari Ini</h2>
               </div>
               {todayAssignment ? (
-                <div className="grid grid-cols-1 gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_340px_320px]">
+                <div className={`grid grid-cols-1 gap-4 p-5 ${todayAssignment.autoCompletedByWfh ? "" : "xl:grid-cols-[minmax(0,1fr)_340px_320px]"}`}>
                   <div className={`rounded-[14px] border p-4 ${todayAssignment.isHoliday || todayAssignment.isExempt ? "border-violet-200 bg-violet-50" : "border-emerald-200 bg-emerald-50"}`}>
                     <div className="flex items-start gap-3">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-emerald-500 text-white">
@@ -289,8 +300,13 @@ export default function Piket() {
                         <p className={`text-sm font-black ${todayAssignment.isHoliday || todayAssignment.isExempt ? "text-violet-800" : "text-emerald-800"}`}>{todayAssignment.isHoliday || todayAssignment.isExempt ? `Piket diliburkan: ${todayAssignment.holiday?.name || "Hari Libur Piket"}` : "Anda piket hari ini"}</p>
                         <h3 className="mt-1 text-xl font-black text-foreground">{todayAssignment.taskName}</h3>
                         {todayAssignment.taskDescription && <p className="mt-2 text-sm leading-relaxed text-emerald-800/80">{todayAssignment.taskDescription}</p>}
+                        {todayAssignment.autoCompletedByWfh && (
+                          <p className="mt-3 rounded-[10px] border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700">
+                            Piket otomatis selesai karena WFH yang disetujui.
+                          </p>
+                        )}
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <Badge status={todayAssignment.isHoliday || todayAssignment.isExempt ? "Libur" : isPicketAssignmentSubmitted(todayAssignment) ? todayAssignment.submissionStatus || "Terkirim" : todayAssignment.status || "Ditugaskan"} />
+                          <Badge status={getPicketAssignmentStatus(todayAssignment)} />
                           {todayAssignment.leaveStatus && <Badge status={`Izin ${todayAssignment.leaveStatus}`} />}
                           <span className="text-xs font-bold text-emerald-800">{todayAssignment.date}</span>
                         </div>
@@ -298,13 +314,13 @@ export default function Piket() {
                     </div>
                   </div>
 
-                  {!todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
+                  {!todayAssignment.autoCompletedByWfh && !todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-black text-foreground">Bukti Piket</h3>
                         <p className="mt-1 text-xs text-muted-foreground">Kirim foto setelah tugas piket selesai.</p>
                       </div>
-                      {isPicketAssignmentSubmitted(todayAssignment) && <Badge status={todayAssignment.submissionStatus || "Terkirim"} />}
+                      {hasPicketPhotoSubmission(todayAssignment) && <Badge status={todayAssignment.submissionStatus || "Terkirim"} />}
                     </div>
 
                     {todayAssignment.photoUrl && !photoPreview ? (
@@ -341,9 +357,9 @@ export default function Piket() {
                     )}
 
                     <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                      {(todayAssignment.submitted || photoPreview) && (
+                      {(hasPicketPhotoSubmission(todayAssignment) || photoPreview) && (
                         <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-border bg-white px-3 text-sm font-black text-slate-700 hover:bg-slate-50">
-                          <ImagePlus size={15} /> {isPicketAssignmentSubmitted(todayAssignment) ? "Upload Ulang Foto" : "Ganti Foto"}
+                          <ImagePlus size={15} /> {hasPicketPhotoSubmission(todayAssignment) ? "Upload Ulang Foto" : "Ganti Foto"}
                           <input
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
@@ -361,12 +377,12 @@ export default function Piket() {
                         disabled={saving || !photoFile || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
                       >
-                        {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {isPicketAssignmentSubmitted(todayAssignment) ? "Kirim Ulang" : "Kirim Bukti"}
+                        {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {hasPicketPhotoSubmission(todayAssignment) ? "Kirim Ulang" : "Kirim Bukti"}
                       </button>
                     </div>
                   </div>}
 
-                  {!todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
+                  {!todayAssignment.autoCompletedByWfh && !todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
                     <h3 className="text-sm font-black text-foreground">Izin Tidak Piket</h3>
                     <p className="mt-1 text-xs text-muted-foreground">Ajukan izin jika Anda tidak dapat menjalankan piket hari ini.</p>
                     <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Tulis alasan izin..." className="mt-3 w-full rounded-[10px] border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
@@ -400,7 +416,7 @@ export default function Piket() {
                           <p className="text-xs text-muted-foreground">{item.date}</p>
                           {item.submittedAt && <p className="mt-1 text-[10px] font-bold text-emerald-600">Submit: {new Date(item.submittedAt).toLocaleString("id-ID")}</p>}
                         </div>
-                        <Badge status={item.isHoliday || item.isExempt ? "Libur" : isPicketAssignmentSubmitted(item) ? item.submissionStatus || item.status || "Terkirim" : item.status || "Ditugaskan"} />
+                        <Badge status={item.autoCompletedByWfh ? getPicketAssignmentStatus(item) : item.isHoliday || item.isExempt ? "Libur" : isPicketAssignmentSubmitted(item) ? item.submissionStatus || item.status || "Terkirim" : item.status || "Ditugaskan"} />
                       </div>
                     ))}
                   </div>

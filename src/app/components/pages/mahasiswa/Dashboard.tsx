@@ -10,7 +10,7 @@ import {
 import { apiGet } from "../../../lib/api";
 import { useAuth } from "../../../context/AuthContext";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
-import { PicketAssignment, PicketHoliday, getPicketHolidayFromTodayResponse, isPicketHolidayResponse, mapPicketTodayAssignment } from "../../../lib/picket";
+import { PicketAssignment, PicketHoliday, getPicketHolidayFromTodayResponse, hasPicketPhotoSubmission, isPicketHolidayResponse, mapPicketTodayAssignment } from "../../../lib/picket";
 
 function getActiveMilestone(project: any) {
   const milestones = project?.milestones || [];
@@ -511,7 +511,15 @@ export default function Dashboard() {
                   <p className="text-xs font-black uppercase tracking-wide text-emerald-700">{todayPicketHoliday || todayPicket?.isHoliday || todayPicket?.isExempt ? "Hari Libur Piket" : "Jadwal Piket Hari Ini"}</p>
                   <h2 className="mt-1 text-base font-black text-foreground">{todayPicketHoliday?.name || todayPicket?.holiday?.name || todayPicket?.taskName}</h2>
                   <p className="mt-1 text-xs font-semibold text-emerald-700">
-                    {todayPicketHoliday || todayPicket?.isHoliday || todayPicket?.isExempt ? "Piket diliburkan dan tidak menjadi kewajiban aktif." : todayPicket?.submitted ? "Foto piket sudah dikirim." : "Foto piket akan diminta sebelum checkout."}
+                    {todayPicketHoliday || todayPicket?.isHoliday || todayPicket?.isExempt
+                      ? "Piket diliburkan dan tidak menjadi kewajiban aktif."
+                      : todayPicket?.autoCompletedByWfh
+                        ? "Piket otomatis selesai karena WFH yang disetujui."
+                        : hasPicketPhotoSubmission(todayPicket)
+                          ? "Foto piket sudah dikirim."
+                          : String(todayPicket?.leaveStatus || "").toLowerCase() === "disetujui"
+                            ? "Izin piket disetujui; foto tidak diperlukan."
+                            : "Foto piket akan diminta sebelum checkout."}
                   </p>
                 </div>
               </div>

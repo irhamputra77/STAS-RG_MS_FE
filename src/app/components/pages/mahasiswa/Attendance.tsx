@@ -10,10 +10,11 @@ import {
   PicketAssignment,
   ensurePicketPhotoPreviewable,
   fileToDataUrl,
-  isPicketAssignmentSubmitted,
+  hasPicketPhotoSubmission,
   mapPicketAssignment,
   mapPicketTodayAssignment,
   mapPicketSubmissionResult,
+  shouldRequirePicketPhoto,
   validatePicketPhoto,
 } from "../../../lib/picket";
 
@@ -600,10 +601,7 @@ export default function Attendance() {
 
   const shouldRequirePicketPhotoBeforeCheckout = () => {
     if (todayData.status !== "Berlangsung") return false;
-    if (!todayPicket) return false;
-    if (todayPicket.isHoliday || todayPicket.isExempt) return false;
-    if (String(todayPicket.leaveStatus || "").toLowerCase() === "disetujui") return false;
-    return !isPicketAssignmentSubmitted(todayPicket);
+    return shouldRequirePicketPhoto(todayPicket);
   };
 
   const submitPicketPhotoIfNeeded = async () => {
@@ -770,7 +768,15 @@ export default function Attendance() {
       if (errorBody?.picketRequired) {
         const rawPicket = errorBody.assignment || errorBody.picketAssignment || null;
         if (rawPicket) {
-          setTodayPicket(mapPicketAssignment(rawPicket));
+          const nextPicket = mapPicketAssignment(rawPicket);
+          setTodayPicket(nextPicket);
+          if (!shouldRequirePicketPhoto(nextPicket)) {
+            setPicketModalOpen(false);
+            setError(nextPicket.autoCompletedByWfh
+              ? "Piket otomatis selesai karena WFH yang disetujui. Silakan coba check-out kembali."
+              : "Kewajiban foto piket sudah terpenuhi. Silakan coba check-out kembali.");
+            return;
+          }
         }
         setPicketModalOpen(true);
         setError("");
@@ -922,7 +928,7 @@ export default function Attendance() {
             </div>
           </div>
         )}
-        {picketModalOpen && todayPicket && (
+        {picketModalOpen && todayPicket && shouldRequirePicketPhoto(todayPicket) && (
           <div className="fixed inset-0 z-[510] flex items-center justify-center bg-black/50 px-4">
             <div className="w-full max-w-[460px] rounded-[16px] border border-emerald-200 bg-white p-5 shadow-2xl">
               <div className="mb-4">
@@ -1025,7 +1031,19 @@ export default function Attendance() {
         )}
         {todayPicket && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-            Jadwal piket hari ini: {todayPicket.taskName}. {todayPicket.submitted ? "Foto piket sudah dikirim." : "Foto bukti piket akan diminta sebelum check-out."}
+            <span>Jadwal piket hari ini: {todayPicket.taskName}. </span>
+            {todayPicket.autoCompletedByWfh ? (
+              <>
+                <span className="mr-1 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">Selesai Otomatis — WFH</span>
+                <span>Piket otomatis selesai karena WFH yang disetujui.</span>
+              </>
+            ) : String(todayPicket.leaveStatus || "").toLowerCase() === "disetujui" ? (
+              <span>Izin piket sudah disetujui; foto piket tidak diperlukan sebelum check-out.</span>
+            ) : hasPicketPhotoSubmission(todayPicket) ? (
+              <span>Foto piket sudah dikirim.</span>
+            ) : (
+              <span>Foto bukti piket akan diminta sebelum check-out.</span>
+            )}
           </div>
         )}
 
