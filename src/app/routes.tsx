@@ -39,6 +39,7 @@ import PengunduranDiriOperator from "./components/pages/operator/PengunduranDiri
 import PiketOperator from "./components/pages/operator/PiketOperator";
 import BerkasKelulusanOperator from "./components/pages/operator/BerkasKelulusanOperator";
 import ReaktivasiAlumni from "./components/pages/operator/ReaktivasiAlumni";
+import KeanggotaanRiset from "./components/pages/operator/KeanggotaanRiset";
 import DashboardDosen from "./components/pages/dosen/DashboardDosen";
 import RisetDosen from "./components/pages/dosen/RisetDosen";
 import ReviewLogbook from "./components/pages/dosen/ReviewLogbook";
@@ -158,6 +159,7 @@ export const router = createBrowserRouter([
               { path: "dashboard", element: <OperatorDashboard /> },
               { path: "mahasiswa", element: <DatabaseMahasiswa /> },
               { path: "riset", element: <DatabaseRiset /> },
+              { path: "keanggotaan", element: <KeanggotaanRiset /> },
               { path: "dosen", element: <DatabaseDosen /> },
               { path: "operator", element: <DatabaseOperator /> },
               { path: "wfh-mahasiswa", element: <PengaturanWfhMahasiswa /> },
