@@ -100,7 +100,6 @@ export default function ReaktivasiAlumni() {
                   <tr className="bg-slate-50 border-b border-border text-left text-xs font-black text-muted-foreground uppercase tracking-wider">
                     <th className="px-5 py-3 whitespace-nowrap">Tanggal</th>
                     <th className="px-5 py-3 whitespace-nowrap">Mahasiswa</th>
-                    <th className="px-5 py-3 whitespace-nowrap">Riset Lanjutan</th>
                     <th className="px-5 py-3 whitespace-nowrap">Status</th>
                     <th className="px-5 py-3 text-right whitespace-nowrap">Aksi</th>
                   </tr>
@@ -112,9 +111,6 @@ export default function ReaktivasiAlumni() {
                       <td className="px-5 py-3">
                         <div className="font-bold text-foreground">{r.studentName}</div>
                         <div className="text-xs text-muted-foreground">{r.nim}</div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="font-medium max-w-[200px] truncate" title={r.projectTitle}>{r.projectTitle}</div>
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap">
                         <span className={`px-2.5 py-1 text-[10px] font-black rounded-md ${

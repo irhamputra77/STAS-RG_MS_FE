@@ -150,23 +150,13 @@ function MiniMilestones({ milestones, color }: { milestones: { label: string; do
 }
 
 function AlumniReactivationCard() {
-  const [projects, setProjects] = React.useState<any[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = React.useState<string>("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  React.useEffect(() => {
-    apiGet<any>("/reactivations/me/projects")
-      .then((data) => {
-        if (Array.isArray(data)) setProjects(data);
-      })
-      .catch(() => {});
-  }, []);
-
   const handleSubmit = async () => {
-    if (!selectedProjectId) return alert("Pilih riset terlebih dahulu");
+    if (!window.confirm("Ajukan permohonan untuk kembali menjadi mahasiswa aktif?")) return;
     setIsSubmitting(true);
     try {
-      const res = await apiPost<any>("/reactivations/me/request", { projectId: selectedProjectId });
+      const res = await apiPost<any>("/reactivations/me/request", {});
       alert(res.message || "Pengajuan berhasil dikirim");
     } catch (err: any) {
       alert(err.message || "Gagal mengirim pengajuan");
@@ -179,28 +169,17 @@ function AlumniReactivationCard() {
     <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-[14px] shadow-sm overflow-hidden p-4 md:p-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-4">
       <div>
         <h3 className="text-sm font-black text-emerald-800 flex items-center gap-2">
-          <FlaskConical size={16} className="text-emerald-600" /> Lanjutkan Riset
+          <FlaskConical size={16} className="text-emerald-600" /> Reaktivasi Mahasiswa
         </h3>
-        <p className="text-xs text-emerald-700 mt-1 font-medium">Anda saat ini adalah Alumni. Anda dapat mengajukan untuk kembali melanjutkan riset yang pernah Anda ikuti.</p>
+        <p className="text-xs text-emerald-700 mt-1 font-medium">Anda saat ini adalah Alumni. Anda dapat mengajukan permohonan untuk kembali menjadi mahasiswa aktif riset.</p>
       </div>
       <div className="flex gap-2 w-full sm:w-auto">
-        <select 
-          className="text-xs rounded-[10px] border border-emerald-200 px-3 py-2 flex-1 sm:w-[220px] bg-white text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-          value={selectedProjectId}
-          onChange={(e) => setSelectedProjectId(e.target.value)}
-          disabled={isSubmitting}
-        >
-          <option value="">-- Pilih Riset --</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.title}</option>
-          ))}
-        </select>
         <button 
           onClick={handleSubmit}
-          disabled={!selectedProjectId || isSubmitting}
+          disabled={isSubmitting}
           className="bg-emerald-600 text-white px-4 py-2 rounded-[10px] text-xs font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
         >
-          {isSubmitting ? "Mengirim..." : "Ajukan"}
+          {isSubmitting ? "Mengirim..." : "Ajukan Reaktivasi"}
         </button>
       </div>
     </div>
