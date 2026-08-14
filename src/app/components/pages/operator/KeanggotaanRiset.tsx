@@ -233,7 +233,8 @@ export default function KeanggotaanRiset() {
                 <div className="text-[11px] text-white/60">anggota</div>
               </div>
             </div>
-            <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden mb-4 mt-4">
+          </div>
+          <div className="bg-white border border-amber-200 rounded-[14px] shadow-sm overflow-hidden mb-4 mt-4">
               <div className="px-5 py-3 border-b border-amber-200 bg-amber-50">
                 <h3 className="text-sm font-black text-amber-800">Permintaan Join Kembali ({requests.length})</h3>
               </div>
