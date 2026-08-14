@@ -28,6 +28,7 @@ const navItems = [
   { name: "Pengunduran Diri", path: "/dosen/pengunduran", icon: UserX },
   { name: "Pengajuan Surat", path: "/dosen/surat", icon: FileText },
   { name: "Sertifikat Mahasiswa", path: "/dosen/sertifikat", icon: Award },
+  { name: "Berkas Kelulusan", path: "/dosen/kelulusan", icon: FileText },
 ];
 
 const INIT_NOTIFS: AppNotification[] = [

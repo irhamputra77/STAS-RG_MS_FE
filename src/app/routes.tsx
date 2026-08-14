@@ -38,6 +38,7 @@ import ReviewDraftOperator from "./components/pages/operator/ReviewDraftOperator
 import PengunduranDiriOperator from "./components/pages/operator/PengunduranDiriOperator";
 import PiketOperator from "./components/pages/operator/PiketOperator";
 import BerkasKelulusanOperator from "./components/pages/operator/BerkasKelulusanOperator";
+import ReaktivasiAlumni from "./components/pages/operator/ReaktivasiAlumni";
 import DashboardDosen from "./components/pages/dosen/DashboardDosen";
 import RisetDosen from "./components/pages/dosen/RisetDosen";
 import ReviewLogbook from "./components/pages/dosen/ReviewLogbook";
@@ -46,6 +47,7 @@ import SertifikatMahasiswa from "./components/pages/dosen/SertifikatMahasiswa";
 import ReviewDraft from "./components/pages/dosen/ReviewDraft";
 import PengajuanDokumenDosen from "./components/pages/dosen/PengajuanDokumenDosen";
 import PengunduranDiriDosen from "./components/pages/dosen/PengunduranDiriDosen";
+import BerkasKelulusanDosen from "./components/pages/dosen/BerkasKelulusanDosen";
 
 const ROLE_HOME: Record<UserRole, string> = {
   mahasiswa: "/dashboard",
@@ -175,6 +177,7 @@ export const router = createBrowserRouter([
               { path: "progress-board/*", element: <ProgressBoard /> },
               { path: "draft", element: <ReviewDraftOperator /> },
               { path: "kelulusan", element: <BerkasKelulusanOperator /> },
+              { path: "reaktivasi", element: <ReaktivasiAlumni /> },
               { path: "sertifikat", element: <SertifikatOperator /> },
               { path: "document-center", element: <DocumentCenterOperator /> },
             ],
@@ -193,6 +196,7 @@ export const router = createBrowserRouter([
               { path: "pengunduran", element: <PengunduranDiriDosen /> },
               { path: "surat", element: <PengajuanDokumenDosen /> },
               { path: "sertifikat", element: <SertifikatMahasiswa /> },
+              { path: "kelulusan", element: <BerkasKelulusanDosen /> },
             ],
           },
         ],

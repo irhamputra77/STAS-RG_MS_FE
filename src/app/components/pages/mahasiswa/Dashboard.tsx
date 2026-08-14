@@ -7,7 +7,7 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2, Hourglass, Check,
   Target, GitBranch, TrendingUp, MessageSquare, Calendar,
 } from "lucide-react";
-import { apiGet } from "../../../lib/api";
+import { apiGet, apiPost } from "../../../lib/api";
 import { useAuth } from "../../../context/AuthContext";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 import { PicketAssignment, PicketHoliday, getPicketHolidayFromTodayResponse, hasPicketPhotoSubmission, isPicketHolidayResponse, mapPicketTodayAssignment } from "../../../lib/picket";
@@ -145,6 +145,64 @@ function MiniMilestones({ milestones, color }: { milestones: { label: string; do
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function AlumniReactivationCard() {
+  const [projects, setProjects] = React.useState<any[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string>("");
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    apiGet<any>("/reactivations/me/projects")
+      .then((data) => {
+        if (Array.isArray(data)) setProjects(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!selectedProjectId) return alert("Pilih riset terlebih dahulu");
+    setIsSubmitting(true);
+    try {
+      const res = await apiPost<any>("/reactivations/me/request", { projectId: selectedProjectId });
+      alert(res.message || "Pengajuan berhasil dikirim");
+    } catch (err: any) {
+      alert(err.message || "Gagal mengirim pengajuan");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-[14px] shadow-sm overflow-hidden p-4 md:p-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-4">
+      <div>
+        <h3 className="text-sm font-black text-emerald-800 flex items-center gap-2">
+          <FlaskConical size={16} className="text-emerald-600" /> Lanjutkan Riset
+        </h3>
+        <p className="text-xs text-emerald-700 mt-1 font-medium">Anda saat ini adalah Alumni. Anda dapat mengajukan untuk kembali melanjutkan riset yang pernah Anda ikuti.</p>
+      </div>
+      <div className="flex gap-2 w-full sm:w-auto">
+        <select 
+          className="text-xs rounded-[10px] border border-emerald-200 px-3 py-2 flex-1 sm:w-[220px] bg-white text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+          value={selectedProjectId}
+          onChange={(e) => setSelectedProjectId(e.target.value)}
+          disabled={isSubmitting}
+        >
+          <option value="">-- Pilih Riset --</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>{p.title}</option>
+          ))}
+        </select>
+        <button 
+          onClick={handleSubmit}
+          disabled={!selectedProjectId || isSubmitting}
+          className="bg-emerald-600 text-white px-4 py-2 rounded-[10px] text-xs font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
+        >
+          {isSubmitting ? "Mengirim..." : "Ajukan"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -399,6 +457,7 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {isAlumni && <AlumniReactivationCard />}
 
         {/* ── Stat Cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4 2xl:grid-cols-5">

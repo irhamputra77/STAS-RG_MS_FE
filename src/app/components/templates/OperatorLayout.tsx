@@ -47,6 +47,7 @@ const NAV_ITEMS = [
   { name: "Pusat Dokumen", path: "/operator/document-center", icon: FolderOpen },
   { name: "Review Laporan", path: "/operator/draft", icon: BookOpen },
   { name: "Berkas Kelulusan", path: "/operator/kelulusan", icon: FileCheck },
+  { name: "Reaktivasi Alumni", path: "/operator/reaktivasi", icon: History },
   { name: "Sertifikat", path: "/operator/sertifikat", icon: GraduationCap },
   { name: "Ekspor Laporan", path: "/operator/ekspor", icon: Download },
   { name: "Pengaturan Sistem", path: "/operator/pengaturan", icon: Settings },
