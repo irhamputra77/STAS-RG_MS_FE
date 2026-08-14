@@ -47,10 +47,20 @@ export default function ReviewLogbook() {
     const loadData = async () => {
       setError("");
       try {
-        const [studentRows, logRows] = await Promise.all([
+        const [studentRowsRaw, logRows, researchRows] = await Promise.all([
           apiGet<Array<any>>("/students"),
-          apiGet<Array<any>>("/logbooks")
+          apiGet<Array<any>>("/logbooks"),
+          apiGet<Array<any>>("/research")
         ]);
+
+        const dosenProjectIds = new Set(researchRows.map(r => r.id));
+        const studentsWithLogs = new Set(logRows.map(l => l.student_id || l.studentId));
+
+        const studentRows = studentRowsRaw.filter(s => {
+          if (studentsWithLogs.has(s.id)) return true;
+          const sProjectIds = s.research_project_ids || s.researchProjectIds || [];
+          return sProjectIds.some((pid: string) => dosenProjectIds.has(pid));
+        });
 
         const risetByStudent: Record<string, string[]> = {};
         logRows.forEach((item: any) => {
