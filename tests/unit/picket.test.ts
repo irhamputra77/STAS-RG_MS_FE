@@ -118,6 +118,32 @@ test("WFH on a picket day maps auto-completion aliases without treating it as a 
   assert.equal(shouldRequirePicketPhoto(snake), false);
 });
 
+test("attendance picketToday wrapper preserves an auto-completed WFH assignment", () => {
+  const item = mapPicketTodayAssignment({
+    assignment: {
+      status: "Selesai",
+      submitted: true,
+      autoCompletedByWfh: true,
+      auto_completed_by_wfh: true,
+      autoLeaveType: "wfh",
+      auto_leave_type: "wfh",
+      autoLeaveRequestId: "LR-WFH-ATTENDANCE-1",
+      auto_leave_request_id: "LR-WFH-ATTENDANCE-1",
+      leaveStatus: "Disetujui",
+      leave_status: "Disetujui",
+      submissionId: null,
+      photoUrl: null,
+    },
+  });
+
+  assert.ok(item);
+  assert.equal(item.autoCompletedByWfh, true);
+  assert.equal(item.autoLeaveType, "wfh");
+  assert.equal(item.autoLeaveRequestId, "LR-WFH-ATTENDANCE-1");
+  assert.equal(item.leaveStatus, "Disetujui");
+  assert.equal(shouldRequirePicketPhoto(item), false);
+});
+
 test("WFH outside a picket day keeps today's assignment empty", () => {
   assert.equal(mapPicketTodayAssignment({
     assignment: null,

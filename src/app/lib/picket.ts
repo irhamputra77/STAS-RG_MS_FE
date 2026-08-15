@@ -347,7 +347,18 @@ export function isPicketHolidayResponse(value: any) {
 
 export function mapPicketTodayAssignment(value: any): PicketAssignment | null {
   const raw = value?.assignment || value?.todayAssignment || value;
-  if (!raw?.id && !raw?.assignment_id && !raw?.task_name && !raw?.taskName) return null;
+  const hasAssignmentIdentity = Boolean(
+    raw?.id ||
+    raw?.assignment_id ||
+    raw?.assignmentId ||
+    raw?.schedule_id ||
+    raw?.scheduleId ||
+    raw?.task_name ||
+    raw?.taskName ||
+    raw?.auto_completed_by_wfh ||
+    raw?.autoCompletedByWfh
+  );
+  if (!hasAssignmentIdentity) return null;
   return mapPicketAssignment({
     ...raw,
     isHoliday: raw?.isHoliday ?? raw?.is_holiday ?? value?.isHoliday ?? value?.is_holiday,

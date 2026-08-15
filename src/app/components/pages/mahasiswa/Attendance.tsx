@@ -277,11 +277,9 @@ export default function Attendance() {
         meetsTarget: Boolean(weekly.meetsTarget ?? (weeklyTarget > 0 && weeklyCurrent >= weeklyTarget)),
         meetsMin: Boolean(weekly.meetsMin ?? (weeklyMin > 0 && weeklyCurrent >= weeklyMin))
       });
-      const rawPicket = data?.picketToday || data?.todayPicket || data?.picketAssignment || data?.picket?.assignment;
-      if (rawPicket?.id || rawPicket?.assignment_id || rawPicket?.task_name || rawPicket?.taskName) {
-        setTodayPicket(mapPicketAssignment(rawPicket));
-      } else if (rawPicket !== undefined) {
-        setTodayPicket(null);
+      const rawPicket = data?.picketToday ?? data?.todayPicket ?? data?.picketAssignment ?? data?.picket;
+      if (rawPicket !== undefined) {
+        setTodayPicket(mapPicketTodayAssignment(rawPicket));
       }
       if (data?.attendanceRules) {
         const holidays = normalizeHolidays(data.attendanceRules.holidays || data.holidays);
