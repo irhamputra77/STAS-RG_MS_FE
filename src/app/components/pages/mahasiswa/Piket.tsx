@@ -59,6 +59,15 @@ export default function Piket() {
   const [info, setInfo] = React.useState("");
   const [todayHoliday, setTodayHoliday] = React.useState<PicketHoliday | null>(null);
   const [holidays, setHolidays] = React.useState<PicketHoliday[]>([]);
+  const [wfhNoticeOpen, setWfhNoticeOpen] = React.useState(false);
+
+  const wfhNoticeKey = todayAssignment?.autoCompletedByWfh
+    ? `${todayAssignment.id}:${todayAssignment.date}`
+    : "";
+
+  React.useEffect(() => {
+    if (wfhNoticeKey) setWfhNoticeOpen(true);
+  }, [wfhNoticeKey]);
 
   const loadData = React.useCallback(async () => {
     if (!user?.id) return;
@@ -240,6 +249,38 @@ export default function Piket() {
 
   return (
     <Layout title="Piket">
+      {wfhNoticeOpen && todayAssignment?.autoCompletedByWfh && (
+        <div className="fixed inset-0 z-[520] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="wfh-picket-notice-title">
+          <div className="w-full max-w-[440px] overflow-hidden rounded-[20px] border border-indigo-200 bg-white shadow-2xl">
+            <div className="bg-indigo-600 px-5 py-5 text-white">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20">
+                  <CheckCircle2 size={23} />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-indigo-100">Selesai Otomatis — WFH</p>
+                  <h2 id="wfh-picket-notice-title" className="mt-1 text-lg font-black">Anda tidak perlu mengerjakan piket hari ini</h2>
+                </div>
+              </div>
+            </div>
+            <div className="p-5">
+              <p className="text-sm font-semibold leading-relaxed text-slate-700">
+                Hari ini merupakan jadwal piket Anda. Karena pengajuan WFH Anda telah disetujui, piket otomatis dinyatakan selesai.
+              </p>
+              <div className="mt-4 rounded-[12px] border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-bold leading-relaxed text-indigo-700">
+                Anda tidak perlu mengerjakan piket dan tidak perlu mengunggah foto bukti piket.
+              </div>
+              <button
+                type="button"
+                onClick={() => setWfhNoticeOpen(false)}
+                className="mt-5 h-11 w-full rounded-[11px] bg-indigo-600 text-sm font-black text-white transition-colors hover:bg-indigo-700"
+              >
+                Saya Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-5 pb-4">
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</div>}
         {info && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{info}</div>}
