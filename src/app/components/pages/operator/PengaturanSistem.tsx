@@ -956,8 +956,8 @@ export default function PengaturanSistem() {
                   <div className="mt-4 rounded-[12px] border border-rose-200 bg-rose-50 p-4">
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-xs font-black text-rose-700">Tanggal Merah / Libur Kampus</p>
-                        <p className="mt-1 text-[11px] text-rose-700/80">Hari libur tidak dihitung sebagai hari wajib hadir, tidak memicu status tidak hadir, dan absensi mahasiswa akan dikunci.</p>
+                        <p className="text-xs font-black text-rose-700">Tanggal Merah / Libur Kampus — Absensi &amp; Piket</p>
+                        <p className="mt-1 text-[11px] text-rose-700/80">Hari libur tidak dihitung sebagai hari wajib hadir dan otomatis membebaskan seluruh jadwal piket pada tanggal yang sama.</p>
                       </div>
                       <label className="flex shrink-0 items-center gap-2 cursor-pointer">
                         <input
@@ -966,7 +966,7 @@ export default function PengaturanSistem() {
                           onChange={(e) => setAttendanceRules((prev) => ({ ...prev, excludeHolidaysFromWorkdays: e.target.checked }))}
                           className="accent-rose-600"
                         />
-                        <span className="text-[11px] font-black text-rose-700">Kecualikan</span>
+                        <span className="text-[11px] font-black text-rose-700">Liburkan</span>
                       </label>
                     </div>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[150px_minmax(0,1fr)_auto]">

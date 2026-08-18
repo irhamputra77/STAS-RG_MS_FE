@@ -4,10 +4,12 @@ import { OperatorLayout } from "../../templates/OperatorLayout";
 import {
   Users, FlaskConical, CalendarCheck, FileText, BookOpen, Kanban,
   AlertTriangle, Check, X, ChevronRight, Clock,
-  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell, Lock, Search,
+  TrendingDown, UserX, UserCheck, AlertCircle, ArrowRight, Bell, Lock, Search, ClipboardList,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, getStoredUser } from "../../../lib/api";
 import { formatDateYmd } from "../../../lib/date";
+import { mapPicketLeaveRequest, PicketLeaveRequest } from "../../../lib/picket";
+import { shouldShowResearchHoursFulfilledStatus } from "../../../lib/researchAttendance";
 import {
   getCachedUserUiState,
   getReadAttendanceWarningIdsForDate,
@@ -72,6 +74,12 @@ type AttendanceMonitorToday = {
   magangLockedIds?: string[];
   risetWeeklyUnderHoursIds?: string[];
   risetWeeklyUnderHoursLockIds?: string[];
+  risetWeeklyMeetsMinIds?: string[];
+  riset_weekly_meets_min_ids?: string[];
+  risetWeeklyHoursByStudentId?: Record<string, number>;
+  riset_weekly_hours_by_student_id?: Record<string, number>;
+  risetWeeklyMinHours?: number;
+  riset_weekly_min_hours?: number;
 };
 
 type StudentAccessLock = {
@@ -259,6 +267,7 @@ export default function OperatorDashboard() {
   const attendanceReadDate = getJakartaDateKey();
   const [students, setStudents] = useState<MahasiswaRecord[]>([]);
   const [pendingCuti, setPendingCuti] = useState<LeaveRequestAll[]>([]);
+  const [pendingPicketLeaves, setPendingPicketLeaves] = useState<PicketLeaveRequest[]>([]);
   const [pendingKelulusan, setPendingKelulusan] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [researches, setResearches] = useState<ResearchFull[]>([]);
@@ -274,6 +283,7 @@ export default function OperatorDashboard() {
   const [weeklyPicketMisses, setWeeklyPicketMisses] = useState<WeeklyPicketMiss[]>([]);
   const [weeklyPicketPeriod, setWeeklyPicketPeriod] = useState<{ start?: string; end?: string; resetDay?: string }>({});
   const [weeklyPicketUnavailable, setWeeklyPicketUnavailable] = useState(false);
+  const [risetWeeklyMinimumHours, setRisetWeeklyMinimumHours] = useState(4);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState("");
   const [warningSent, setWarningSent] = useState(false);
@@ -452,12 +462,22 @@ export default function OperatorDashboard() {
             label: "piket mingguan",
             request: apiGet<WeeklyPicketMissResponse>("/dashboard/picket-weekly-misses"),
           },
+          {
+            key: "picketLeaves",
+            label: "pengajuan izin piket",
+            request: apiGet<any>(`/picket/leave-requests?status=Menunggu&_=${Date.now()}`),
+          },
+          {
+            key: "systemSettings",
+            label: "pengaturan sistem",
+            request: apiGet<any>("/system-settings"),
+          },
         ] as const;
 
         const settled = await Promise.allSettled(requests.map((item) => item.request));
         const failures = settled.flatMap((result, index) =>
           result.status === "rejected"
-            ? ["accessLocks", "weeklyPicketMisses"].includes(requests[index].key)
+              ? ["accessLocks", "weeklyPicketMisses", "systemSettings"].includes(requests[index].key)
               ? []
               : `${requests[index].label}: ${result.reason?.message || "gagal dimuat"}`
             : []
@@ -511,6 +531,14 @@ export default function OperatorDashboard() {
           settled[11].status === "fulfilled"
             ? settled[11].value
             : null;
+        const picketLeaveRes =
+          settled[12].status === "fulfilled"
+            ? settled[12].value
+            : [];
+        const systemSettingsRes =
+          settled[13].status === "fulfilled"
+            ? settled[13].value
+            : null;
 
         if (failures.length === requests.length) {
           setError("Semua data dashboard gagal dimuat. Periksa koneksi API atau endpoint backend.");
@@ -537,9 +565,16 @@ export default function OperatorDashboard() {
           kehadiran: Number(item.kehadiran) || 0,
           totalHari: Number(item.total_hari) || 0,
           logbookCount: Number(item.logbook_count) || 0,
-          jamMingguIni: Number(item.jam_minggu_ini) || 0,
-          jamMingguTarget: Number(item.jam_minggu_target) || 0
+          jamMingguIni: Number(item.jamMingguIni ?? item.jam_minggu_ini ?? 0),
+          jamMingguTarget: Number(item.jamMingguTarget ?? item.jam_minggu_target ?? 0)
         }));
+
+        const picketLeaveRows = Array.isArray(picketLeaveRes)
+          ? picketLeaveRes
+          : picketLeaveRes?.requests || picketLeaveRes?.items || [];
+        const mappedPicketLeaves = picketLeaveRows
+          .map(mapPicketLeaveRequest)
+          .filter((item: PicketLeaveRequest) => item.status.trim().toLowerCase() === "menunggu");
 
         const mappedLeave: LeaveRequestAll[] = leaveRes.map((item: any) => ({
           id: item.id,
@@ -639,10 +674,18 @@ export default function OperatorDashboard() {
         setSummary(summaryRes);
         setStudents(mappedStudents);
         setPendingCuti(mappedLeave);
+        setPendingPicketLeaves(mappedPicketLeaves);
         setPendingKelulusan(mappedGraduations);
         setAuditLogs(mappedAudit);
         setResearches(mappedResearch);
         setAttendanceMonitor(attendanceMonitorRes);
+        const configuredRisetMinimum = Number(
+          attendanceMonitorRes?.risetWeeklyMinHours ??
+          attendanceMonitorRes?.riset_weekly_min_hours ??
+          systemSettingsRes?.attendanceRules?.risetMinWeeklyHours ??
+          4
+        );
+        setRisetWeeklyMinimumHours(configuredRisetMinimum > 0 ? configuredRisetMinimum : 4);
         setAccessLocks(mappedAccessLocks);
         if (weeklyPicketRes) {
           const weeklyRows = Array.isArray(weeklyPicketRes)
@@ -792,6 +835,7 @@ export default function OperatorDashboard() {
   const alumniCount = summary?.totalAlumni ?? students.filter(m => m.status === "Alumni").length;
   const risetAktif = summary?.totalRisetAktif ?? researches.filter(r => r.status === "Aktif").length;
   const cutiMenunggu = pendingCuti.length;
+  const izinPiketMenunggu = pendingPicketLeaves.length;
   const kelulusanMenunggu = summary?.kelulusanMenunggu ?? 0;
   const totalDokumen = summary?.totalDokumen ?? 0;
   const logbookHariIni = summary?.logbookTerbaru?.length ?? 0;
@@ -828,6 +872,30 @@ export default function OperatorDashboard() {
     String(getStudentTypeLabel(studentId, fallbackType)).trim().toLowerCase() === "magang";
   const isRisetStudent = (studentId: string, fallbackType?: string | null) =>
     String(getStudentTypeLabel(studentId, fallbackType)).trim().toLowerCase() === "riset";
+  const leaveIdSet = new Set((attendanceMonitor?.leaveIds || []).map(String));
+  const absentIdSet = new Set((attendanceMonitor?.absentIds || []).map(String));
+  const reportedAbsentIdSet = new Set((attendanceMonitor?.reportedAbsentIds || []).map(String));
+  const noInformationIdSet = new Set((attendanceMonitor?.noInformationIds || []).map(String));
+  const risetWeeklyMeetsMinIdSet = new Set(
+    (attendanceMonitor?.risetWeeklyMeetsMinIds || attendanceMonitor?.riset_weekly_meets_min_ids || []).map(String)
+  );
+  const risetWeeklyHoursByStudentId =
+    attendanceMonitor?.risetWeeklyHoursByStudentId || attendanceMonitor?.riset_weekly_hours_by_student_id || {};
+  const risetHoursFulfilledMhs = students.filter((student) =>
+    shouldShowResearchHoursFulfilledStatus({
+      isResearchStudent: isRisetStudent(student.id),
+      isHoliday: isHolidayAttendanceDay,
+      isPresent: presentIdSet.has(String(student.id)),
+      isOnLeave: leaveIdSet.has(String(student.id)),
+      attendanceCutoffPassed: hasPassedAttendanceCutoff,
+      hasReportedAbsence: reportedAbsentIdSet.has(String(student.id)),
+      hasAbsentLock: absentIdSet.has(String(student.id)),
+      hasNoAttendanceInformation: noInformationIdSet.has(String(student.id)),
+      explicitlyMeetsMinimum: risetWeeklyMeetsMinIdSet.has(String(student.id)),
+      currentHours: risetWeeklyHoursByStudentId[String(student.id)] ?? student.jamMingguIni,
+      minimumHours: risetWeeklyMinimumHours,
+    })
+  );
   const isDailyAttendanceLock = (lock?: StudentAccessLock | null) =>
     String(lock?.reason || "") === "ATTENDANCE_ABSENT";
   const isRisetWeeklyHoursLock = (lock?: StudentAccessLock | null) =>
@@ -1020,17 +1088,19 @@ export default function OperatorDashboard() {
             <h1 className="text-2xl font-black text-foreground">Selamat datang, {user?.name || "Admin"}!</h1>
             <p className="text-sm font-medium text-muted-foreground mt-1">{todayLabel}
               {cutiMenunggu > 0 && <span className="text-amber-600 font-black ml-1">{cutiMenunggu} pengajuan menunggu</span>}
+              {izinPiketMenunggu > 0 && <span className="text-blue-600 font-black ml-1">{izinPiketMenunggu} izin piket menunggu</span>}
               {resignCount > 0 && <span className="text-red-500 font-black ml-1">{resignCount} pengunduran diri aktif</span>}
             </p>
           </div>
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           <MiniStatCard icon={<Users size={22} className="text-blue-600" />} label="Mahasiswa Aktif" value={aktifCount} color="bg-blue-100" href="/operator/mahasiswa" />
           <MiniStatCard icon={<Users size={22} className="text-violet-600" />} label="Mahasiswa Alumni" value={alumniCount} color="bg-violet-100" href="/operator/mahasiswa" />
           <MiniStatCard icon={<FlaskConical size={22} className="text-[#0AB600]" />} label="Riset Berjalan" value={risetAktif} color="bg-green-100" href="/operator/riset" />
           <MiniStatCard icon={<CalendarCheck size={22} className="text-amber-600" />} label="Cuti/Izin/WFH Menunggu" value={cutiMenunggu} color="bg-amber-100" href="/operator/cuti" urgent />
+          <MiniStatCard icon={<ClipboardList size={22} className="text-blue-600" />} label="Izin Piket Menunggu" value={izinPiketMenunggu} color="bg-blue-100" href="/operator/piket" urgent />
           <MiniStatCard icon={<FileText size={22} className="text-rose-500" />} label="Berkas Kelulusan" value={kelulusanMenunggu} color="bg-rose-100" href="/operator/kelulusan" urgent />
           <MiniStatCard icon={<BookOpen size={22} className="text-emerald-600" />} label="Logbook Hari Ini" value={logbookHariIni} color="bg-emerald-100" href="/operator/logbook" />
           <MiniStatCard icon={<Kanban size={22} className="text-indigo-600" />} label="Board Aktif" value={risetAktif} color="bg-indigo-100" href="/operator/riset" />
@@ -1038,7 +1108,7 @@ export default function OperatorDashboard() {
         </div>
 
         {/* Alert Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 [@media(min-width:1900px)]:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 [@media(min-width:1900px)]:grid-cols-5 gap-5">
 
           {/* Hadir Hari Ini */}
           <div className="bg-white border border-emerald-200 rounded-[14px] shadow-sm overflow-hidden">
@@ -1168,6 +1238,60 @@ export default function OperatorDashboard() {
               </div>
                 )}
               </>
+            )}
+          </div>
+
+          {/* Jam Riset Terpenuhi */}
+          <div className="bg-white border border-teal-200 rounded-[14px] shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-teal-100 bg-teal-50/50 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black text-foreground flex min-w-0 flex-wrap items-center gap-2">
+                  <Clock size={13} className="text-teal-600 shrink-0" /> Jam Riset Sudah Terpenuhi
+                  <span className="bg-teal-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{risetHoursFulfilledMhs.length}</span>
+                </h3>
+                <p className="text-[10px] text-muted-foreground mt-1">Tidak hadir hari ini, tetapi sudah memenuhi minimal {risetWeeklyMinimumHours} jam minggu ini.</p>
+              </div>
+            </div>
+            {isHolidayAttendanceDay ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Hari ini libur</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Status pemenuhan jam tidak menggantikan status libur.</p>
+              </div>
+            ) : !hasPassedAttendanceCutoff ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Menunggu batas presensi</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Status ditampilkan setelah pukul {lockVisibleAfter} WIB jika mahasiswa tidak hadir.</p>
+              </div>
+            ) : risetHoursFulfilledMhs.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-black text-foreground">Belum ada mahasiswa pada status ini</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Mahasiswa Riset yang hadir tetap tercatat sebagai Hadir atau WFH.</p>
+              </div>
+            ) : (
+              <div className="max-h-[360px] overflow-y-auto">
+                {risetHoursFulfilledMhs.map((student) => {
+                  const currentHours = Number(
+                    risetWeeklyHoursByStudentId[String(student.id)] ?? student.jamMingguIni ?? 0
+                  );
+
+                  return (
+                    <div key={student.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-teal-50/40 transition-colors">
+                      {student.photoUrl ? (
+                        <img src={student.photoUrl} alt={student.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-teal-200" />
+                      ) : (
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${student.color}`}>{student.initials}</div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-foreground truncate">{student.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{student.nim} · Tidak hadir hari ini</p>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-teal-200 bg-teal-100 px-2 py-0.5 text-[9px] font-black text-teal-700">
+                        {currentHours}j / min. {risetWeeklyMinimumHours}j
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -1502,7 +1626,7 @@ export default function OperatorDashboard() {
               <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                 <h2 className="text-sm font-black text-foreground flex items-center gap-2">
                   <AlertTriangle size={14} className="text-amber-500" /> Pengajuan Menunggu
-                  {(cutiMenunggu + kelulusanMenunggu) > 0 && <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{cutiMenunggu + kelulusanMenunggu}</span>}
+                  {(cutiMenunggu + izinPiketMenunggu + kelulusanMenunggu) > 0 && <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{cutiMenunggu + izinPiketMenunggu + kelulusanMenunggu}</span>}
                 </h2>
               </div>
               <div className="p-4 flex flex-col gap-3 max-h-[400px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -1526,6 +1650,24 @@ export default function OperatorDashboard() {
                     </div>
                   </div>
                 ))}
+                {pendingPicketLeaves.map((item) => (
+                  <div key={item.id} className="p-3.5 border border-blue-100 bg-blue-50/40 rounded-[12px]">
+                    <div className="flex items-start gap-2">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 bg-blue-600 text-white">
+                        {item.studentName.split(" ").map((part) => part[0] || "").join("").slice(0, 2).toUpperCase() || "M"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-foreground">{item.studentName}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{formatDateYmd(item.date)}{item.taskName ? ` · ${item.taskName}` : ""}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{item.reason}</p>
+                      </div>
+                      <span className="rounded-full border border-blue-200 bg-white px-2 py-1 text-[9px] font-black text-blue-700">Izin Piket</span>
+                    </div>
+                    <Link to="/operator/piket" className="mt-2 flex items-center justify-center gap-1 py-1.5 text-[10px] font-black text-blue-600 hover:bg-blue-50 rounded-[8px] transition-colors border border-transparent hover:border-blue-100">
+                      Proses Izin Piket <ArrowRight size={10} strokeWidth={3} />
+                    </Link>
+                  </div>
+                ))}
                 {pendingKelulusan.map(s => (
                   <div key={s.id} className="p-3.5 border border-rose-100 bg-rose-50/40 rounded-[12px]">
                     <div className="flex items-start gap-2">
@@ -1547,9 +1689,16 @@ export default function OperatorDashboard() {
                     <Link to="/operator/kelulusan" className="mt-2 flex items-center justify-center gap-1 py-1.5 text-[10px] font-black text-rose-600 hover:bg-rose-50 rounded-[8px] transition-colors border border-transparent hover:border-rose-100">Proses Kelulusan <ArrowRight size={10} strokeWidth={3} /></Link>
                   </div>
                 ))}
+                {cutiMenunggu === 0 && izinPiketMenunggu === 0 && pendingKelulusan.length === 0 && (
+                  <div className="px-3 py-8 text-center">
+                    <p className="text-xs font-black text-foreground">Tidak ada pengajuan menunggu</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">Pengajuan baru akan muncul otomatis di panel ini.</p>
+                  </div>
+                )}
               </div>
-              <div className="px-4 py-2.5 border-t border-border bg-slate-50/50 grid grid-cols-2 gap-2">
+              <div className="px-4 py-2.5 border-t border-border bg-slate-50/50 grid grid-cols-3 gap-2">
                 <Link to="/operator/cuti" className="text-center text-[10px] font-bold text-amber-600 hover:underline">Semua Cuti</Link>
+                <Link to="/operator/piket" className="text-center text-[10px] font-bold text-blue-600 hover:underline">Semua Izin Piket</Link>
                 <Link to="/operator/kelulusan" className="text-center text-[10px] font-bold text-rose-600 hover:underline">Semua Kelulusan</Link>
               </div>
             </div>
@@ -1559,5 +1708,3 @@ export default function OperatorDashboard() {
     </OperatorLayout>
   );
 }
-
-

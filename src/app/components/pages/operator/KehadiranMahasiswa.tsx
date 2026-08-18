@@ -21,6 +21,10 @@ import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "../../../lib/api";
 import { HolidayItem, findHolidayForDate, normalizeHolidays } from "../../../lib/holidays";
+import {
+  RESEARCH_HOURS_FULFILLED_STATUS,
+  shouldShowResearchHoursFulfilledStatus,
+} from "../../../lib/researchAttendance";
 
 type StudentRow = {
   id: string;
@@ -33,6 +37,7 @@ type StudentRow = {
   color: string;
   photoUrl?: string | null;
   photo_url?: string | null;
+  weeklyHours?: number | null;
 };
 
 type LeaveRequestType = "cuti" | "izin" | "sakit" | "wfh";
@@ -47,6 +52,12 @@ type AttendanceMonitorToday = {
   risetWeeklyHoursLockWindowOpen?: boolean;
   risetWeeklyUnderHoursIds?: string[];
   risetWeeklyUnderHoursLockIds?: string[];
+  risetWeeklyMeetsMinIds?: string[];
+  riset_weekly_meets_min_ids?: string[];
+  risetWeeklyHoursByStudentId?: Record<string, number>;
+  riset_weekly_hours_by_student_id?: Record<string, number>;
+  risetWeeklyMinHours?: number;
+  riset_weekly_min_hours?: number;
   weeklyHadirByStudentId?: Record<string, number>;
   holidayToday?: string | HolidayItem | null;
   isHoliday?: boolean;
@@ -96,9 +107,10 @@ type AttendanceStatus =
   | "WFH"
   | "Libur"
   | "Tidak Hadir"
-  | "Belum Ada Info";
+  | "Belum Ada Info"
+  | typeof RESEARCH_HOURS_FULFILLED_STATUS;
 
-type EditableAttendanceStatus = "" | AttendanceStatus;
+type EditableAttendanceStatus = "" | Exclude<AttendanceStatus, typeof RESEARCH_HOURS_FULFILLED_STATUS>;
 type StudentTypeFilter = "Semua" | "Riset" | "Magang";
 type AttendanceEditorMode = "add" | "edit";
 
@@ -276,6 +288,8 @@ function getStatusBadgeClasses(status: AttendanceStatus | string | undefined) {
       return "bg-rose-100 text-rose-700 border-rose-200";
     case "WFH":
       return "bg-sky-100 text-sky-700 border-sky-200";
+    case RESEARCH_HOURS_FULFILLED_STATUS:
+      return "bg-teal-100 text-teal-700 border-teal-200";
     case "Libur":
       return "bg-rose-100 text-rose-700 border-rose-200";
     case "Tidak Hadir":
@@ -332,6 +346,7 @@ export default function KehadiranMahasiswa() {
   const [editor, setEditor] = React.useState<AttendanceEditorState | null>(null);
   const [holidayToday, setHolidayToday] = React.useState<HolidayItem | null>(null);
   const [isHolidayToday, setIsHolidayToday] = React.useState(false);
+  const [risetWeeklyMinimumHours, setRisetWeeklyMinimumHours] = React.useState(4);
 
   const loadOverview = React.useCallback(async () => {
     setOverviewLoading(true);
@@ -362,6 +377,12 @@ export default function KehadiranMahasiswa() {
         (monitorRows?.isHoliday ? findHolidayForDate(settingHolidays, monitorRows.date) : null) ||
         findHolidayForDate(settingHolidays, monitorRows?.date);
       const nextIsHoliday = Boolean(excludeHolidaysFromWorkdays && (monitorRows?.isHoliday || nextHoliday));
+      const configuredRisetMinimum = Number(
+        monitorRows?.risetWeeklyMinHours ??
+        monitorRows?.riset_weekly_min_hours ??
+        settings?.attendanceRules?.risetMinWeeklyHours ??
+        4
+      );
 
       const mappedStudents = (studentRows || [])
         .filter((item: any) => item?.status !== "Alumni" && item?.status !== "Mengundurkan Diri")
@@ -384,12 +405,14 @@ export default function KehadiranMahasiswa() {
         color: AVATAR_COLORS[index % AVATAR_COLORS.length],
         photoUrl: item?.photoUrl || item?.photo_url || null,
         photo_url: item?.photoUrl || item?.photo_url || null,
+        weeklyHours: Number(item?.jamMingguIni ?? item?.jam_minggu_ini ?? 0),
       }));
 
       setStudents(mappedStudents);
       setMonitor(monitorRows || null);
       setHolidayToday(nextHoliday || null);
       setIsHolidayToday(nextIsHoliday);
+      setRisetWeeklyMinimumHours(configuredRisetMinimum > 0 ? configuredRisetMinimum : 4);
       setSelectedStudentId((current) => {
         if (current && mappedStudents.some((student) => student.id === current)) {
           return current;
@@ -459,6 +482,12 @@ export default function KehadiranMahasiswa() {
   const noInformationSet = React.useMemo(() => new Set(monitor?.noInformationIds || []), [monitor?.noInformationIds]);
   const risetWeeklyUnderHoursSet = React.useMemo(() => new Set(monitor?.risetWeeklyUnderHoursIds || []), [monitor?.risetWeeklyUnderHoursIds]);
   const risetWeeklyUnderHoursLockSet = React.useMemo(() => new Set(monitor?.risetWeeklyUnderHoursLockIds || []), [monitor?.risetWeeklyUnderHoursLockIds]);
+  const risetWeeklyMeetsMinSet = React.useMemo(
+    () => new Set((monitor?.risetWeeklyMeetsMinIds || monitor?.riset_weekly_meets_min_ids || []).map(String)),
+    [monitor?.risetWeeklyMeetsMinIds, monitor?.riset_weekly_meets_min_ids],
+  );
+  const risetWeeklyHoursByStudentId =
+    monitor?.risetWeeklyHoursByStudentId || monitor?.riset_weekly_hours_by_student_id || {};
   const isRisetStudent = React.useCallback((student: StudentRow) => {
     return String(student.tipe || "").trim().toLowerCase() === "riset";
   }, []);
@@ -473,6 +502,20 @@ export default function KehadiranMahasiswa() {
         todayStatus = getLeaveAttendanceStatus(monitor?.leaveTypesByStudentId?.[student.id]);
       } else if (isHolidayToday) {
         todayStatus = "Libur";
+      } else if (shouldShowResearchHoursFulfilledStatus({
+        isResearchStudent: isRisetStudent(student),
+        isHoliday: isHolidayToday,
+        isPresent: presentSet.has(student.id),
+        isOnLeave: leaveSet.has(student.id),
+        attendanceCutoffPassed: Boolean(monitor?.lockWindowOpen),
+        hasReportedAbsence: reportedAbsentSet.has(student.id),
+        hasAbsentLock: lockedAbsentSet.has(student.id),
+        hasNoAttendanceInformation: noInformationSet.has(student.id),
+        explicitlyMeetsMinimum: risetWeeklyMeetsMinSet.has(student.id),
+        currentHours: risetWeeklyHoursByStudentId[student.id] ?? student.weeklyHours,
+        minimumHours: risetWeeklyMinimumHours,
+      })) {
+        todayStatus = RESEARCH_HOURS_FULFILLED_STATUS;
       } else if (!isRisetStudent(student) && (lockedAbsentSet.has(student.id) || reportedAbsentSet.has(student.id))) {
         todayStatus = "Tidak Hadir";
       } else if (!isRisetStudent(student) && !noInformationSet.has(student.id) && monitor?.lockWindowOpen) {
@@ -493,6 +536,9 @@ export default function KehadiranMahasiswa() {
     noInformationSet,
     presentSet,
     reportedAbsentSet,
+    risetWeeklyHoursByStudentId,
+    risetWeeklyMeetsMinSet,
+    risetWeeklyMinimumHours,
     students,
     isHolidayToday,
     isRisetStudent,
@@ -516,6 +562,9 @@ export default function KehadiranMahasiswa() {
 
   const selectedStudent =
     studentsWithStatus.find((student) => student.id === selectedStudentId) || filteredStudents[0] || null;
+  const selectedTodayStatus = selectedStudent?.todayStatus === RESEARCH_HOURS_FULFILLED_STATUS
+    ? RESEARCH_HOURS_FULFILLED_STATUS
+    : detail?.today?.status;
 
   React.useEffect(() => {
     if (isHolidayToday && (statusFilter === "Tidak Hadir" || statusFilter === "Belum Ada Info")) {
@@ -820,7 +869,7 @@ export default function KehadiranMahasiswa() {
               <div className="flex flex-wrap gap-2">
                 {(isHolidayToday
                   ? (["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Libur"] as const)
-                  : (["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Libur", "Tidak Hadir", "Belum Ada Info"] as const)
+                  : (["Semua", "Hadir", "Cuti", "Izin", "Sakit", "WFH", "Libur", RESEARCH_HOURS_FULFILLED_STATUS, "Tidak Hadir", "Belum Ada Info"] as const)
                 ).map(
                   (item) => (
                     <button
@@ -991,10 +1040,10 @@ export default function KehadiranMahasiswa() {
                       <div className="flex flex-col items-start gap-2">
                         <span
                           className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${getStatusBadgeClasses(
-                            detail.today?.status
+                            selectedTodayStatus
                           )}`}
                         >
-                          {detail.today?.status || "Belum Check-in"}
+                          {selectedTodayStatus || "Belum Check-in"}
                         </span>
                         {detail.today?.checkoutSource && (
                           <span

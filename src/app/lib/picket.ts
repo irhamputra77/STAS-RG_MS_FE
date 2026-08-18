@@ -57,6 +57,8 @@ export type PicketHoliday = {
   date: string;
   name: string;
   notes?: string | null;
+  source?: string | null;
+  editable: boolean;
 };
 
 export type PicketSubmission = {
@@ -306,11 +308,14 @@ export function mapPicketAssignment(row: any): PicketAssignment {
 
 export function mapPicketHoliday(row: any): PicketHoliday {
   const date = text(row?.date || row?.holiday_date || row?.holidayDate);
+  const source = text(row?.source || row?.holiday_source || row?.holidaySource || row?.type, "picket").toLowerCase();
   return {
     id: text(row?.id || row?.holiday_id || row?.holidayId || `picket-holiday-${date || Date.now()}`),
     date,
     name: text(row?.name || row?.title || row?.holiday_name || row?.holidayName, "Hari Libur Piket"),
     notes: row?.notes || row?.note || row?.description || null,
+    source,
+    editable: bool(row?.editable ?? row?.is_editable ?? row?.isEditable, source !== "system"),
   };
 }
 

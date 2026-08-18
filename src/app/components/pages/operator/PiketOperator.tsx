@@ -646,11 +646,19 @@ export default function PiketOperator() {
   };
 
   const editHoliday = (holiday: PicketHoliday) => {
+    if (!holiday.editable || holiday.source === "system") {
+      setError("Libur kampus dikelola dari Pengaturan Sistem dan tidak dapat diubah dari halaman piket.");
+      return;
+    }
     setEditingHolidayId(holiday.id);
     setHolidayForm({ date: holiday.date, name: holiday.name, notes: holiday.notes || "" });
   };
 
   const deleteHoliday = async (holiday: PicketHoliday) => {
+    if (!holiday.editable || holiday.source === "system") {
+      setError("Libur kampus hanya dapat dihapus melalui Pengaturan Sistem.");
+      return;
+    }
     const approved = await confirm({
       title: "Hapus hari libur piket?",
       description: `Setelah “${holiday.name}” dihapus, jadwal pada ${holiday.date} kembali menjadi kewajiban piket normal.`,
@@ -751,7 +759,7 @@ export default function PiketOperator() {
                 <CalendarOff size={18} className="text-violet-600" />
                 <h2 className="text-sm font-black text-foreground">Hari Libur Piket</h2>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Tanggal libur tidak menjadi kewajiban piket aktif, tetapi assignment tetap tersimpan di riwayat.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Libur kampus dari Pengaturan Sistem berlaku otomatis. Form ini hanya untuk menambahkan libur khusus piket.</p>
             </div>
             <span className="w-fit rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-black text-violet-700">
               {holidays.length} libur bulan ini
@@ -759,7 +767,7 @@ export default function PiketOperator() {
           </div>
           <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[340px_minmax(0,1fr)]">
             <div className="rounded-[14px] border border-violet-200 bg-violet-50/60 p-4">
-              <h3 className="text-sm font-black text-foreground">{editingHolidayId ? "Ubah Hari Libur" : "Tambah Hari Libur"}</h3>
+              <h3 className="text-sm font-black text-foreground">{editingHolidayId ? "Ubah Libur Khusus Piket" : "Tambah Libur Khusus Piket"}</h3>
               <div className="mt-4 flex flex-col gap-3">
                 <label className="text-xs font-black text-slate-700">
                   Tanggal Libur
@@ -822,13 +830,25 @@ export default function PiketOperator() {
                       <tr key={holiday.id} className={holiday.date === date ? "bg-violet-50/70" : ""}>
                         <td className="px-4 py-3 font-black text-foreground">{holiday.date}</td>
                         <td className="px-4 py-3 font-bold text-slate-600">{new Date(`${holiday.date}T00:00:00`).toLocaleDateString("id-ID", { weekday: "long" })}</td>
-                        <td className="px-4 py-3"><div className="flex items-center gap-2"><Badge status="Libur" /><span className="font-black text-foreground">{holiday.name}</span></div></td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge status="Libur" />
+                            <span className="font-black text-foreground">{holiday.name}</span>
+                            <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black ${holiday.source === "system" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-violet-200 bg-violet-50 text-violet-700"}`}>
+                              {holiday.source === "system" ? "Libur Kampus" : "Khusus Piket"}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">{holiday.notes || "-"}</td>
                         <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            <button onClick={() => editHoliday(holiday)} className="h-8 rounded-[8px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">Edit</button>
-                            <button onClick={() => void deleteHoliday(holiday)} disabled={saving} className="inline-flex h-8 items-center gap-1 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white disabled:opacity-60"><Trash2 size={13} /> Hapus</button>
-                          </div>
+                          {holiday.editable && holiday.source !== "system" ? (
+                            <div className="flex gap-2">
+                              <button onClick={() => editHoliday(holiday)} className="h-8 rounded-[8px] border border-border bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">Edit</button>
+                              <button onClick={() => void deleteHoliday(holiday)} disabled={saving} className="inline-flex h-8 items-center gap-1 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white disabled:opacity-60"><Trash2 size={13} /> Hapus</button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-bold text-muted-foreground">Kelola di Pengaturan Sistem</span>
+                          )}
                         </td>
                       </tr>
                     ))}

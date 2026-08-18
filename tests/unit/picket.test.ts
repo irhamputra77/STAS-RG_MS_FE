@@ -212,6 +212,24 @@ test("mapPicketAssignment normalizes holiday and exemption aliases", () => {
     date: "2026-08-17",
     name: "Hari Kemerdekaan",
     notes: "Piket diliburkan",
+    source: "picket",
+    editable: true,
+  });
+});
+
+test("mapPicketHoliday marks system work holidays as read-only picket holidays", () => {
+  assert.deepEqual(mapPicketHoliday({
+    id: "system:2026-08-17",
+    date: "2026-08-17",
+    name: "Hari Kemerdekaan",
+    source: "system",
+  }), {
+    id: "system:2026-08-17",
+    date: "2026-08-17",
+    name: "Hari Kemerdekaan",
+    notes: null,
+    source: "system",
+    editable: false,
   });
 });
 

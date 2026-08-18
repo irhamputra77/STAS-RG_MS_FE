@@ -505,7 +505,12 @@ export default function Piket() {
                   {holidays.slice(0, 10).map((holiday) => (
                     <div key={holiday.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <p className="font-black text-foreground">{holiday.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-black text-foreground">{holiday.name}</p>
+                          <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black ${holiday.source === "system" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-violet-200 bg-violet-50 text-violet-700"}`}>
+                            {holiday.source === "system" ? "Libur Kampus" : "Libur Piket"}
+                          </span>
+                        </div>
                         {holiday.notes && <p className="mt-1 text-sm text-muted-foreground">{holiday.notes}</p>}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
