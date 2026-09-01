@@ -804,8 +804,15 @@ export default function DatabaseRiset() {
                             <div key={group.projectId} className="flex bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all hover:shadow-md hover:border-emerald-200">
                               <div className="w-[220px] p-4 border-r border-border/40 bg-slate-50/30 flex flex-col justify-start">
                                 <p className="font-black text-emerald-700 text-[13px] leading-snug mb-2">{group.projectName}</p>
-                                <div className="mt-auto pt-2">
-                                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border inline-block ${statusColor(group.projectStatus)}`}>{group.projectStatus}</span>
+                                <div className="mt-auto pt-2 flex flex-col gap-2">
+                                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border self-start ${statusColor(group.projectStatus)}`}>{group.projectStatus}</span>
+                                  
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openProgressBoard(group.projectId); }}
+                                    className="w-full h-7 flex items-center justify-center gap-1.5 text-[10px] font-black text-emerald-600 bg-emerald-100 hover:bg-emerald-200 hover:text-emerald-700 rounded-[6px] transition-colors border border-emerald-200 mt-1"
+                                  >
+                                    <Kanban size={11} /> Lihat Board
+                                  </button>
                                 </div>
                               </div>
                               <div className="w-[180px] p-4 border-r border-border/40 bg-slate-50/30 flex flex-col justify-start">
