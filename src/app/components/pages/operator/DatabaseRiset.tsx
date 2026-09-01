@@ -788,76 +788,77 @@ export default function DatabaseRiset() {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm text-left">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-border">
-                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Riset / Proyek</th>
-                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Ketua / PIC</th>
-                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Mahasiswa</th>
-                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tipe Mahasiswa</th>
-                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Peran dalam Riset</th>
-                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tanggal Bergabung</th>
+                        <thead className="bg-slate-50/80">
+                          <tr className="border-b border-border">
+                            <th className="px-5 py-3.5 text-[11px] font-black text-muted-foreground uppercase tracking-wide w-[220px]">Riset / Proyek</th>
+                            <th className="px-5 py-3.5 text-[11px] font-black text-muted-foreground uppercase tracking-wide w-[180px]">Ketua / PIC</th>
+                            <th className="px-5 py-3.5 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Mahasiswa</th>
+                            <th className="px-5 py-3.5 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tipe Mahasiswa</th>
+                            <th className="px-5 py-3.5 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Peran dalam Riset</th>
+                            <th className="px-5 py-3.5 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tanggal Bergabung</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border">
-                          {Object.values(ringkasanGrouped).map((group: any) => (
-                            <React.Fragment key={group.projectId}>
-                              {group.members.map((member: any, i: number) => {
-                                const isMagangUtama = member.tipe === "Magang" && member.peranDalamRiset === "Proyek Utama";
-                                const isMagangTambahan = member.tipe === "Magang" && member.peranDalamRiset === "Proyek Tambahan";
-                                const roleColor = isMagangUtama ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                                  isMagangTambahan ? "bg-amber-50 text-amber-700 border-amber-200" :
-                                                  "bg-blue-50 text-blue-700 border-blue-200";
-                                const dotColor = isMagangUtama ? "bg-emerald-500" :
-                                                 isMagangTambahan ? "bg-amber-500" :
-                                                 "bg-blue-500";
-                                const tipeColor = member.tipe === "Magang" ? "text-emerald-600" : "text-blue-600";
+                        {Object.values(ringkasanGrouped).map((group: any) => (
+                          <tbody key={group.projectId} className="border-b-[6px] border-slate-100/80 last:border-0 bg-white">
+                            {group.members.map((member: any, i: number) => {
+                              const isMagangUtama = member.tipe === "Magang" && member.peranDalamRiset === "Proyek Utama";
+                              const isMagangTambahan = member.tipe === "Magang" && member.peranDalamRiset === "Proyek Tambahan";
+                              const roleColor = isMagangUtama ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                                isMagangTambahan ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                                "bg-blue-50 text-blue-700 border-blue-200";
+                              const dotColor = isMagangUtama ? "bg-emerald-500" :
+                                               isMagangTambahan ? "bg-amber-500" :
+                                               "bg-blue-500";
+                              const tipeColor = member.tipe === "Magang" ? "text-emerald-600" : "text-blue-600";
+                              const isLastInGroup = i === group.members.length - 1;
 
-                                return (
-                                  <tr key={`${group.projectId}-${member.id}`} className="hover:bg-slate-50 transition-colors">
-                                    {i === 0 && (
-                                      <td rowSpan={group.members.length} className="px-5 py-4 align-top max-w-[200px] border-r border-border/50 bg-white">
-                                        <p className="font-black text-emerald-700 text-[13px] leading-snug mb-1.5">{group.projectName}</p>
-                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${statusColor(group.projectStatus)}`}>{group.projectStatus}</span>
-                                      </td>
-                                    )}
-                                    {i === 0 && (
-                                      <td rowSpan={group.members.length} className="px-5 py-4 align-top max-w-[150px] border-r border-border/50 bg-white">
-                                        <p className="font-medium text-foreground text-[11px] leading-tight">{group.picName}</p>
-                                      </td>
-                                    )}
-                                    <td className="px-5 py-3">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black bg-slate-100 text-slate-600 shrink-0">
-                                          {member.initials || member.name.charAt(0)}
-                                        </div>
-                                        <span className="font-bold text-foreground text-xs">{member.name}</span>
+                              return (
+                                <tr key={`${group.projectId}-${member.id}`} className={`hover:bg-slate-50/50 transition-colors ${!isLastInGroup ? 'border-b border-border/40' : ''}`}>
+                                  {i === 0 && (
+                                    <td rowSpan={group.members.length} className="px-5 py-4 align-top border-r border-border/50 bg-slate-50/30">
+                                      <p className="font-black text-emerald-700 text-[13px] leading-snug mb-2">{group.projectName}</p>
+                                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${statusColor(group.projectStatus)}`}>{group.projectStatus}</span>
+                                    </td>
+                                  )}
+                                  {i === 0 && (
+                                    <td rowSpan={group.members.length} className="px-5 py-4 align-top border-r border-border/50 bg-slate-50/30">
+                                      <p className="font-medium text-foreground text-[11px] leading-tight">{group.picName}</p>
+                                    </td>
+                                  )}
+                                  <td className="px-5 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black bg-slate-100 text-slate-600 shrink-0">
+                                        {member.initials || member.name.charAt(0)}
                                       </div>
-                                    </td>
-                                    <td className="px-5 py-3">
-                                      <span className={`text-[11px] font-black ${tipeColor}`}>{member.tipe === "Riset" ? "Mahasiswa Riset" : "Magang"}</span>
-                                    </td>
-                                    <td className="px-5 py-3">
-                                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${roleColor}`}>
-                                        <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-                                        <span className="text-[10px] font-black">{member.peranDalamRiset}</span>
-                                      </div>
-                                    </td>
-                                    <td className="px-5 py-3 text-xs text-muted-foreground font-medium">
-                                      {formatDisplayDate(member.bergabung)}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </React.Fragment>
-                          ))}
-                          {Object.keys(ringkasanGrouped).length === 0 && (
+                                      <span className="font-bold text-foreground text-xs">{member.name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-5 py-3">
+                                    <span className={`text-[11px] font-black ${tipeColor}`}>{member.tipe === "Riset" ? "Mahasiswa Riset" : "Magang"}</span>
+                                  </td>
+                                  <td className="px-5 py-3">
+                                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${roleColor}`}>
+                                      <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                                      <span className="text-[10px] font-black">{member.peranDalamRiset}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-5 py-3 text-xs text-muted-foreground font-medium">
+                                    {formatDisplayDate(member.bergabung)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        ))}
+                        {Object.keys(ringkasanGrouped).length === 0 && (
+                          <tbody>
                             <tr>
                               <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground text-sm font-medium">
                                 Tidak ada data ditemukan
                               </td>
                             </tr>
-                          )}
-                        </tbody>
+                          </tbody>
+                        )}
                       </table>
                     </div>
                   </div>
