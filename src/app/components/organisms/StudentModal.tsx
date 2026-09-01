@@ -440,7 +440,7 @@ if (!isOpen) return null;
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
           <div className="bg-white rounded-[20px] shadow-2xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto" onClick={(event) => event.stopPropagation()}>
             <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-              <h3 className="font-black text-foreground">{modal === "add" ? "Tambah Mahasiswa" : "Edit Mahasiswa"}</h3>
+              <h3 className="font-black text-foreground">{mode === "add" ? "Tambah Mahasiswa" : "Edit Mahasiswa"}</h3>
               <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-muted-foreground">
                 <X size={16} />
               </button>
@@ -469,13 +469,13 @@ if (!isOpen) return null;
 
               <div>
                 <label className="text-xs font-black text-foreground block mb-1.5">
-                  {modal === "add" ? "Password" : "Password Baru (Opsional)"}
+                  {mode === "add" ? "Password" : "Password Baru (Opsional)"}
                 </label>
                 <input
                   type="password"
                   value={form.password}
                   onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-                  placeholder={modal === "add" ? "Minimal 6 karakter" : "Kosongkan jika tidak diubah"}
+                  placeholder={mode === "add" ? "Minimal 6 karakter" : "Kosongkan jika tidak diubah"}
                   className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 transition-all"
                 />
               </div>
