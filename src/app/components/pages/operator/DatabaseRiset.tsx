@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../../lib/api";
-import { Search, Plus, X, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ExternalLink } from "lucide-react";
+import { Search, Plus, X, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ExternalLink, Filter, Download, GraduationCap, Network, FlaskConical } from "lucide-react";
 import { getResearchRoleOptions, MAHASISWA_LEADER_ROLE, MAHASISWA_RESEARCH_ROLES, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
 
 const STEP_LABELS = ["Info Dasar", "Tim", "Periode & Mitra", "Milestone"];
@@ -106,7 +106,7 @@ export default function DatabaseRiset() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
-  const [view, setView] = useState<"grid" | "table">("grid");
+  const [view, setView] = useState<"grid" | "table" | "ringkasan">("ringkasan");
   const [research, setResearch] = useState<ResearchProject[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
   const [selected, setSelected] = useState<ResearchProject | null>(null);
@@ -126,6 +126,9 @@ export default function DatabaseRiset() {
   const [savingMembers, setSavingMembers] = useState(false);
   const [savingRiset, setSavingRiset] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [filterRingkasanRiset, setFilterRingkasanRiset] = useState("Semua Riset");
+  const [filterRingkasanTipe, setFilterRingkasanTipe] = useState("Semua Tipe Mahasiswa");
+  const [filterRingkasanPeran, setFilterRingkasanPeran] = useState("Semua Peran");
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -180,7 +183,11 @@ export default function DatabaseRiset() {
           name: item.name || "Mahasiswa",
           initials: item.initials,
           nim: item.nim || item.student_nim || "",
-          prodi: item.prodi || item.program_studi || item.programStudi || ""
+          prodi: item.prodi || item.program_studi || item.programStudi || "",
+          tipe: item.tipe || "Riset",
+          research_projects: Array.isArray(item.research_projects) ? item.research_projects : [],
+          research_project_ids: Array.isArray(item.research_project_ids) ? item.research_project_ids : [],
+          research_memberships: item.research_memberships || item.researchMemberships || []
         })).filter((item) => item.id));
         setLecturers(
           (lData || []).map((item: any) => ({
@@ -240,6 +247,65 @@ export default function DatabaseRiset() {
   const currentAccess = selected ? (boardAccess[selected.id] || []) : [];
   const boardManagerMembers = mahasiswaInRiset.filter((m: any) => currentAccess.includes(m.user_id) || m.peran === MAHASISWA_LEADER_ROLE);
   const nonAccessMembers = mahasiswaInRiset.filter((m: any) => !currentAccess.includes(m.user_id) && m.peran !== MAHASISWA_LEADER_ROLE);
+
+  // --- RINGKASAN DATA COMPUTATION ---
+  const ringkasanStudents = React.useMemo(() => {
+    return students.flatMap(student => {
+      const memberships = Array.isArray(student.research_memberships) && student.research_memberships.length > 0
+        ? student.research_memberships
+        : (student.research_project_ids || []).map(id => ({ project_id: id }));
+        
+      if (memberships.length === 0) return [];
+  
+      return memberships.map((membership: any, index: number) => {
+        const projectId = membership.project_id || membership.projectId || membership.id;
+        const project = research.find(r => r.id === projectId);
+        
+        return {
+          ...student,
+          projectId,
+          projectName: project?.title || project?.short_title || projectId,
+          picName: project?.supervisor_name || "-",
+          peranDalamRiset: index === 0 ? "Proyek Utama" : "Proyek Tambahan",
+          bergabung: membership.bergabung || "-",
+          selesai: membership.selesai || "-",
+          projectStatus: project?.status || "-"
+        };
+      });
+    });
+  }, [students, research]);
+
+  const totalRiset = research.length;
+  const totalMahasiswa = new Set(ringkasanStudents.map(s => s.id)).size;
+  const mahasiswaMagang = new Set(ringkasanStudents.filter(s => s.tipe === "Magang").map(s => s.id)).size;
+  const mahasiswaRisetCount = new Set(ringkasanStudents.filter(s => s.tipe === "Riset").map(s => s.id)).size;
+  const totalKeterlibatan = ringkasanStudents.length;
+
+  const filteredRingkasan = ringkasanStudents.filter(item => {
+    const matchRiset = filterRingkasanRiset === "Semua Riset" || item.projectId === filterRingkasanRiset;
+    const matchTipe = filterRingkasanTipe === "Semua Tipe Mahasiswa" || item.tipe === filterRingkasanTipe;
+    const matchPeran = filterRingkasanPeran === "Semua Peran" || item.peranDalamRiset === filterRingkasanPeran;
+    const q = search.toLowerCase();
+    const matchSearch = !q || item.name.toLowerCase().includes(q) || item.projectName.toLowerCase().includes(q);
+    return matchRiset && matchTipe && matchPeran && matchSearch;
+  });
+
+  const ringkasanGrouped = React.useMemo(() => {
+    return filteredRingkasan.reduce((acc, curr) => {
+      if (!acc[curr.projectId]) {
+        acc[curr.projectId] = {
+          projectId: curr.projectId,
+          projectName: curr.projectName,
+          picName: curr.picName,
+          projectStatus: curr.projectStatus,
+          members: []
+        };
+      }
+      acc[curr.projectId].members.push(curr);
+      return acc;
+    }, {} as Record<string, any>);
+  }, [filteredRingkasan]);
+  // --- END RINGKASAN DATA COMPUTATION ---
 
   const openProgressBoard = (projectId: string) => {
     navigate(`/operator/progress-board?projectId=${encodeURIComponent(projectId)}`, {
@@ -591,24 +657,213 @@ export default function DatabaseRiset() {
               {["Semua", "Aktif", "Selesai", "Ditangguhkan"].map(o => <option key={o}>{o}</option>)}
             </select>
             <div className="flex bg-white border border-border rounded-[10px] overflow-hidden">
-              {([["grid", <LayoutGrid size={14} />], ["table", <List size={14} />]] as [string, React.ReactNode][]).map(([v, icon]) => (
-                <button key={v} onClick={() => setView(v as "grid" | "table")} className={`h-9 w-9 flex items-center justify-center transition-colors ${view === v ? "bg-[#0AB600] text-white" : "text-muted-foreground hover:bg-slate-50"}`}>{icon}</button>
+              {([["grid", <LayoutGrid size={14} />], ["table", <List size={14} />], ["ringkasan", <Users size={14} />]] as [string, React.ReactNode][]).map(([v, icon]) => (
+                <button key={v} onClick={() => setView(v as "grid" | "table" | "ringkasan")} className={`h-9 w-9 flex items-center justify-center transition-colors ${view === v ? "bg-[#0AB600] text-white" : "text-muted-foreground hover:bg-slate-50"}`}>{icon}</button>
               ))}
             </div>
           </div>
 
-          <button
-            onClick={() => { setModalOpen(true); setStep(0); setStudentMemberSearch(""); }}
-            className="flex items-center gap-2 h-9 px-4 bg-[#0AB600] hover:bg-[#099800] text-white text-sm font-black rounded-[10px] shadow-sm transition-colors"
-          >
-            <Plus size={15} strokeWidth={3} /> Tambah Riset
-          </button>
+          {view !== "ringkasan" && (
+            <button
+              onClick={() => { setModalOpen(true); setStep(0); setStudentMemberSearch(""); }}
+              className="flex items-center gap-2 h-9 px-4 bg-[#0AB600] hover:bg-[#099800] text-white text-sm font-black rounded-[10px] shadow-sm transition-colors"
+            >
+              <Plus size={15} strokeWidth={3} /> Tambah Riset
+            </button>
+          )}
+          {view === "ringkasan" && (
+            <div className="flex gap-2">
+              <button className="flex items-center gap-2 h-9 px-4 bg-white border border-border text-foreground text-sm font-black rounded-[10px] shadow-sm transition-colors hover:bg-slate-50">
+                <Download size={14} /> Export
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ─── MAIN CONTENT ─── */}
         <div className="flex gap-5 items-start">
           <div className="flex-1 min-w-0">
-            {view === "grid" ? (
+            {view === "ringkasan" ? (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div className="bg-white border border-border rounded-[14px] p-4 flex items-center gap-4 shadow-sm">
+                    <div className="w-12 h-12 shrink-0 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center"><FlaskConical size={24} /></div>
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground">Total Riset</p>
+                      <p className="text-2xl font-black text-foreground">{totalRiset}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground mt-0.5">Proyek aktif</p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-border rounded-[14px] p-4 flex items-center gap-4 shadow-sm">
+                    <div className="w-12 h-12 shrink-0 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center"><Users size={24} /></div>
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground">Total Mahasiswa</p>
+                      <p className="text-2xl font-black text-foreground">{totalMahasiswa}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground mt-0.5">Mahasiswa terlibat</p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-border rounded-[14px] p-4 flex items-center gap-4 shadow-sm">
+                    <div className="w-12 h-12 shrink-0 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center"><GraduationCap size={24} /></div>
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground">Mahasiswa Magang</p>
+                      <p className="text-2xl font-black text-foreground">{mahasiswaMagang}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground mt-0.5">{totalMahasiswa ? Math.round(mahasiswaMagang/totalMahasiswa*100) : 0}% dari total</p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-border rounded-[14px] p-4 flex items-center gap-4 shadow-sm">
+                    <div className="w-12 h-12 shrink-0 rounded-full bg-purple-50 text-purple-500 flex items-center justify-center"><GraduationCap size={24} /></div>
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground">Mahasiswa Riset</p>
+                      <p className="text-2xl font-black text-foreground">{mahasiswaRisetCount}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground mt-0.5">{totalMahasiswa ? Math.round(mahasiswaRisetCount/totalMahasiswa*100) : 0}% dari total</p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-border rounded-[14px] p-4 flex items-center gap-4 shadow-sm">
+                    <div className="w-12 h-12 shrink-0 rounded-full bg-cyan-50 text-cyan-500 flex items-center justify-center"><Network size={24} /></div>
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground">Total Keterlibatan</p>
+                      <p className="text-2xl font-black text-foreground">{totalKeterlibatan}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground mt-0.5">Semua peran riset</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <select value={filterRingkasanRiset} onChange={e => setFilterRingkasanRiset(e.target.value)} className="h-10 px-3 bg-white border border-border rounded-[10px] text-sm font-bold focus:outline-none cursor-pointer text-muted-foreground">
+                    <option value="Semua Riset">Semua Riset</option>
+                    {research.map(r => <option key={r.id} value={r.id}>{r.short_title || r.title}</option>)}
+                  </select>
+                  <select value={filterRingkasanTipe} onChange={e => setFilterRingkasanTipe(e.target.value)} className="h-10 px-3 bg-white border border-border rounded-[10px] text-sm font-bold focus:outline-none cursor-pointer text-muted-foreground">
+                    {["Semua Tipe Mahasiswa", "Magang", "Riset"].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                  <select value={filterRingkasanPeran} onChange={e => setFilterRingkasanPeran(e.target.value)} className="h-10 px-3 bg-white border border-border rounded-[10px] text-sm font-bold focus:outline-none cursor-pointer text-muted-foreground">
+                    {["Semua Peran", "Proyek Utama", "Proyek Tambahan"].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                  
+                  <button onClick={() => {
+                    setFilterRingkasanRiset("Semua Riset");
+                    setFilterRingkasanTipe("Semua Tipe Mahasiswa");
+                    setFilterRingkasanPeran("Semua Peran");
+                    setSearch("");
+                  }} className="h-10 px-4 ml-auto bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-50 text-sm font-black rounded-[10px] shadow-sm transition-colors">
+                    Reset Filter
+                  </button>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="w-[200px] shrink-0 space-y-4">
+                    <div className="bg-white border border-border rounded-[14px] p-4 shadow-sm">
+                      <p className="text-xs font-black text-foreground mb-4 flex items-center gap-2"><BookOpen size={14} className="text-blue-500" /> Keterangan Peran</p>
+                      
+                      <div className="space-y-4">
+                        <div className="flex gap-2">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
+                          <div>
+                            <p className="text-[11px] font-black text-foreground">Magang - Utama</p>
+                            <p className="text-[10px] font-medium text-muted-foreground leading-tight mt-0.5">Mahasiswa magang pada proyek utamanya</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="w-2 h-2 rounded-full bg-amber-500 mt-1 shrink-0" />
+                          <div>
+                            <p className="text-[11px] font-black text-foreground">Magang - Tambahan</p>
+                            <p className="text-[10px] font-medium text-muted-foreground leading-tight mt-0.5">Mahasiswa magang pada proyek riset (tambahan)</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="w-2 h-2 rounded-full bg-blue-500 mt-1 shrink-0" />
+                          <div>
+                            <p className="text-[11px] font-black text-foreground">Riset - Utama</p>
+                            <p className="text-[10px] font-medium text-muted-foreground leading-tight mt-0.5">Mahasiswa riset pada proyek utamanya</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden">
+                    <div className="p-5 border-b border-border flex items-center gap-2">
+                      <Users size={16} className="text-muted-foreground" />
+                      <h3 className="font-black text-foreground text-sm">Daftar Mahasiswa per Riset</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-border">
+                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Riset / Proyek</th>
+                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Ketua / PIC</th>
+                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Mahasiswa</th>
+                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tipe Mahasiswa</th>
+                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Peran dalam Riset</th>
+                            <th className="px-5 py-3 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tanggal Bergabung</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {Object.values(ringkasanGrouped).map((group: any) => (
+                            <React.Fragment key={group.projectId}>
+                              {group.members.map((member: any, i: number) => {
+                                const isMagangUtama = member.tipe === "Magang" && member.peranDalamRiset === "Proyek Utama";
+                                const isMagangTambahan = member.tipe === "Magang" && member.peranDalamRiset === "Proyek Tambahan";
+                                const roleColor = isMagangUtama ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                                  isMagangTambahan ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                                  "bg-blue-50 text-blue-700 border-blue-200";
+                                const dotColor = isMagangUtama ? "bg-emerald-500" :
+                                                 isMagangTambahan ? "bg-amber-500" :
+                                                 "bg-blue-500";
+                                const tipeColor = member.tipe === "Magang" ? "text-emerald-600" : "text-blue-600";
+
+                                return (
+                                  <tr key={`${group.projectId}-${member.id}`} className="hover:bg-slate-50 transition-colors">
+                                    {i === 0 && (
+                                      <td rowSpan={group.members.length} className="px-5 py-4 align-top max-w-[200px] border-r border-border/50 bg-white">
+                                        <p className="font-black text-emerald-700 text-[13px] leading-snug mb-1.5">{group.projectName}</p>
+                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${statusColor(group.projectStatus)}`}>{group.projectStatus}</span>
+                                      </td>
+                                    )}
+                                    {i === 0 && (
+                                      <td rowSpan={group.members.length} className="px-5 py-4 align-top max-w-[150px] border-r border-border/50 bg-white">
+                                        <p className="font-medium text-foreground text-[11px] leading-tight">{group.picName}</p>
+                                      </td>
+                                    )}
+                                    <td className="px-5 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black bg-slate-100 text-slate-600 shrink-0">
+                                          {member.initials || member.name.charAt(0)}
+                                        </div>
+                                        <span className="font-bold text-foreground text-xs">{member.name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-5 py-3">
+                                      <span className={`text-[11px] font-black ${tipeColor}`}>{member.tipe === "Riset" ? "Mahasiswa Riset" : "Magang"}</span>
+                                    </td>
+                                    <td className="px-5 py-3">
+                                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${roleColor}`}>
+                                        <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                                        <span className="text-[10px] font-black">{member.peranDalamRiset}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-5 py-3 text-xs text-muted-foreground font-medium">
+                                      {formatDisplayDate(member.bergabung)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </React.Fragment>
+                          ))}
+                          {Object.keys(ringkasanGrouped).length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground text-sm font-medium">
+                                Tidak ada data ditemukan
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : view === "grid" ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {filteredRiset.map(r => {
                   const projectMembers = members[r.id] || [];

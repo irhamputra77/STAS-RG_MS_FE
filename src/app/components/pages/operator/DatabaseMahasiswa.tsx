@@ -2,7 +2,7 @@ import { ProfileAvatar } from "../../molecules/ProfileAvatar";
 import React, { useEffect, useState, useMemo } from "react";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
-import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2, FileText, Lock, UploadCloud, CheckCircle2 } from "lucide-react";
+import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2, FileText, Lock, UploadCloud, CheckCircle2, GraduationCap, Star, User } from "lucide-react";
 import { apiDelete, apiGet, apiPost, apiPut, resolveApiAssetUrl } from "../../../lib/api";
 import { getWfhSourceMeta, getWfhSummary } from "../../../lib/wfh";
 
@@ -1343,46 +1343,68 @@ export default function DatabaseMahasiswa() {
                 </select>
               </div>
 
-              <div className="col-span-2">
-                <label className="text-xs font-black text-foreground block mb-1.5">Keanggotaan Riset</label>
-                {risetOptions.length > 0 ? (
-                  <>
-                    <select
-                      value={selectedRisetId}
-                      onChange={(event) => {
-                        const projectId = event.target.value;
-                        if (!projectId) return;
+              <div className="col-span-2 mt-2 mb-2">
+                <div className="flex gap-3 rounded-[12px] border border-emerald-200 bg-emerald-50/50 p-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                    <GraduationCap size={16} />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-bold text-foreground mb-1.5">Tipe menentukan peran mahasiswa di lab.</p>
+                    <ul className="list-disc pl-4 text-xs text-foreground space-y-1.5 marker:text-emerald-500">
+                      <li><strong>Magang:</strong> Mahasiswa memiliki <strong>1 proyek utama</strong> (Magang) dan dapat mengambil proyek riset sebagai proyek tambahan.</li>
+                      <li><strong>Riset:</strong> Mahasiswa memiliki <strong>1 proyek utama</strong> (Riset).</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
 
-                        setForm((prev) => ({
-                          ...prev,
-                          risetMemberships: prev.risetMemberships.some((membership) => membership.projectId === projectId)
-                            ? prev.risetMemberships
-                            : [...prev.risetMemberships, { projectId, bergabung: prev.bergabung || "", selesai: "" }],
-                        }));
-                        setSelectedRisetId("");
-                      }}
-                      className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer"
-                    >
-                      <option value="">Pilih riset untuk ditambahkan</option>
-                      {availableRisetOptions.map((option) => (
-                        <option key={option.id} value={option.id} title={option.full}>
-                          {getResearchOptionLabel(option)}
-                        </option>
-                      ))}
-                    </select>
+              <div className="col-span-2 space-y-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-[13px] font-black text-foreground">Proyek Utama</label>
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">Wajib (1)</span>
+                  </div>
+                  <p className="mb-3 text-xs font-medium text-muted-foreground">
+                    Setiap mahasiswa harus memiliki 1 proyek utama sesuai tipenya.
+                  </p>
 
-                    <div className="mt-3 space-y-3">
-                      {selectedRisetOptions.length > 0 ? (
-                        selectedRisetOptions.map(({ membership, option }) => (
+                  {risetOptions.length > 0 ? (
+                    <>
+                      {selectedRisetOptions.length === 0 && (
+                        <select
+                          value={selectedRisetId}
+                          onChange={(event) => {
+                            const projectId = event.target.value;
+                            if (!projectId) return;
+
+                            setForm((prev) => ({
+                              ...prev,
+                              risetMemberships: [{ projectId, bergabung: prev.bergabung || "", selesai: "" }],
+                            }));
+                            setSelectedRisetId("");
+                          }}
+                          className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer mb-3"
+                        >
+                          <option value="">Pilih proyek utama</option>
+                          {availableRisetOptions.map((option) => (
+                            <option key={option.id} value={option.id} title={option.full}>
+                              {getResearchOptionLabel(option)}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {selectedRisetOptions.length > 0 && (
+                        <div className="space-y-3">
                           <div
-                            key={option.id}
+                            key={selectedRisetOptions[0].option.id}
                             className="rounded-[12px] border border-amber-200 bg-amber-50 p-3"
-                            title={option.full}
+                            title={selectedRisetOptions[0].option.full}
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="flex items-center gap-2 truncate text-xs font-black text-amber-800">
-                                  <FlaskConical size={13} /> {getResearchOptionLabel(option)}
+                                <p className="flex items-center gap-2 truncate text-[13px] font-black text-amber-900">
+                                  <FlaskConical size={14} className="text-amber-700" /> {getResearchOptionLabel(selectedRisetOptions[0].option)}
                                 </p>
                               </div>
                               <button
@@ -1390,11 +1412,11 @@ export default function DatabaseMahasiswa() {
                                 onClick={() => {
                                   setForm((prev) => ({
                                     ...prev,
-                                    risetMemberships: prev.risetMemberships.filter((item) => item.projectId !== option.id),
+                                    risetMemberships: prev.risetMemberships.filter((_, i) => i !== 0),
                                   }));
                                 }}
                                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-amber-200 bg-white text-amber-600 hover:text-amber-800"
-                                aria-label={`Hapus ${option.full}`}
+                                aria-label={`Hapus ${selectedRisetOptions[0].option.full}`}
                               >
                                 <X size={13} />
                               </button>
@@ -1402,51 +1424,190 @@ export default function DatabaseMahasiswa() {
 
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div>
-                                <label className="mb-1 block text-[11px] font-black text-amber-800">Tanggal bergabung</label>
+                                <label className="mb-1 block text-[11px] font-black text-amber-900">Tanggal bergabung</label>
                                 <input
                                   type="date"
-                                  value={membership.bergabung}
+                                  value={selectedRisetOptions[0].membership.bergabung}
                                   onChange={(event) => {
                                     const value = event.target.value;
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      risetMemberships: prev.risetMemberships.map((item) =>
-                                        item.projectId === option.id ? { ...item, bergabung: value } : item
-                                      ),
-                                    }));
+                                    setForm((prev) => {
+                                      const next = [...prev.risetMemberships];
+                                      next[0].bergabung = value;
+                                      return { ...prev, risetMemberships: next };
+                                    });
                                   }}
                                   className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
                                 />
                               </div>
                               <div>
-                                <label className="mb-1 block text-[11px] font-black text-amber-800">Tanggal selesai (opsional)</label>
+                                <label className="mb-1 block text-[11px] font-black text-amber-900">Tanggal selesai (opsional)</label>
                                 <input
                                   type="date"
-                                  value={membership.selesai}
-                                  min={membership.bergabung || undefined}
+                                  value={selectedRisetOptions[0].membership.selesai}
+                                  min={selectedRisetOptions[0].membership.bergabung || undefined}
                                   onChange={(event) => {
                                     const value = event.target.value;
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      risetMemberships: prev.risetMemberships.map((item) =>
-                                        item.projectId === option.id ? { ...item, selesai: value } : item
-                                      ),
-                                    }));
+                                    setForm((prev) => {
+                                      const next = [...prev.risetMemberships];
+                                      next[0].selesai = value;
+                                      return { ...prev, risetMemberships: next };
+                                    });
                                   }}
                                   className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
                                 />
                               </div>
                             </div>
                           </div>
-                        ))
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Belum ada riset yang dipilih.</p>
+                          <div className="rounded-[8px] bg-emerald-50/80 px-4 py-2.5 flex items-center gap-2 text-emerald-700 text-xs font-medium border border-emerald-100">
+                            <Star size={14} className="shrink-0" />
+                            Proyek utama tidak dapat dihapus. Jika perlu mengubah proyek utama, silakan ganti.
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Belum ada data riset</p>
+                  )}
+                </div>
+
+                {form.tipe === "Magang" && (
+                  <div className="pt-2 border-t border-dashed border-border mt-6">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[13px] font-black text-foreground">Proyek Tambahan (Opsional)</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const select = document.getElementById("tambahan-select") as HTMLSelectElement;
+                          if (select) select.focus();
+                        }}
+                        className="flex items-center gap-1.5 h-8 px-3 rounded-[8px] bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                      >
+                        <Plus size={13} /> Tambah Proyek Riset
+                      </button>
+                    </div>
+                    <p className="mb-4 text-xs font-medium text-muted-foreground">
+                      Hanya untuk mahasiswa dengan tipe Magang. Proyek tambahan di sini adalah proyek Riset.
+                    </p>
+
+                    <div className="space-y-3">
+                      {selectedRisetOptions.slice(1).map(({ membership, option }, index) => (
+                        <div
+                          key={option.id}
+                          className="rounded-[12px] border border-amber-200 bg-amber-50 p-3"
+                          title={option.full}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="flex items-center gap-2 truncate text-[13px] font-black text-amber-900">
+                                <FlaskConical size={14} className="text-amber-700" /> {getResearchOptionLabel(option)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForm((prev) => ({
+                                  ...prev,
+                                  risetMemberships: prev.risetMemberships.filter((item) => item.projectId !== option.id),
+                                }));
+                              }}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-amber-200 bg-white text-amber-600 hover:text-amber-800"
+                              aria-label={`Hapus ${option.full}`}
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="mb-1 block text-[11px] font-black text-amber-900">Tanggal bergabung</label>
+                              <input
+                                type="date"
+                                value={membership.bergabung}
+                                onChange={(event) => {
+                                  const value = event.target.value;
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    risetMemberships: prev.risetMemberships.map((item) =>
+                                      item.projectId === option.id ? { ...item, bergabung: value } : item
+                                    ),
+                                  }));
+                                }}
+                                className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-[11px] font-black text-amber-900">Tanggal selesai (opsional)</label>
+                              <input
+                                type="date"
+                                value={membership.selesai}
+                                min={membership.bergabung || undefined}
+                                onChange={(event) => {
+                                  const value = event.target.value;
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    risetMemberships: prev.risetMemberships.map((item) =>
+                                      item.projectId === option.id ? { ...item, selesai: value } : item
+                                    ),
+                                  }));
+                                }}
+                                className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {availableRisetOptions.length > 0 && (
+                        <select
+                          id="tambahan-select"
+                          value={selectedRisetId}
+                          onChange={(event) => {
+                            const projectId = event.target.value;
+                            if (!projectId) return;
+
+                            setForm((prev) => ({
+                              ...prev,
+                              risetMemberships: [...prev.risetMemberships, { projectId, bergabung: prev.bergabung || "", selesai: "" }],
+                            }));
+                            setSelectedRisetId("");
+                          }}
+                          className="w-full h-10 px-3 rounded-[10px] border border-border text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer"
+                        >
+                          <option value="">Pilih proyek tambahan...</option>
+                          {availableRisetOptions.map((option) => (
+                            <option key={option.id} value={option.id} title={option.full}>
+                              {getResearchOptionLabel(option)}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </div>
-                  </>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Belum ada data riset</p>
+                  </div>
                 )}
+                
+                <div className="mt-6 rounded-[12px] border border-blue-200 bg-blue-50/50 p-4">
+                  <div className="flex gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                      <User size={18} />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <p className="text-xs font-bold text-blue-900 mb-2">Ringkasan Peran Mahasiswa</p>
+                      <div className="grid grid-cols-[100px_1fr] gap-2 text-xs">
+                        <span className="font-medium text-blue-800">Tipe</span>
+                        <div>
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 font-bold text-blue-700">{form.tipe}</span>
+                        </div>
+                        <span className="font-medium text-blue-800">Peran</span>
+                        <span className="font-medium text-blue-900">
+                          {form.tipe === "Magang" 
+                            ? `1 Proyek Utama (Magang)${selectedRisetOptions.length > 1 ? ` + ${selectedRisetOptions.length - 1} Proyek Riset (Tambahan)` : ' + Proyek Riset (Tambahan)'}`
+                            : "1 Proyek Utama (Riset)"
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
