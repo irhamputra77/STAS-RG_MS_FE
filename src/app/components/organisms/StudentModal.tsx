@@ -326,6 +326,16 @@ export function StudentModal({ isOpen, mode, studentId, onClose, onSaveSuccess, 
     [form.risetMemberships, risetOptions]
   );
 
+  const selectedRisetOptions = useMemo(() => {
+    return form.risetMemberships
+      .map((membership) => {
+        const option = risetOptions.find((o) => o.id === membership.projectId);
+        if (!option) return null;
+        return { membership, option };
+      })
+      .filter((item): item is { membership: ResearchMembershipForm; option: { id: string; short: string; full: string } } => item !== null);
+  }, [form.risetMemberships, risetOptions]);
+
 
   const handleSave = async () => {
     if (!form.nim.trim() || !form.name.trim()) {
