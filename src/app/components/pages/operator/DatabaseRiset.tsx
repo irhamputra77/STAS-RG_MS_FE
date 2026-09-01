@@ -120,7 +120,7 @@ export default function DatabaseRiset() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [members, setMembers] = useState<Record<string, any[]>>({});
-  const [students, setStudents] = useState<Array<{ id: string; name: string; initials?: string; nim?: string; prodi?: string }>>([]);
+  const [students, setStudents] = useState<Array<{ id: string; studentId?: string; name: string; initials?: string; nim?: string; prodi?: string }>>([]);
   const [studentMemberSearch, setStudentMemberSearch] = useState("");
   const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([]);
   const [selectedPeran, setSelectedPeran] = useState(PERAN_OPTIONS[0]);
@@ -182,6 +182,7 @@ export default function DatabaseRiset() {
       setResearch(rData || []);
       setStudents((sData || []).map((item: any) => ({
         id: String(item.user_id || item.userId || item.id || ""),
+        studentId: String(item.id || ""),
         name: item.name || "Mahasiswa",
         initials: item.initials,
         nim: item.nim || item.student_nim || "",
@@ -845,7 +846,7 @@ export default function DatabaseRiset() {
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setSelectedStudentId(member.id);
+                                              setSelectedStudentId(member.studentId || member.id);
                                               setIsStudentModalOpen(true);
                                             }}
                                             className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline text-xs truncate max-w-[150px] text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1 -ml-1 transition-colors"
