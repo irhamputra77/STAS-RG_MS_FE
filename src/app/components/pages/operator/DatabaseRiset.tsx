@@ -5,6 +5,7 @@ import { OperatorLayout } from "../../templates/OperatorLayout";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../../lib/api";
 import { Search, Plus, X, Pencil, LayoutGrid, List, Shield, Trash2, Users, BookOpen, Kanban, ExternalLink, Filter, Download, GraduationCap, Network, FlaskConical } from "lucide-react";
 import { getResearchRoleOptions, MAHASISWA_LEADER_ROLE, MAHASISWA_RESEARCH_ROLES, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
+import { StudentModal } from "../../organisms/StudentModal";
 
 const STEP_LABELS = ["Info Dasar", "Tim", "Periode & Mitra", "Milestone"];
 const PERAN_OPTIONS = MAHASISWA_RESEARCH_ROLES;
@@ -129,6 +130,8 @@ export default function DatabaseRiset() {
   const [filterRingkasanRiset, setFilterRingkasanRiset] = useState("Semua Riset");
   const [filterRingkasanTipe, setFilterRingkasanTipe] = useState("Semua Tipe Mahasiswa");
   const [filterRingkasanPeran, setFilterRingkasanPeran] = useState("Semua Peran");
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -169,43 +172,44 @@ export default function DatabaseRiset() {
     progress: 0
   });
 
+  const loadData = async () => {
+    try {
+      const [rData, lData, sData] = await Promise.all([
+        apiGet<ResearchProject[]>("/research"),
+        apiGet<Lecturer[]>("/lecturers"),
+        apiGet<Array<any>>("/students")
+      ]);
+      setResearch(rData || []);
+      setStudents((sData || []).map((item: any) => ({
+        id: String(item.user_id || item.userId || item.id || ""),
+        name: item.name || "Mahasiswa",
+        initials: item.initials,
+        nim: item.nim || item.student_nim || "",
+        prodi: item.prodi || item.program_studi || item.programStudi || "",
+        tipe: item.tipe || "Riset",
+        research_projects: Array.isArray(item.research_projects) ? item.research_projects : [],
+        research_project_ids: Array.isArray(item.research_project_ids) ? item.research_project_ids : [],
+        research_memberships: item.research_memberships || item.researchMemberships || []
+      })).filter((item) => item.id));
+      setLecturers(
+        (lData || []).map((item: any) => ({
+          ...item,
+          initials: item.initials || item.name?.split(" ").map((part: string) => part[0]).join("").slice(0, 2).toUpperCase() || "DS",
+          color: item.color || "bg-indigo-600 text-white",
+          jabatan: item.jabatan || "Dosen",
+          keahlian: Array.isArray(item.keahlian) ? item.keahlian : [],
+          status: item.status || "Aktif",
+          email: item.email || "-"
+        }))
+      );
+    } catch (err: any) {
+      setError(err?.message || "Gagal memuat data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [rData, lData, sData] = await Promise.all([
-          apiGet<ResearchProject[]>("/research"),
-          apiGet<Lecturer[]>("/lecturers"),
-          apiGet<Array<any>>("/students")
-        ]);
-        setResearch(rData || []);
-        setStudents((sData || []).map((item: any) => ({
-          id: String(item.user_id || item.userId || item.id || ""),
-          name: item.name || "Mahasiswa",
-          initials: item.initials,
-          nim: item.nim || item.student_nim || "",
-          prodi: item.prodi || item.program_studi || item.programStudi || "",
-          tipe: item.tipe || "Riset",
-          research_projects: Array.isArray(item.research_projects) ? item.research_projects : [],
-          research_project_ids: Array.isArray(item.research_project_ids) ? item.research_project_ids : [],
-          research_memberships: item.research_memberships || item.researchMemberships || []
-        })).filter((item) => item.id));
-        setLecturers(
-          (lData || []).map((item: any) => ({
-            ...item,
-            initials: item.initials || item.name?.split(" ").map((part: string) => part[0]).join("").slice(0, 2).toUpperCase() || "DS",
-            color: item.color || "bg-indigo-600 text-white",
-            jabatan: item.jabatan || "Dosen",
-            keahlian: Array.isArray(item.keahlian) ? item.keahlian : [],
-            status: item.status || "Aktif",
-            email: item.email || "-"
-          }))
-        );
-      } catch (err: any) {
-        setError(err?.message || "Gagal memuat data");
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
   }, []);
 
@@ -841,7 +845,8 @@ export default function DatabaseRiset() {
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              navigate('/operator/mahasiswa', { state: { openStudentId: member.id } });
+                                              setSelectedStudentId(member.id);
+                                              setIsStudentModalOpen(true);
                                             }}
                                             className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline text-xs truncate max-w-[150px] text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1 -ml-1 transition-colors"
                                           >
@@ -1367,6 +1372,17 @@ export default function DatabaseRiset() {
         </div>
       )}
       {confirmDialog}
+      <StudentModal
+        isOpen={isStudentModalOpen}
+        mode="edit"
+        studentId={selectedStudentId || undefined}
+        onClose={() => setIsStudentModalOpen(false)}
+        onSaveSuccess={() => {
+          setIsStudentModalOpen(false);
+          loadData();
+        }}
+        risetOptions={research.map(r => ({ id: r.id, short: r.short_title || r.title, full: r.title }))}
+      />
     </OperatorLayout>
   );
 }
