@@ -838,7 +838,15 @@ export default function DatabaseRiset() {
                                           <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black bg-slate-100 text-slate-600 shrink-0">
                                             {member.initials || member.name.charAt(0)}
                                           </div>
-                                          <span className="font-bold text-foreground text-xs truncate max-w-[150px]">{member.name}</span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigate('/operator/mahasiswa', { state: { openStudentId: member.id } });
+                                            }}
+                                            className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline text-xs truncate max-w-[150px] text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1 -ml-1 transition-colors"
+                                          >
+                                            {member.name}
+                                          </button>
                                         </div>
                                       </div>
                                       <div className="w-[130px]">

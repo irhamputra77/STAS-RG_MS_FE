@@ -1,5 +1,6 @@
 import { ProfileAvatar } from "../../molecules/ProfileAvatar";
 import React, { useEffect, useState, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { useConfirmDialog } from "../../molecules/ConfirmDialog";
 import { OperatorLayout } from "../../templates/OperatorLayout";
 import { Search, Plus, Download, X, Pencil, BookOpen, UserCheck, FlaskConical, Trash2, FileText, Lock, UploadCloud, CheckCircle2, GraduationCap, Star, User } from "lucide-react";
@@ -230,6 +231,8 @@ function normalizeResearchMembershipForms(source: any, fallbackIds: string[] = [
 }
 
 export default function DatabaseMahasiswa() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { confirm, confirmDialog } = useConfirmDialog();
 
   const [mahasiswaList, setMahasiswaList] = useState<MahasiswaRecord[]>([]);
@@ -352,8 +355,19 @@ export default function DatabaseMahasiswa() {
   };
 
   useEffect(() => {
-    void loadStudents();
+    loadStudents();
   }, []);
+
+  useEffect(() => {
+    if (mahasiswaList.length > 0 && location.state?.openStudentId) {
+      const studentId = location.state.openStudentId;
+      const targetStudent = mahasiswaList.find(s => s.id === studentId);
+      if (targetStudent) {
+        openEdit(targetStudent);
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [mahasiswaList, location.state]);
 
   useEffect(() => {
     const loadStudentDetail = async () => {
