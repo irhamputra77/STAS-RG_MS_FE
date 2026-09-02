@@ -272,7 +272,12 @@ export default function RisetDosen() {
                         <div key={m.memberId} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-[10px] border border-border">
                           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black text-foreground truncate">{m.nama}</p>
+                            <p className="text-xs font-black text-foreground truncate">
+                              {m.nama}
+                              {m.status && m.status !== "Aktif" && (
+                                <span className="ml-1.5 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">{m.status}</span>
+                              )}
+                            </p>
                             <div className="flex items-center gap-1">
                               <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${m.tipe === "Dosen" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>{m.tipe}</span>
                               <span className="text-[9px] text-muted-foreground">{m.peran}</span>
@@ -378,7 +383,12 @@ export default function RisetDosen() {
                     <div key={m.memberId} className="flex items-center gap-2 p-2.5 bg-slate-50 border border-border rounded-[10px]">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${m.color}`}>{m.initials}</div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-foreground">{m.nama}</p>
+                        <p className="text-xs font-bold text-foreground">
+                          {m.nama}
+                          {m.status && m.status !== "Aktif" && (
+                            <span className="ml-1.5 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">{m.status}</span>
+                          )}
+                        </p>
                         <div className="flex items-center gap-1">
                           <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${m.tipe === "Dosen" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>{m.tipe}</span>
                           <span className="text-[9px] text-muted-foreground">{m.peran}</span>

@@ -1065,7 +1065,12 @@ export default function DatabaseRiset() {
                         <div key={m.user_id} className="flex items-center gap-2 py-2 border-b border-border last:border-0">
                           <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 bg-blue-600 text-white">{m.initials || m.name?.charAt(0)?.toUpperCase()}</div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black text-foreground truncate">{m.name}</p>
+                            <p className="text-xs font-black text-foreground truncate">
+                              {m.name}
+                              {m.status && m.status !== "Aktif" && (
+                                <span className="ml-1.5 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">{m.status}</span>
+                              )}
+                            </p>
                             <select value={m.peran || "Anggota Inti"} onChange={(e) => handleUpdateMemberPeran(selected.id, m.user_id, e.target.value, m.member_type)} className="text-[9px] font-black text-muted-foreground bg-transparent border-none outline-none cursor-pointer">
                               {[m.peran, ...getResearchRoleOptions("Mahasiswa")].filter((p, i, arr) => p && arr.indexOf(p) === i).map(p => <option key={p}>{p}</option>)}
                             </select>
