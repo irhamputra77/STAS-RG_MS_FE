@@ -122,6 +122,31 @@
 </head>
 
 <body>
+  <div class="loading-screen">
+    <div class="loading-logo">
+      <span style="--i:1">S</span>
+      <span style="--i:2">T</span>
+      <span style="--i:3">A</span>
+      <span style="--i:4">S</span>
+      <span style="--i:5">-</span>
+      <span style="--i:8">R</span><span style="--i:8" class="logo-g">
+        <img src="/stas-rg.png" alt="Logo G Labirin" onerror="this.src='/Logo G - STAS RG.png'">
+      </span>
+    </div>
+    <div class="loading-text">MEMUAT...</div>
+  </div>
+
+  <script>
+    const loadingScreen = document.querySelector(".loading-screen");
+    if (loadingScreen) {
+      loadingScreen.addEventListener("animationend", (event) => {
+        if(event.animationName === "fadeOutContainer") {
+          document.body.classList.add("loaded");
+          setTimeout(() => { loadingScreen.remove(); }, 100);
+        }
+      });
+    }
+  </script>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
