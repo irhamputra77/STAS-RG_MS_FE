@@ -799,6 +799,7 @@ export default function DatabaseRiset() {
                           <div className="w-[180px] text-[11px] font-black text-muted-foreground uppercase tracking-wide">Ketua / PIC</div>
                           <div className="flex-1 text-[11px] font-black text-muted-foreground uppercase tracking-wide">Mahasiswa</div>
                           <div className="w-[130px] text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tipe Mahasiswa</div>
+                          <div className="w-[120px] text-[11px] font-black text-muted-foreground uppercase tracking-wide">Status</div>
                           <div className="w-[160px] text-[11px] font-black text-muted-foreground uppercase tracking-wide">Peran dalam Riset</div>
                           <div className="w-[120px] text-[11px] font-black text-muted-foreground uppercase tracking-wide">Tgl Bergabung</div>
                         </div>
@@ -857,6 +858,11 @@ export default function DatabaseRiset() {
                                       </div>
                                       <div className="w-[130px]">
                                         <span className={`text-[10px] font-black ${tipeColor}`}>{member.tipe === "Riset" ? "Mahasiswa Riset" : "Magang"}</span>
+                                      </div>
+                                      <div className="w-[120px]">
+                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${!member.status || member.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : member.status === 'Alumni' || member.status === 'Lulus' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'}`}>
+                                          {member.status || "Aktif"}
+                                        </span>
                                       </div>
                                       <div className="w-[160px]">
                                         <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] border ${roleColor}`}>
