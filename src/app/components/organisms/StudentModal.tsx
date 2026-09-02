@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { X, Plus, Trash2, FileText, Lock, UploadCloud, CheckCircle2, GraduationCap, Star, User, FlaskConical } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete, resolveApiAssetUrl } from "../../lib/api";
 import { getWfhSummary, getWfhSourceMeta } from "../../lib/wfh";
+import { MAHASISWA_RESEARCH_ROLES } from "../../lib/researchRoles";
 
 type MahasiswaRecord = any;
 
@@ -19,6 +20,7 @@ type ResearchMembershipForm = {
   projectId: string;
   bergabung: string;
   selesai: string;
+  peran: string;
 };
 
 type StudentDocumentForm = {
@@ -648,7 +650,7 @@ if (!isOpen) return null;
 
                             setForm((prev) => ({
                               ...prev,
-                              risetMemberships: [{ projectId, bergabung: prev.bergabung || "", selesai: "" }],
+                              risetMemberships: [{ projectId, bergabung: prev.bergabung || "", selesai: "", peran: "Anggota Riset" }],
                             }));
                             setSelectedRisetId("");
                           }}
@@ -707,6 +709,25 @@ if (!isOpen) return null;
                                   }}
                                   className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
                                 />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="mb-1 block text-[11px] font-black text-amber-900">Peran</label>
+                                <select
+                                  value={selectedRisetOptions[0].membership.peran}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setForm((prev) => {
+                                      const next = [...prev.risetMemberships];
+                                      next[0].peran = value;
+                                      return { ...prev, risetMemberships: next };
+                                    });
+                                  }}
+                                  className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                >
+                                  {MAHASISWA_RESEARCH_ROLES.map(role => (
+                                    <option key={role} value={role}>{role}</option>
+                                  ))}
+                                </select>
                               </div>
                               <div>
                                 <label className="mb-1 block text-[11px] font-black text-amber-900">Tanggal selesai (opsional)</label>
@@ -804,6 +825,26 @@ if (!isOpen) return null;
                                 className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
                               />
                             </div>
+                            <div className="sm:col-span-2">
+                              <label className="mb-1 block text-[11px] font-black text-amber-900">Peran</label>
+                              <select
+                                value={membership.peran}
+                                onChange={(event) => {
+                                  const value = event.target.value;
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    risetMemberships: prev.risetMemberships.map((item) =>
+                                      item.projectId === option.id ? { ...item, peran: value } : item
+                                    ),
+                                  }));
+                                }}
+                                className="w-full h-9 px-3 rounded-[9px] border border-amber-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                              >
+                                {MAHASISWA_RESEARCH_ROLES.map(role => (
+                                  <option key={role} value={role}>{role}</option>
+                                ))}
+                              </select>
+                            </div>
                             <div>
                               <label className="mb-1 block text-[11px] font-black text-amber-900">Tanggal selesai (opsional)</label>
                               <input
@@ -836,7 +877,7 @@ if (!isOpen) return null;
 
                             setForm((prev) => ({
                               ...prev,
-                              risetMemberships: [...prev.risetMemberships, { projectId, bergabung: prev.bergabung || "", selesai: "" }],
+                              risetMemberships: [...prev.risetMemberships, { projectId, bergabung: prev.bergabung || "", selesai: "", peran: "Anggota Riset" }],
                             }));
                             setSelectedRisetId("");
                           }}
