@@ -1,6 +1,6 @@
 import { ProfileAvatar } from "../molecules/ProfileAvatar";
 import React, { useEffect, useState, useMemo } from "react";
-import { X, Plus, Trash2, FileText, Lock, UploadCloud, CheckCircle2, GraduationCap, Star, User } from "lucide-react";
+import { X, Plus, Trash2, FileText, Lock, UploadCloud, CheckCircle2, GraduationCap, Star, User, FlaskConical } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete, resolveApiAssetUrl } from "../../lib/api";
 import { getWfhSummary, getWfhSourceMeta } from "../../lib/wfh";
 
@@ -270,10 +270,18 @@ export function StudentModal({ isOpen, mode, studentId, onClose, onSaveSuccess, 
   const fetchStudentDetail = async (id: string) => {
     setLoading(true);
     try {
-      const d = await apiGet(`/students/${id}?_=${Date.now()}`);
-      const logs = await apiGet(`/logbooks?student_id=${id}`);
+      const d = await apiGet<any>(`/students/${id}?_=${Date.now()}`);
+      
+      let logs: any[] = [];
+      try {
+        const logsRes = await apiGet<any>(`/logbooks?student_id=${id}`);
+        logs = Array.isArray(logsRes) ? logsRes : (logsRes?.data || []);
+      } catch (err) {
+        console.warn("Gagal mengambil logbooks untuk mahasiswa:", err);
+      }
+      
       setDetail(d);
-      setStudentLogs(logs ? logs.slice(0,3).map((l: any) => ({ id: l.id, title: l.title, date: l.date, riset: l.project_name || "Logbook Umum", output: l.output || "-" })) : []);
+      setStudentLogs(logs.slice(0,3).map((l: any) => ({ id: l.id, title: l.title, date: l.date, riset: l.project_name || "Logbook Umum", output: l.output || "-" })));
       
       const detailFakultas = getFacultyLabel(d);
       setForm({

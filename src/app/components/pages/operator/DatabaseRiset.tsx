@@ -846,7 +846,7 @@ export default function DatabaseRiset() {
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setSelectedStudentId(member.id);
+                                              setSelectedStudentId(member.studentId || member.id);
                                               setIsStudentModalOpen(true);
                                             }}
                                             className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline text-xs truncate max-w-[150px] text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1 -ml-1 transition-colors"
