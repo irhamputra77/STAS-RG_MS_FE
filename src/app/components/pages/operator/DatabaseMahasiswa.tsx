@@ -824,10 +824,10 @@ export default function DatabaseMahasiswa() {
           </div>
         </div>
 
-        <div className="flex gap-5 items-start w-full min-w-0">
-          <div className={`flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all min-w-0`}>
-            <div className="overflow-x-auto w-full">
-              <table className="w-full min-w-[1480px] text-left text-sm">
+        <div className="flex gap-5 items-start w-full max-w-full">
+          <div className={`bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all w-full max-w-full flex-1 min-w-0 ${selected ? "hidden lg:block" : "block"}`}>
+            <div className="overflow-x-auto w-full max-w-full styled-scrollbar">
+              <table className="w-full min-w-[1480px] text-left text-sm whitespace-nowrap">
                 <thead>
                   <tr className="bg-slate-50 border-b border-border">
                     <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Mahasiswa</th>
