@@ -834,15 +834,15 @@ export default function DatabaseMahasiswa() {
                     <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">NIM</th>
                     <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Angkatan</th>
                     <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Tipe</th>
-                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden lg:table-cell">Program Studi</th>
-                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Fakultas</th>
-                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Pembimbing</th>
-                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Jatah WFH</th>
-                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">WFH Terpakai</th>
-                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Sisa WFH</th>
+                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Program Studi</th>
+                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Fakultas</th>
+                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Pembimbing</th>
+                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Jatah WFH</th>
+                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">WFH Terpakai</th>
+                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Sisa WFH</th>
                     <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Riset</th>
                     <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Status</th>
-                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide hidden xl:table-cell">Bergabung</th>
+                    <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide">Bergabung</th>
                     <th className="px-5 py-3 font-black text-muted-foreground text-xs uppercase tracking-wide text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -879,11 +879,11 @@ export default function DatabaseMahasiswa() {
                         </span>
                       </td>
 
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{m.prodi}</td>
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.fakultas || "-"}</td>
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.pembimbing || "-"}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{m.prodi}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{m.fakultas || "-"}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{m.pembimbing || "-"}</td>
 
-                      <td className="px-5 py-3.5 hidden xl:table-cell">
+                      <td className="px-5 py-3.5">
                         <div className="flex flex-col gap-1">
                           <span className="text-sm font-bold text-foreground">{formatWfhDays(m.wfhQuota)}</span>
                           <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black ${getWfhSourceBadgeClasses(m.wfhQuotaSource)}`}>
@@ -892,8 +892,8 @@ export default function DatabaseMahasiswa() {
                         </div>
                       </td>
 
-                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{formatWfhDays(m.wfhUsed)}</td>
-                      <td className="px-5 py-3.5 text-sm font-bold text-foreground hidden xl:table-cell">{formatWfhDays(m.wfhRemaining)}</td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground">{formatWfhDays(m.wfhUsed)}</td>
+                      <td className="px-5 py-3.5 text-sm font-bold text-foreground">{formatWfhDays(m.wfhRemaining)}</td>
 
                       <td className="px-5 py-3.5">
                         <div className="flex flex-wrap gap-1">
@@ -922,7 +922,7 @@ export default function DatabaseMahasiswa() {
                         </span>
                       </td>
 
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell">{m.bergabung}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{m.bergabung}</td>
 
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-center gap-1">

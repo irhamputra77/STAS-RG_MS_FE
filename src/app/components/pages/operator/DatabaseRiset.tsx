@@ -860,7 +860,12 @@ export default function DatabaseRiset() {
                                         <span className={`text-[10px] font-black ${tipeColor}`}>{member.tipe === "Riset" ? "Mahasiswa Riset" : "Magang"}</span>
                                       </div>
                                       <div className="w-[120px]">
-                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${!member.status || member.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : member.status === 'Alumni' || member.status === 'Lulus' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'}`}>
+                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                                          !member.status || member.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
+                                          member.status === 'Cuti' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                          member.status === 'Alumni' || member.status === 'Lulus' ? 'bg-slate-100 text-slate-600 border-slate-200' : 
+                                          'bg-red-100 text-red-600 border-red-200'
+                                        }`}>
                                           {member.status || "Aktif"}
                                         </span>
                                       </div>
