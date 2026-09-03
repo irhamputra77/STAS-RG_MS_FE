@@ -825,7 +825,7 @@ export default function DatabaseMahasiswa() {
         </div>
 
         <div className="flex gap-5 items-start">
-          <div className={`flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all ${selected ? "min-w-0" : ""}`}>
+          <div className={`flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all min-w-0`}>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1480px] text-left text-sm">
                 <thead>

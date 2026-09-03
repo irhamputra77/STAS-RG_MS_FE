@@ -188,6 +188,7 @@ export default function DatabaseRiset() {
         nim: item.nim || item.student_nim || "",
         prodi: item.prodi || item.program_studi || item.programStudi || "",
         tipe: item.tipe || "Riset",
+        status: item.status || "Aktif",
         research_projects: Array.isArray(item.research_projects) ? item.research_projects : [],
         research_project_ids: Array.isArray(item.research_project_ids) ? item.research_project_ids : [],
         research_memberships: item.research_memberships || item.researchMemberships || []
