@@ -713,7 +713,7 @@ export default function DatabaseMahasiswa() {
 
   return (
     <OperatorLayout title="Database Mahasiswa">
-      <div className="flex flex-col gap-5 pb-4">
+      <div className="flex flex-col gap-5 pb-4 w-full min-w-0">
         {error && (
           <div className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600">
             {error}
@@ -824,9 +824,9 @@ export default function DatabaseMahasiswa() {
           </div>
         </div>
 
-        <div className="flex gap-5 items-start">
+        <div className="flex gap-5 items-start w-full min-w-0">
           <div className={`flex-1 bg-white border border-border rounded-[14px] shadow-sm overflow-hidden transition-all min-w-0`}>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto w-full">
               <table className="w-full min-w-[1480px] text-left text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-border">
