@@ -2,3 +2,5 @@ node_modules
 .unit-test-cache
 .env
 dist.env
+.py
+.claude
