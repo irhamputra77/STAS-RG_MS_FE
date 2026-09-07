@@ -159,6 +159,13 @@ export type ManualPicketTaskInput = {
   description?: string | null;
 };
 
+export type PicketTaskConflictInput = {
+  scheduleDate: string;
+  taskId?: string | null;
+  taskName?: string | null;
+  excludeScheduleId?: string | null;
+};
+
 export function getPicketScheduleGeneratePayload(date: string, _settings?: PicketScheduleSettings) {
   return { date };
 }
@@ -182,6 +189,52 @@ export function getManualPicketTaskPayload(input: ManualPicketTaskInput) {
     description: String(input.description || "").trim() || null,
     active: true,
   };
+}
+
+function normalizePicketTaskName(value?: string | null) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("id-ID");
+}
+
+function isSamePicketTask(
+  assignment: Pick<PicketAssignment, "taskId" | "taskName">,
+  taskId?: string | null,
+  taskName?: string | null
+) {
+  const normalizedTaskId = String(taskId || "").trim();
+  const assignmentTaskId = String(assignment.taskId || "").trim();
+  if (normalizedTaskId && assignmentTaskId && normalizedTaskId === assignmentTaskId) return true;
+
+  const normalizedTaskName = normalizePicketTaskName(taskName);
+  return Boolean(normalizedTaskName && normalizedTaskName === normalizePicketTaskName(assignment.taskName));
+}
+
+export function getPicketTaskConflict(assignments: PicketAssignment[], input: PicketTaskConflictInput) {
+  const excludedId = String(input.excludeScheduleId || "").trim();
+  return assignments.find((assignment) => {
+    const scheduleId = String(assignment.scheduleId || assignment.id || "").trim();
+    if (excludedId && scheduleId === excludedId) return false;
+    if (assignment.scheduleDate !== input.scheduleDate) return false;
+    return isSamePicketTask(assignment, input.taskId, input.taskName);
+  }) || null;
+}
+
+export function getDuplicatePicketTaskAssignments(assignments: PicketAssignment[]) {
+  const duplicateGroups: PicketAssignment[][] = [];
+  const visitedScheduleIds = new Set<string>();
+
+  assignments.forEach((assignment) => {
+    const scheduleId = String(assignment.scheduleId || assignment.id || "");
+    if (visitedScheduleIds.has(scheduleId)) return;
+
+    const matches = assignments.filter((candidate) => (
+      candidate.scheduleDate === assignment.scheduleDate &&
+      isSamePicketTask(candidate, assignment.taskId, assignment.taskName)
+    ));
+    matches.forEach((candidate) => visitedScheduleIds.add(String(candidate.scheduleId || candidate.id || "")));
+    if (matches.length > 1) duplicateGroups.push(matches);
+  });
+
+  return duplicateGroups;
 }
 
 export function fileToDataUrl(file: File) {
@@ -283,7 +336,7 @@ export function mapPicketAssignment(row: any): PicketAssignment {
     studentName,
     studentInitials: text(row?.student_initials || row?.studentInitials, studentName.slice(0, 2).toUpperCase()),
     nim: row?.nim || row?.student_nim || row?.studentNim || null,
-    taskId: row?.task_id || row?.taskId || null,
+    taskId: row?.task_id != null || row?.taskId != null ? String(row?.task_id ?? row?.taskId) : null,
     taskName: text(row?.task_name || row?.taskName || row?.task?.name, "Tugas Piket"),
     taskDescription: row?.task_description || row?.taskDescription || row?.task?.description || null,
     status: text(row?.status, "Dijadwalkan"),
