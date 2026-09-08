@@ -263,7 +263,7 @@ function mapTeamMember(member: any, index: number): TeamMember {
     initials: member?.initials || fallbackInitials,
     role: member?.peran || memberType || "Anggota",
     memberType,
-    status: member?.status || "Aktif",
+    status: member?.student_status || member?.status || "Aktif",
     mahasiswaTipe: member?.mahasiswa_tipe || "Riset",
     bergabung: member?.bergabung,
     selesai: member?.selesai,
@@ -1648,8 +1648,8 @@ export function SharedBoardView({
 
   return (
     <>
-      <div className="-m-8 flex flex-col min-h-[calc(100vh-60px)] bg-slate-50/30">
-        <div className="p-8 flex flex-col gap-6 flex-1">
+      <div className="-m-8 flex flex-col min-w-0 min-h-[calc(100vh-60px)] bg-slate-50/30">
+        <div className="p-8 flex flex-col min-w-0 gap-6 flex-1">
 
           {/* ── Topbar row ── */}
           <div className="flex items-center justify-between">
@@ -1850,7 +1850,7 @@ export function SharedBoardView({
           </div>
 
               {/* 🚀🚀 Kanban Board 🚀🚀 */}
-              <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
+              <div className="flex-1 flex gap-6 overflow-x-auto pb-4 styled-scrollbar">
                 {columns.map((col) => (
                   <div
                     key={col.id}
