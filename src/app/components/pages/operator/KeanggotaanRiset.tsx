@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { OperatorLayout } from "../../templates/OperatorLayout";
-import { Search, Plus, X, Trash2, Pencil, Users } from "lucide-react";
+import { Search, Plus, X, Trash2, Pencil, Users, CheckCheck } from "lucide-react";
 import { apiGet, apiPatch, apiPost } from "../../../lib/api";
 import { getResearchRoleOptions, MAHASISWA_LEADER_ROLE, normalizeResearchRoleForMemberType } from "../../../lib/researchRoles";
 

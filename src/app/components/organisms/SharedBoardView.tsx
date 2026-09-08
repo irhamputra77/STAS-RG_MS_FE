@@ -1850,7 +1850,8 @@ export function SharedBoardView({
           </div>
 
               {/* 🚀🚀 Kanban Board 🚀🚀 */}
-              <div className="flex-1 flex gap-6 overflow-x-auto pb-4 styled-scrollbar">
+              <div className="flex-1 relative min-h-[400px]">
+                <div className="absolute inset-0 flex gap-6 overflow-x-auto pb-4 styled-scrollbar px-2">
                 {columns.map((col) => (
                   <div
                     key={col.id}
@@ -1938,8 +1939,9 @@ export function SharedBoardView({
               </div>
             ))}
           </div>
+        </div>
 
-          {/* ── Project Attachments ── */}
+          {/* 🚀🚀 Project Attachments 🚀🚀 */}
           <div className="mt-2 flex flex-col gap-5">
             <div className="flex items-center gap-2">
               <Paperclip className="text-primary" size={20} />
