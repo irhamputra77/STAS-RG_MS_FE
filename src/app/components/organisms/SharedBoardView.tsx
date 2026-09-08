@@ -1850,15 +1850,14 @@ export function SharedBoardView({
           </div>
 
               {/* 🚀🚀 Kanban Board 🚀🚀 */}
-              <div className="flex-1 relative min-h-[400px]">
-                <div className="absolute inset-0 flex gap-6 overflow-x-auto pb-4 styled-scrollbar px-2">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 xl:gap-6 flex-1 min-h-[400px]">
                 {columns.map((col) => (
                   <div
                     key={col.id}
                     onDragOver={(event) => handleColumnDragOver(event, col.id)}
                     onDragLeave={() => setDragOverColumn((current) => current === col.id ? null : current)}
                     onDrop={(event) => void handleColumnDrop(event, col.id)}
-                    className={`flex flex-col min-w-[300px] w-[300px] rounded-[20px] ${col.bg} p-4 transition-all ${dragOverColumn === col.id ? "ring-2 ring-[#6C47FF]/40 ring-offset-2 bg-white/80" : ""}`}
+                    className={`flex flex-col min-w-0 rounded-[20px] ${col.bg} p-4 transition-all ${dragOverColumn === col.id ? "ring-2 ring-[#6C47FF]/40 ring-offset-2 bg-white/80" : ""}`}
                   >
                     <div className="flex items-center gap-2 mb-4 px-2">
                       <div className={`w-3 h-3 rounded-sm ${col.iconColor}`} />
@@ -1939,7 +1938,6 @@ export function SharedBoardView({
               </div>
             ))}
           </div>
-        </div>
 
           {/* 🚀🚀 Project Attachments 🚀🚀 */}
           <div className="mt-2 flex flex-col gap-5">
