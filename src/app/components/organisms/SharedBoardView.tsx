@@ -619,7 +619,6 @@ export function SharedBoardView({
   const [isEditBoardOpen, setIsEditBoardOpen] = useState(false);
   const [showDeleteWarning, setShowDeleteWarning] = useState(false);
   const [isMilestoneOpen, setIsMilestoneOpen] = useState(false);
-  const [mainViewMode, setMainViewMode] = useState<"board" | "anggota">("board");
   const [subtasks, setSubtasks] = useState([""]);
   const [taskForm, setTaskForm] = useState({
     title: "",
@@ -1678,25 +1677,6 @@ export function SharedBoardView({
                 <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-0.5">Progress Board</p>
                 <h1 className="text-xl font-black text-foreground">{project.shortTitle}</h1>
               </div>
-              <div className="w-px h-6 bg-border mx-2" />
-              <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 border border-slate-200">
-                <button
-                  onClick={() => setMainViewMode("board")}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    mainViewMode === "board" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  <Kanban size={14} /> Board
-                </button>
-                <button
-                  onClick={() => setMainViewMode("anggota")}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    mainViewMode === "anggota" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  <UsersIcon size={14} /> Anggota
-                </button>
-              </div>
             </div>
             <div className="flex items-center gap-3">
               {canManageCards ? (
@@ -1724,177 +1704,150 @@ export function SharedBoardView({
             </div>
           </div>
 
-          {mainViewMode === "board" ? (
-            <>
-              {/* 🚀🚀 Metadata Banner 🚀🚀 */}
-              <div className="bg-[#F0FFF0] border border-[#D8F5D0] rounded-[16px] overflow-hidden">
-                {/* Top row */}
-                <div className="p-5 flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-[#D8F5D0]">
-                  <div className="flex flex-col gap-1 group">
-                    <div className="flex items-center gap-2">
-                      <span>📌</span>
-                      <h2 className={`text-lg font-bold ${accentText}`}>{project.shortTitle}</h2>
-                      {canManageCards && (
-                        <button
-                          onClick={openEditBoardModal}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 bg-white/60 border border-[#D8F5D0] text-[#4AB834] hover:text-[#0AB600] hover:bg-white rounded-lg transition-all shadow-sm"
-                        >
-                          <Edit2 size={12} strokeWidth={3} />
-                        </button>
-                      )}
-                    </div>
-                    <span className="text-xs font-bold text-[#4AB834]">Mitra: {project.mitra}</span>
-                  </div>
-                  
-                  {project.period && (
-                    <div className="flex flex-col md:items-end gap-1 shrink-0">
-                      <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Periode Pelaksanaan</span>
-                      <span className="px-3 py-1.5 bg-white border border-[#D8F5D0] rounded-xl text-xs font-bold text-[#0AB600] shadow-sm flex items-center gap-1.5">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5 text-[#0AB600]" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                        {project.period}
-                      </span>
-                    </div>
+          {/* 🚀🚀 Metadata Banner 🚀🚀 */}
+          <div className="bg-[#F0FFF0] border border-[#D8F5D0] rounded-[16px] overflow-hidden">
+            {/* Top row */}
+            <div className="p-5 flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-[#D8F5D0]">
+              <div className="flex flex-col gap-1 group">
+                <div className="flex items-center gap-2">
+                  <span>📌</span>
+                  <h2 className={`text-lg font-bold ${accentText}`}>{project.shortTitle}</h2>
+                  {canManageCards && (
+                    <button
+                      onClick={openEditBoardModal}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 bg-white/60 border border-[#D8F5D0] text-[#4AB834] hover:text-[#0AB600] hover:bg-white rounded-lg transition-all shadow-sm"
+                    >
+                      <Edit2 size={14} strokeWidth={2.5} />
+                    </button>
                   )}
                 </div>
-
-                <div className="flex flex-col lg:flex-row">
-                  {/* Left col: Progress & Milestones */}
-                  <div className="flex-1 p-5 border-b lg:border-b-0 lg:border-r border-[#D8F5D0] flex flex-col justify-between gap-6">
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Progress</span>
-                          {activeMsLabel && (
-                            <span className="px-2 py-0.5 rounded-full bg-white border border-[#D8F5D0] text-[9px] font-black text-[#0AB600]">
-                              {activeMsLabel}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-xs font-black text-[#0AB600]">{milestoneProgress}%</span>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-1.5">
+                  {[
+                    { label: "Ketua", value: ketuaMember?.name },
+                    { label: "Periode", value: project.period },
+                    { label: "Mitra", value: project.mitra.split(" Hibah")[0] },
+                    { label: "Milestone", value: activeMsLabel },
+                  ].map((item, i, arr) => (
+                    <React.Fragment key={item.label}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">{item.label}</span>
+                        <span className={`text-xs font-bold ${accentText}`}>{item.value}</span>
                       </div>
-                      <div className="h-2.5 w-full bg-white border border-[#D8F5D0] rounded-full overflow-hidden shadow-inner">
-                        <div className="h-full bg-[#0AB600] rounded-full transition-all duration-500 ease-out relative overflow-hidden" style={{ width: `${milestoneProgress}%` }}>
-                          <div className="absolute inset-0 bg-white/20" style={{ transform: "skewX(-45deg) translateX(-100%)", animation: "shimmer 2s infinite" }} />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Milestone Riset</span>
-                        {canManageCards && (
-                          <button
-                            onClick={() => setIsMilestoneOpen(true)}
-                            className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all shadow-sm"
-                          >
-                            <Edit2 size={10} strokeWidth={3} /> Kelola Milestone
-                          </button>
-                        )}
-                      </div>
-                      <MilestoneBanner
-                        milestones={milestones}
-                        progressColor={project.progressColor}
-                        onToggle={toggleMilestone}
-                        onManage={() => setIsMilestoneOpen(true)}
-                        editable={canManageCards}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Right col: Details */}
-                  <div className="w-full lg:w-[320px] xl:w-[380px] shrink-0 bg-white/60">
-                    {/* Team members */}
-                    <div className="px-5 py-4">
-                      <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider block mb-3">Anggota Tim</span>
-                      <div className="flex flex-wrap gap-2.5">
-                        {teamMembers.map((member, i) => (
-                          <div key={i} className="flex items-center gap-2.5 bg-white border border-[#D8F5D0] rounded-xl px-3 py-2 shadow-sm hover:shadow-md hover:border-[#0AB600]/40 transition-all cursor-default">
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${getAssigneeColor(member.initials)}`}>
-                              {member.initials}
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{member.name}</span>
-                              <span className="text-[10px] font-medium text-[#4AB834] whitespace-nowrap">{member.role}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Research documents */}
-                    <div className="px-5 py-4 border-t border-[#D8F5D0]">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Dokumen Riset</span>
-                        <span className="rounded-full border border-[#D8F5D0] bg-white px-2.5 py-1 text-[10px] font-black text-[#4AB834]">
-                          {project.researchType || "Jenis riset -"}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
-                        <div className="rounded-xl border border-[#D8F5D0] bg-white px-3 py-2 shadow-sm lg:col-span-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-[#5CC444]">Dokumen Kerja Sama</span>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className={`rounded-md px-2 py-0.5 text-[10px] font-black ${project.agreementType ? "bg-green-50 text-[#0AB600]" : "bg-slate-100 text-slate-400"}`}>
-                              {project.agreementType || "Belum diisi"}
-                            </span>
-                            <span className="text-xs font-bold text-slate-700">
-                              {formatBoardDateRange(project.agreementStartDate, project.agreementEndDate)}
-                            </span>
-                          </div>
-                        </div>
-                        <BoardDocumentLink label="File PKS/MoU/MoA" url={project.agreementFileUrl} />
-                        <BoardDocumentLink label="Proposal" url={project.proposalFileUrl} />
-                        <BoardDocumentLink label="RAB" url={project.rabFileUrl} />
-                      </div>
-                    </div>
-
-                    {/* Attachment Link */}
-                    <div className="px-5 py-4 border-t border-[#D8F5D0]">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Lampiran</span>
-                        <button
-                          onClick={() => { setAttachmentLink(project.attachment_link || ""); setIsEditingAttachment(!isEditingAttachment); }}
-                          className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all shadow-sm"
-                        >
-                          <LinkIcon size={10} strokeWidth={3} /> {isEditingAttachment ? "Batal" : "Edit"}
-                        </button>
-                      </div>
-                      {isEditingAttachment ? (
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={attachmentLink}
-                            onChange={e => setAttachmentLink(e.target.value)}
-                            placeholder="https://gdrive..."
-                            className="flex-1 px-3 py-1.5 bg-white border border-[#D8F5D0] rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#0AB600]"
-                          />
-                          <button
-                            onClick={handleSaveAttachment}
-                            disabled={savingAttachment}
-                            className="px-3 py-1.5 bg-[#0AB600] hover:bg-[#099800] text-white rounded-lg text-[11px] font-bold transition-all disabled:opacity-50"
-                          >
-                            Simpan
-                          </button>
-                        </div>
-                      ) : project.attachment_link ? (
-                        <a href={project.attachment_link} target="_blank" rel="noreferrer" className="flex items-center gap-2 p-2 bg-white border border-[#D8F5D0] rounded-lg hover:border-[#0AB600] transition-all group/link">
-                          <div className="w-8 h-8 rounded bg-blue-50 text-blue-500 flex items-center justify-center group-hover/link:bg-blue-100 transition-colors shrink-0">
-                            <Folder size={14} strokeWidth={2.5} />
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-[11px] font-bold text-slate-700 truncate">Folder Riset</span>
-                            <span className="text-[9px] font-medium text-muted-foreground truncate">{project.attachment_link}</span>
-                          </div>
-                        </a>
-                      ) : (
-                        <div className="p-3 bg-white border border-[#D8F5D0] border-dashed rounded-lg text-center text-[10px] font-bold text-slate-400">
-                          Belum ada link lampiran (G-Drive)
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
+                      {i < arr.length - 1 && <div className="w-px h-3 bg-[#A8E895]" />}
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
+              <div className="flex flex-col gap-1.5 min-w-[180px] shrink-0">
+                <div className="flex justify-between items-end">
+                  <span className="text-xs font-bold text-[#4AB834]">Progress</span>
+                  <span className={`text-sm font-black ${accentText}`}>{milestoneProgress}%</span>
+                </div>
+                <div className="w-full bg-[#D8F5D0] rounded-full h-2">
+                  <div className={`${accentBg} h-2 rounded-full transition-all duration-500`} style={{ width: `${milestoneProgress}%` }} />
+                </div>
+                <span className="text-[10px] font-medium text-[#4AB834]">
+                  {milestones.filter(m => m.done).length} dari {milestones.length} milestone selesai
+                </span>
+              </div>
+            </div>
+
+            {/* Milestone bar */}
+            <div className="px-5 pt-4 pb-2 border-b border-[#D8F5D0]">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">
+                  Milestone Progress — {milestones.filter(m => m.done).length}/{milestones.length} Selesai
+                </span>
+                <button
+                  onClick={() => setIsMilestoneOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all shadow-sm"
+                >
+                  <Edit2 size={10} strokeWidth={3} /> Kelola Milestone
+                </button>
+              </div>
+              <MilestoneBanner
+                milestones={milestones}
+                progressColor={project.progressColor}
+                onToggle={toggleMilestone}
+                onManage={() => setIsMilestoneOpen(true)}
+                editable={canManageCards}
+              />
+            </div>
+
+            {/* Team members */}
+            <div className="px-5 py-4">
+              <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider block mb-3">Anggota Tim</span>
+              <ProjectMembersView members={teamMembers as any} />
+            </div>
+
+            {/* Research documents */}
+            <div className="px-5 py-4 border-t border-[#D8F5D0]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Dokumen Riset</span>
+                <span className="rounded-full border border-[#D8F5D0] bg-white px-2.5 py-1 text-[10px] font-black text-[#4AB834]">
+                  {project.researchType || "Jenis riset -"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
+                <div className="rounded-xl border border-[#D8F5D0] bg-white px-3 py-2 shadow-sm lg:col-span-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#5CC444]">Dokumen Kerja Sama</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-black ${project.agreementType ? "bg-green-50 text-[#0AB600]" : "bg-slate-100 text-slate-400"}`}>
+                      {project.agreementType || "Belum diisi"}
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">
+                      {formatBoardDateRange(project.agreementStartDate, project.agreementEndDate)}
+                    </span>
+                  </div>
+                </div>
+                <BoardDocumentLink label="File PKS/MoU/MoA" url={project.agreementFileUrl} />
+                <BoardDocumentLink label="Proposal" url={project.proposalFileUrl} />
+                <BoardDocumentLink label="RAB" url={project.rabFileUrl} />
+              </div>
+            </div>
+
+            {/* Attachment Link */}
+            <div className="px-5 py-4 border-t border-[#D8F5D0]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black text-[#5CC444] uppercase tracking-wider">Lampiran</span>
+                <button
+                  onClick={() => { setAttachmentLink(project.attachment_link || ""); setIsEditingAttachment(!isEditingAttachment); }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#D8F5D0] hover:border-[#0AB600] hover:bg-[#F0FFF0] rounded-lg text-[10px] font-black text-[#4AB834] hover:text-[#0AB600] transition-all shadow-sm"
+                >
+                  <LinkIcon size={10} strokeWidth={3} /> {isEditingAttachment ? "Batal" : "Edit"}
+                </button>
+              </div>
+              {isEditingAttachment ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={attachmentLink}
+                    onChange={e => setAttachmentLink(e.target.value)}
+                    placeholder="https://drive.google.com/..."
+                    className="flex-1 px-3 py-2 bg-white border border-[#D8F5D0] rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0AB600]/20 focus:border-[#0AB600]"
+                  />
+                  <button
+                    onClick={saveAttachmentLink}
+                    disabled={savingAttachment}
+                    className="px-3 py-2 bg-[#0AB600] hover:bg-[#099800] disabled:opacity-50 text-white rounded-lg text-xs font-black transition-colors"
+                  >
+                    {savingAttachment ? "..." : "Simpan"}
+                  </button>
+                </div>
+              ) : project.attachment_link ? (
+                <a
+                  href={project.attachment_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-[#D8F5D0] rounded-lg text-xs text-[#0AB600] hover:bg-[#F0FFF0] transition-all break-all"
+                >
+                  <LinkIcon size={12} /> {project.attachment_link}
+                </a>
+              ) : (
+                <p className="text-xs text-slate-400 italic">Belum ada lampiran</p>
+              )}
+            </div>
+          </div>
 
               {/* 🚀🚀 Kanban Board 🚀🚀 */}
               <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
@@ -2066,10 +2019,7 @@ export function SharedBoardView({
               <p className="text-sm text-muted-foreground">Data repository belum terintegrasi dengan API.</p>
             </div>
           </div>
-            </>
-          ) : (
-            <ProjectMembersView members={teamMembers as any} />
-          )}
+
 
         </div>
       </div>
