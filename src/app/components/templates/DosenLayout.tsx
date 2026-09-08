@@ -5,6 +5,7 @@ import {
   FlaskConical,
   BookOpen,
   Kanban,
+  Layers,
   Award,
   FileText,
   UserX,
@@ -22,6 +23,7 @@ import { AppNotification, useNotifications } from "../../hooks/useNotifications"
 const navItems = [
   { name: "Dashboard", path: "/dosen/dashboard", icon: LayoutDashboard },
   { name: "Riset Saya", path: "/dosen/riset", icon: FlaskConical },
+  { name: "Scrum & Sprint", path: "/dosen/scrum", icon: Layers },
   { name: "Review Logbook", path: "/dosen/logbook", icon: BookOpen },
   { name: "Review Laporan", path: "/dosen/draft", icon: FileText },
   { name: "Progress Tim", path: "/dosen/progress", icon: Kanban },

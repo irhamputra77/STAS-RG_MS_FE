@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { OperatorLayout } from "../../templates/OperatorLayout";
+import { DosenLayout } from "../../templates/DosenLayout";
 import {
   Kanban,
   Plus,
@@ -21,7 +22,7 @@ import {
   Sparkles,
   AlertCircle
 } from "lucide-react";
-import { apiGet, apiPost, apiPatch, apiDelete } from "../../../lib/api";
+import { apiGet, apiPost, apiPatch, apiDelete, getStoredUser } from "../../../lib/api";
 
 const FIBONACCI_POINTS = [1, 2, 3, 5, 8, 13, 21];
 
@@ -50,12 +51,17 @@ interface Member {
   name: string;
   initials?: string;
   role?: string;
+  memberType?: string;
 }
 
 export default function ScrumPlanning() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedProjectId = searchParams.get("projectId") || "";
+
+  const currentUser = getStoredUser();
+  const isDosen = currentUser?.role === "dosen";
+  const LayoutComponent = isDosen ? DosenLayout : OperatorLayout;
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
@@ -90,7 +96,10 @@ export default function ScrumPlanning() {
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        const data = await apiGet<Project[]>("/research");
+        const endpoint = isDosen && currentUser?.id
+          ? `/research/assigned?userId=${encodeURIComponent(currentUser.id)}`
+          : "/research";
+        const data = await apiGet<Project[]>(endpoint);
         const list = data || [];
         setProjects(list);
         if (list.length > 0) {
@@ -105,7 +114,7 @@ export default function ScrumPlanning() {
       }
     };
     loadProjects();
-  }, []);
+  }, [isDosen, currentUser?.id]);
 
   // Load Sprints, Tasks, and Members when activeProject changes
   const loadProjectData = async (projectId: string) => {
@@ -125,7 +134,8 @@ export default function ScrumPlanning() {
           userId: m.user_id || m.userId,
           name: m.name,
           initials: m.initials,
-          role: m.peran || m.role || "Anggota"
+          role: m.peran || m.role || "Anggota",
+          memberType: m.member_type || m.memberType || (m.role === "dosen" ? "Dosen" : "Mahasiswa")
         }))
       );
     } catch (err: any) {
@@ -295,8 +305,17 @@ export default function ScrumPlanning() {
 
   const activeSprint = sprints.find((s) => s.status === "active");
 
+  // Hanya mahasiswa yang dapat ditugaskan (Dosen bertindak sebagai pemberi tugas)
+  const assignableStudents = members.filter((m) => {
+    const isDosenMember =
+      String(m.memberType || "").toLowerCase() === "dosen" ||
+      String(m.role || "").toLowerCase() === "dosen" ||
+      String(m.role || "").toLowerCase().includes("pembimbing");
+    return !isDosenMember;
+  });
+
   return (
-    <OperatorLayout title="Manajemen Scrum & Sprint">
+    <LayoutComponent title="Manajemen Scrum & Sprint">
       <div className="flex flex-col gap-6 pb-12">
         {/* Top Header & Project Selector */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-[20px] border border-border shadow-sm">
@@ -896,12 +915,12 @@ export default function ScrumPlanning() {
                   Tugaskan ke Mahasiswa (Assignee)
                 </label>
                 <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto p-2 bg-slate-50 border border-border rounded-xl">
-                  {members.length === 0 ? (
+                  {assignableStudents.length === 0 ? (
                     <p className="text-xs text-muted-foreground text-center py-2">
-                      Belum ada anggota di riset ini.
+                      Belum ada mahasiswa di riset ini untuk ditugaskan.
                     </p>
                   ) : (
-                    members.map((member) => {
+                    assignableStudents.map((member) => {
                       const isSelected = taskForm.assigneeIds.includes(member.userId);
                       return (
                         <label
@@ -937,6 +956,9 @@ export default function ScrumPlanning() {
                     })
                   )}
                 </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  * Dosen / Pembimbing berperan sebagai pemberi tugas, sehingga hanya mahasiswa riset yang dapat ditugaskan.
+                </p>
               </div>
 
               {/* Sprint Destination */}
@@ -977,6 +999,6 @@ export default function ScrumPlanning() {
           </div>
         </div>
       )}
-    </OperatorLayout>
+    </LayoutComponent>
   );
 }

@@ -535,7 +535,7 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
       ? [
           {
             name: "Scrum Board",
-            path: `/scrum-board/${activeScrumInfo.primaryProjectId}`,
+            path: "/scrum",
             icon: Kanban,
             alumniHidden: true
           }
