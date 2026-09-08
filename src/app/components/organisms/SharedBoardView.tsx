@@ -58,6 +58,8 @@ type BoardTask = {
   progress?: number;
   priority?: string;
   sortOrder?: number;
+  storyPoints?: number | null;
+  sprintId?: string | null;
   createdByName?: string;
   createdByInitials?: string;
   createdByRole?: string;
@@ -337,6 +339,8 @@ function mapBoardTask(item: any): BoardTask {
     progress: item?.progress !== undefined && item?.progress !== null ? Number(item.progress) : undefined,
     priority: item?.priority || undefined,
     sortOrder: Number(item?.sortOrder ?? item?.sort_order ?? 0),
+    storyPoints: item?.storyPoints ?? item?.story_points ?? (item?.sp !== undefined ? Number(item.sp) : 3),
+    sprintId: item?.sprintId ?? item?.sprint_id ?? null,
     createdByName: item?.createdByName || item?.created_by_name || undefined,
     createdByInitials: item?.createdByName ? getInitialsFromName(item.createdByName) : undefined,
     createdByRole: item?.createdByRole || undefined
@@ -484,7 +488,19 @@ export function SharedBoardView({
   const [permissionsMap, setPermissionsMap] = useState<Record<string, BoardPermissions>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [activeSprint, setActiveSprint] = useState<any>(null);
+  const [onlyMyTasks, setOnlyMyTasks] = useState(false);
   const projectIdsKey = projectIds.join("|");
+
+  useEffect(() => {
+    if (!activeId) return;
+    apiGet<any[]>(`/research/${activeId}/sprints`)
+      .then((list) => {
+        const active = (list || []).find((s) => s.status === "active");
+        setActiveSprint(active || null);
+      })
+      .catch(() => setActiveSprint(null));
+  }, [activeId]);
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -1849,9 +1865,68 @@ export function SharedBoardView({
             </div>
           </div>
 
+          {/* ── Sprint Status Banner & My Tasks Filter ── */}
+          {activeSprint ? (
+            <div className="bg-white border border-purple-200 rounded-[16px] p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <Kanban size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-foreground">{activeSprint.name}</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-700 uppercase tracking-wider">
+                      Sprint Aktif
+                    </span>
+                    <span className="text-xs font-black text-purple-700">⚡ {activeSprint.totalPoints} SP</span>
+                  </div>
+                  {activeSprint.goal && <p className="text-xs text-muted-foreground mt-0.5">{activeSprint.goal}</p>}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setOnlyMyTasks(!onlyMyTasks)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    onlyMyTasks
+                      ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                      : "bg-slate-50 hover:bg-slate-100 text-muted-foreground border-border"
+                  }`}
+                >
+                  {onlyMyTasks ? "✓ Menampilkan Tugas Saya" : "Filter: Tugas Saya Saja"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white border border-border rounded-[16px] p-3.5 shadow-sm flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Kanban size={16} />
+                <span>Belum ada Sprint aktif untuk proyek ini. Menampilkan semua tugas.</span>
+              </div>
+              <button
+                onClick={() => setOnlyMyTasks(!onlyMyTasks)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  onlyMyTasks
+                    ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                    : "bg-slate-50 hover:bg-slate-100 text-muted-foreground border-border"
+                }`}
+              >
+                {onlyMyTasks ? "✓ Menampilkan Tugas Saya" : "Filter: Tugas Saya Saja"}
+              </button>
+            </div>
+          )}
+
               {/* 🚀🚀 Kanban Board 🚀🚀 */}
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 xl:gap-6 flex-1 min-h-[400px]">
-                {columns.map((col) => (
+                {columns.map((col) => {
+                  const colTasks = (tasks[col.id] || []).filter((task) => {
+                    if (onlyMyTasks && currentUser?.id) {
+                      return task.assigneeUserIds?.includes(currentUser.id);
+                    }
+                    return true;
+                  });
+
+                  return (
                   <div
                     key={col.id}
                     onDragOver={(event) => handleColumnDragOver(event, col.id)}
@@ -1862,10 +1937,10 @@ export function SharedBoardView({
                     <div className="flex items-center gap-2 mb-4 px-2">
                       <div className={`w-3 h-3 rounded-sm ${col.iconColor}`} />
                       <h3 className={`text-sm font-bold ${col.textColor} uppercase tracking-wider`}>{col.title}</h3>
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${col.pillBg} ml-1`}>{(tasks[col.id] || []).length}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${col.pillBg} ml-1`}>{colTasks.length}</span>
                     </div>
                     <div className="flex flex-col gap-4 flex-1 overflow-y-auto">
-                      {(tasks[col.id] || []).map((task: any) => (
+                      {colTasks.map((task: any) => (
                         <div
                           key={task.id}
                           draggable={canFillExistingCards && movingTaskId !== task.id}
@@ -1904,7 +1979,15 @@ export function SharedBoardView({
                             </div>
                           )}
                           <div className="flex items-center justify-between mt-4">
-                            <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold ${getTagColor(task.tag)}`}>{task.tag}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold ${getTagColor(task.tag)}`}>{task.tag}</span>
+                              {task.storyPoints !== null && task.storyPoints !== undefined && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-0.5" title="Tingkat Kesulitan (Fibonacci Story Points)">
+                                  <span>⚡</span>
+                                  <span>{task.storyPoints} SP</span>
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-3">
                               <div className="flex items-center -space-x-1.5">
                                 {task.assignees.map((a: string, i: number) => (
@@ -1936,8 +2019,9 @@ export function SharedBoardView({
                   )}
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
+        </div>
 
           {/* 🚀🚀 Project Attachments 🚀🚀 */}
           <div className="mt-2 flex flex-col gap-5">

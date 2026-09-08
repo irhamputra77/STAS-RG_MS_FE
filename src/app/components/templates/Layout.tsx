@@ -25,6 +25,7 @@ import {
   LogOut,
   Menu,
   Lock,
+  Kanban,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { AppNotification, NotificationType, useNotifications } from "../../hooks/useNotifications";
@@ -501,6 +502,26 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
   const studentStatus = String((user as any)?.status || (user as any)?.studentStatus || "").trim();
   const isAlumni = user?.role === "mahasiswa" && studentStatus === "Alumni";
 
+  const [activeScrumInfo, setActiveScrumInfo] = useState<{
+    hasActiveScrum: boolean;
+    primaryProjectId: string | null;
+    activeSprint: any;
+  } | null>(null);
+
+  useEffect(() => {
+    if (user?.role === "mahasiswa" && !isAlumni) {
+      apiGet<any>("/research/my-scrum")
+        .then((res) => {
+          if (res?.hasActiveScrum && res?.primaryProjectId) {
+            setActiveScrumInfo(res);
+          } else {
+            setActiveScrumInfo(null);
+          }
+        })
+        .catch(() => setActiveScrumInfo(null));
+    }
+  }, [user?.id, isAlumni]);
+
   // Halaman yang bisa diakses Alumni (read-only history)
   const ALUMNI_ALLOWED_PATHS = new Set(["/dashboard", "/logbook", "/research", "/documents", "/graduation", "/draft", "/settings"]);
 
@@ -510,6 +531,16 @@ export function Layout({ children, title = "Dashboard" }: LayoutProps) {
     { name: "Logbook", path: "/logbook", icon: BookOpen },
     { name: "Piket", path: "/picket", icon: ClipboardCheck, alumniHidden: true },
     { name: "Riset Saya", path: "/research", icon: FlaskConical },
+    ...(activeScrumInfo?.hasActiveScrum && activeScrumInfo.primaryProjectId
+      ? [
+          {
+            name: "Scrum Board",
+            path: `/scrum-board/${activeScrumInfo.primaryProjectId}`,
+            icon: Kanban,
+            alumniHidden: true
+          }
+        ]
+      : []),
     { name: "Pengajuan", path: "/leave", icon: FileText, alumniHidden: true },
     { name: "Dokumen & Sertifikat", path: "/documents", icon: Award },
     { name: "Pusat Dokumen Saya", path: "/document-center", icon: FileText, alumniHidden: true },

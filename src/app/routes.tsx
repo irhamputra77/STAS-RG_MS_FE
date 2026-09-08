@@ -40,6 +40,7 @@ import PiketOperator from "./components/pages/operator/PiketOperator";
 import BerkasKelulusanOperator from "./components/pages/operator/BerkasKelulusanOperator";
 import ReaktivasiAlumni from "./components/pages/operator/ReaktivasiAlumni";
 import KeanggotaanRiset from "./components/pages/operator/KeanggotaanRiset";
+import ScrumPlanning from "./components/pages/operator/ScrumPlanning";
 import DashboardDosen from "./components/pages/dosen/DashboardDosen";
 import RisetDosen from "./components/pages/dosen/RisetDosen";
 import ReviewLogbook from "./components/pages/dosen/ReviewLogbook";
@@ -144,6 +145,7 @@ export const router = createBrowserRouter([
                       { path: "picket/manage/history", element: <PicketHistory management /> },
                     ],
                   },
+                  { path: "scrum", element: <Navigate to="/research" replace /> },
                   { path: "scrum-board", element: <Navigate to="/research" replace /> },
                   { path: "scrum-board/:researchId", element: <ScrumBoard /> },
                   { path: "board", element: <Navigate to="/research" replace /> },
@@ -160,6 +162,7 @@ export const router = createBrowserRouter([
               { path: "mahasiswa", element: <DatabaseMahasiswa /> },
               { path: "riset", element: <DatabaseRiset /> },
               { path: "keanggotaan", element: <KeanggotaanRiset /> },
+              { path: "scrum", element: <ScrumPlanning /> },
               { path: "dosen", element: <DatabaseDosen /> },
               { path: "operator", element: <DatabaseOperator /> },
               { path: "wfh-mahasiswa", element: <PengaturanWfhMahasiswa /> },
