@@ -581,62 +581,6 @@ export default function PiketOperator() {
     setInfo(`Submission ${submission.studentName} ditandai bermasalah. Backend akan membuat access lock otomatis.`);
   };
 
-  const reviewLeave = async (request: PicketLeaveRequest, status: "Menunggu" | "Disetujui" | "Ditolak") => {
-    if (status === "Menunggu" && request.status === "Disetujui") {
-      const approved = await confirm({
-        title: "Batalkan persetujuan izin?",
-        description: "Jadwal pengganti akan dihapus dan jadwal asal kembali menjadi Ditugaskan. Pembatalan akan ditolak jika jadwal pengganti sudah memiliki submission.",
-        confirmLabel: "Batalkan Persetujuan",
-        variant: "danger",
-      });
-      if (!approved) return;
-    }
-    try {
-      setSaving(true);
-      setError("");
-      const response = await apiPatch<any>(`/picket/leave-requests/${encodeURIComponent(request.id)}/status`, {
-        status,
-        reviewNote: status === "Disetujui"
-          ? "Izin disetujui"
-          : status === "Ditolak"
-            ? "Izin ditolak"
-            : "Persetujuan izin dibatalkan",
-      });
-      const reviewed = mapPicketLeaveRequest(response);
-      const replacementDate = reviewed.replacementDate || request.replacementDate;
-      await Promise.allSettled([
-        apiGet<any>(`/picket/leave-requests?_=${Date.now()}`),
-        apiGet<any>(`/picket/schedules?date=${encodeURIComponent(request.date)}&_=${Date.now()}`),
-        replacementDate
-          ? apiGet<any>(`/picket/schedules?date=${encodeURIComponent(replacementDate)}&_=${Date.now()}`)
-          : Promise.resolve(null),
-        request.studentId
-          ? apiGet<any>(`/picket/history?studentId=${encodeURIComponent(request.studentId)}&_=${Date.now()}`)
-          : Promise.resolve(null),
-        request.studentId
-          ? apiGet<any>(`/picket/today?studentId=${encodeURIComponent(request.studentId)}&_=${Date.now()}`)
-          : Promise.resolve(null),
-      ]);
-      await loadData();
-      window.dispatchEvent(new Event("stas:picket-refresh"));
-      if (status === "Disetujui") {
-        setInfo(reviewed.replacementDate
-          ? `Izin disetujui. Jadwal pengganti dibuat pada ${reviewed.replacementDate}.`
-          : "Izin disetujui. Jadwal pengganti sedang diproses backend.");
-      } else if (status === "Menunggu") {
-        setInfo("Persetujuan izin dibatalkan. Jadwal asal kembali Ditugaskan dan jadwal pengganti dihapus.");
-      } else {
-        setInfo("Izin tidak piket ditolak.");
-      }
-    } catch (err: any) {
-      setError(err?.status === 409
-        ? err?.message || "Status izin tidak dapat dibatalkan karena jadwal pengganti sudah memiliki submission."
-        : err?.message || "Gagal memproses izin tidak piket.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const resetHolidayForm = () => {
     setEditingHolidayId(null);
     setHolidayForm({ date: "", name: "", notes: "" });
@@ -1208,10 +1152,11 @@ export default function PiketOperator() {
 
             <section className="rounded-[16px] border border-border bg-white shadow-sm">
               <div className="border-b border-border px-5 py-4">
-                <h2 className="text-sm font-black text-foreground">Izin Tidak Piket</h2>
+                <h2 className="text-sm font-black text-foreground">Riwayat Izin Piket</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Pengajuan diproses otomatis oleh sistem. Status historis tetap ditampilkan sebagai arsip.</p>
               </div>
               {leaveRequests.length === 0 ? (
-                <div className="p-8 text-center text-sm font-semibold text-muted-foreground">Belum ada pengajuan izin tidak piket.</div>
+                <div className="p-8 text-center text-sm font-semibold text-muted-foreground">Belum ada riwayat izin piket.</div>
               ) : (
                 <div className="divide-y divide-border">
                   {leaveRequests.map((item) => (
@@ -1225,15 +1170,6 @@ export default function PiketOperator() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge status={item.status} />
-                        {item.status === "Menunggu" && (
-                          <>
-                            <button disabled={saving} onClick={() => void reviewLeave(item, "Disetujui")} className="h-8 rounded-[8px] bg-emerald-500 px-3 text-xs font-black text-white disabled:opacity-60">Setujui</button>
-                            <button disabled={saving} onClick={() => void reviewLeave(item, "Ditolak")} className="h-8 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white disabled:opacity-60">Tolak</button>
-                          </>
-                        )}
-                        {item.status === "Disetujui" && (
-                          <button disabled={saving} onClick={() => void reviewLeave(item, "Menunggu")} className="h-8 rounded-[8px] border border-red-200 bg-red-50 px-3 text-xs font-black text-red-600 disabled:opacity-60">Batalkan Persetujuan</button>
-                        )}
                       </div>
                     </div>
                   ))}

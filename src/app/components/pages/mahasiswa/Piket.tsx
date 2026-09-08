@@ -7,6 +7,7 @@ import { useAuth } from "../../../context/AuthContext";
 import {
   PicketAssignment,
   PicketHoliday,
+  PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE,
   PicketLeaveRequest,
   PicketStudentDay,
   ensurePicketPhotoPreviewable,
@@ -14,6 +15,7 @@ import {
   getJakartaDateKey,
   getPicketAssignmentStatus,
   getPicketHolidayFromTodayResponse,
+  getPicketLeaveSubmitErrorMessage,
   getPicketStudentDayFromTodayResponse,
   hasPicketPhotoSubmission,
   isPicketAssignmentSubmitted,
@@ -23,6 +25,7 @@ import {
   mapPicketTodayAssignment,
   mapPicketLeaveRequest,
   mapPicketSubmissionResult,
+  shouldDisablePicketLeaveSubmit,
   validatePicketPhoto,
 } from "../../../lib/picket";
 
@@ -48,6 +51,7 @@ export default function Piket() {
   const [todayAssignment, setTodayAssignment] = React.useState<PicketAssignment | null>(null);
   const [history, setHistory] = React.useState<PicketAssignment[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<PicketLeaveRequest[]>([]);
+  const [lastProcessedLeave, setLastProcessedLeave] = React.useState<PicketLeaveRequest | null>(null);
   const [fixedDay, setFixedDay] = React.useState<PicketStudentDay | null>(null);
   const [isManager, setIsManager] = React.useState(false);
   const [reason, setReason] = React.useState("");
@@ -211,6 +215,7 @@ export default function Piket() {
   };
 
   const submitLeave = async () => {
+    if (saving) return;
     if (!todayAssignment) {
       setError("Izin tidak piket hanya dapat diajukan saat Anda punya jadwal piket hari ini.");
       return;
@@ -230,22 +235,38 @@ export default function Piket() {
     try {
       setSaving(true);
       setError("");
-      await apiPost("/picket/leave-requests", {
+      setInfo("");
+      setLastProcessedLeave(null);
+      const response = await apiPost<any>("/picket/leave-requests", {
         scheduleId: todayAssignment.scheduleId || todayAssignment.id,
-        assignmentId: todayAssignment.id,
+        assignmentId: todayAssignment.assignmentId || todayAssignment.id,
         studentId: user?.id,
         date: todayAssignment.date || getJakartaDateKey(),
         reason: reason.trim(),
       });
+      const processedLeave = mapPicketLeaveRequest(response);
+      setLastProcessedLeave(processedLeave);
       setReason("");
-      setInfo("Izin tidak piket berhasil diajukan.");
+      setInfo(PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE);
+      window.dispatchEvent(new Event("stas:picket-refresh"));
+      window.dispatchEvent(new Event("stas:access-lock-refresh"));
       await loadData();
     } catch (err: any) {
-      setError(err?.message || "Gagal mengajukan izin tidak piket.");
+      setError(getPicketLeaveSubmitErrorMessage(err));
     } finally {
       setSaving(false);
     }
   };
+
+  const approvedLeaveForToday = [lastProcessedLeave, ...leaveRequests].find((item) => (
+    item?.status === "Disetujui" &&
+    Boolean(todayAssignment) &&
+    (
+      item.scheduleId === todayAssignment?.scheduleId ||
+      item.assignmentId === todayAssignment?.assignmentId ||
+      item.date === todayAssignment?.date
+    )
+  )) || null;
 
   return (
     <Layout title="Piket">
@@ -425,11 +446,27 @@ export default function Piket() {
 
                   {!todayAssignment.autoCompletedByWfh && !todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
                     <h3 className="text-sm font-black text-foreground">Izin Tidak Piket</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">Ajukan izin jika Anda tidak dapat menjalankan piket hari ini.</p>
-                    <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Tulis alasan izin..." className="mt-3 w-full rounded-[10px] border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20" />
-                    <button onClick={submitLeave} disabled={saving} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60">
-                      {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Ajukan Izin
-                    </button>
+                    {approvedLeaveForToday ? (
+                      <div className="mt-3 rounded-[12px] border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <div className="flex items-start gap-2">
+                          <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-600" />
+                          <div>
+                            <p className="text-sm font-black text-emerald-800">Izin piket telah diproses otomatis.</p>
+                            {approvedLeaveForToday.replacementDate && (
+                              <p className="mt-1 text-xs font-bold text-emerald-700">Jadwal pengganti: {approvedLeaveForToday.replacementDate}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Pengajuan izin akan diproses otomatis. Jadwal pengganti akan diberikan pada tanggal yang tersedia dalam 14 hari berikutnya.</p>
+                        <textarea value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Tulis alasan izin..." className="mt-3 w-full rounded-[10px] border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20 disabled:bg-slate-50 disabled:opacity-70" />
+                        <button onClick={submitLeave} disabled={shouldDisablePicketLeaveSubmit(saving, reason)} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60">
+                          {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {saving ? "Memproses..." : "Ajukan Izin"}
+                        </button>
+                      </>
+                    )}
                   </div>}
                 </div>
               ) : (

@@ -2,6 +2,7 @@ import { resolveApiAssetUrl } from "./api";
 
 export const PICKET_BLOCK_REASON = "PICKET_SUBMISSION_INVALID";
 export const PICKET_AUTO_WFH_STATUS = "Selesai Otomatis — WFH";
+export const PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE = "Izin piket berhasil diproses dan jadwal pengganti telah dibuat.";
 export const MAX_PICKET_PHOTO_BYTES = 5 * 1024 * 1024;
 const PICKET_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const PICKET_PHOTO_EXTENSION_TYPES: Record<string, string> = {
@@ -189,6 +190,23 @@ export function getManualPicketTaskPayload(input: ManualPicketTaskInput) {
     description: String(input.description || "").trim() || null,
     active: true,
   };
+}
+
+export function shouldDisablePicketLeaveSubmit(saving: boolean, reason: string) {
+  return saving || !String(reason || "").trim();
+}
+
+export function getPicketLeaveSubmitErrorMessage(error: any) {
+  const status = Number(error?.status || 0);
+  const code = String(error?.body?.code || error?.code || "").trim();
+  const message = String(error?.body?.message || error?.message || "").trim();
+
+  if (code === "PICKET_REPLACEMENT_DATE_UNAVAILABLE") {
+    return message || "Tidak ditemukan jadwal pengganti dengan tugas yang tersedia dalam 14 hari ke depan.";
+  }
+  if (status === 409) return message || "Pengajuan izin piket mengalami konflik dengan data yang sudah ada.";
+  if (status === 422) return message || "Pengajuan izin piket tidak dapat diproses karena data belum memenuhi ketentuan.";
+  return "Gagal memproses izin piket. Silakan coba lagi.";
 }
 
 function normalizePicketTaskName(value?: string | null) {
@@ -505,7 +523,8 @@ export function mapPicketSubmissionResult(value: any): PicketSubmissionResult {
   };
 }
 
-export function mapPicketLeaveRequest(row: any): PicketLeaveRequest {
+export function mapPicketLeaveRequest(value: any): PicketLeaveRequest {
+  const row = value?.request || value?.leaveRequest || value?.leave_request || value?.item || value?.data || value || {};
   const scheduleId = row?.schedule_id || row?.scheduleId || row?.assignment_id || row?.assignmentId || null;
   return {
     id: text(row?.id || row?.request_id || row?.requestId || `picket-leave-${Date.now()}`),

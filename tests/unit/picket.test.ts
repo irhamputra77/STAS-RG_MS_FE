@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
+  PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE,
   getDuplicatePicketTaskAssignments,
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
+  getPicketLeaveSubmitErrorMessage,
   getPicketTaskConflict,
   getPicketScheduleGeneratePayload,
   getPicketAssignmentStatus,
@@ -18,6 +22,7 @@ import {
   mapPicketStudentDay,
   mapPicketTask,
   mapPicketTodayAssignment,
+  shouldDisablePicketLeaveSubmit,
   shouldRequirePicketPhoto,
   validatePicketPhoto,
 } from "../../src/app/lib/picket";
@@ -272,6 +277,63 @@ test("mapPicketLeaveRequest reads replacement schedule aliases", () => {
   assert.equal(camel.replacementDate, "2026-05-26");
   assert.equal(snake.replacementScheduleId, "SCH-RPL-2");
   assert.equal(snake.replacementDate, "2026-05-27");
+});
+
+test("automatic picket leave response keeps backend approval status and replacement date", () => {
+  const item = mapPicketLeaveRequest({
+    id: "LV-AUTO-1",
+    scheduleId: "SCH-ORIGINAL-1",
+    date: "2026-09-08",
+    reason: "Sakit",
+    status: "Disetujui",
+    replacementScheduleId: "SCH-REPLACEMENT-1",
+    replacementDate: "2026-09-10",
+  });
+
+  assert.equal(item.status, "Disetujui");
+  assert.equal(item.replacementScheduleId, "SCH-REPLACEMENT-1");
+  assert.equal(item.replacementDate, "2026-09-10");
+  assert.equal(PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE, "Izin piket berhasil diproses dan jadwal pengganti telah dibuat.");
+});
+
+test("mapPicketLeaveRequest preserves historical picket leave statuses", () => {
+  for (const status of ["Menunggu", "Disetujui", "Ditolak"]) {
+    assert.equal(mapPicketLeaveRequest({ id: `LV-${status}`, status }).status, status);
+  }
+});
+
+test("picket leave submit stays disabled while saving or without a reason", () => {
+  assert.equal(shouldDisablePicketLeaveSubmit(true, "Ada kegiatan kampus"), true);
+  assert.equal(shouldDisablePicketLeaveSubmit(false, "   "), true);
+  assert.equal(shouldDisablePicketLeaveSubmit(false, "Ada kegiatan kampus"), false);
+});
+
+test("picket leave submit shows backend conflict and capacity messages", () => {
+  assert.equal(getPicketLeaveSubmitErrorMessage({
+    status: 409,
+    body: {
+      code: "PICKET_REPLACEMENT_DATE_UNAVAILABLE",
+      message: "Tidak ditemukan jadwal pengganti dengan tugas yang tersedia dalam 14 hari ke depan.",
+    },
+  }), "Tidak ditemukan jadwal pengganti dengan tugas yang tersedia dalam 14 hari ke depan.");
+  assert.equal(getPicketLeaveSubmitErrorMessage({ status: 409, body: { message: "Jadwal sudah digunakan." } }), "Jadwal sudah digunakan.");
+  assert.equal(getPicketLeaveSubmitErrorMessage({ status: 422, body: { message: "Kapasitas jadwal penuh." } }), "Kapasitas jadwal penuh.");
+  assert.equal(getPicketLeaveSubmitErrorMessage({ status: 500, message: "Database error" }), "Gagal memproses izin piket. Silakan coba lagi.");
+  assert.equal(getPicketLeaveSubmitErrorMessage(new TypeError("Failed to fetch")), "Gagal memproses izin piket. Silakan coba lagi.");
+});
+
+test("operator picket UI no longer exposes manual leave approval", () => {
+  const studentPicketSource = readFileSync(join(process.cwd(), "src/app/components/pages/mahasiswa/Piket.tsx"), "utf8");
+  const operatorPicketSource = readFileSync(join(process.cwd(), "src/app/components/pages/operator/PiketOperator.tsx"), "utf8");
+  const dashboardSource = readFileSync(join(process.cwd(), "src/app/components/pages/operator/OperatorDashboard.tsx"), "utf8");
+  const picketSources = `${studentPicketSource}\n${operatorPicketSource}\n${dashboardSource}`;
+
+  assert.doesNotMatch(picketSources, /picket\/leave-requests\/[^\s`"']+\/status/);
+  assert.doesNotMatch(operatorPicketSource, /reviewLeave/);
+  assert.doesNotMatch(operatorPicketSource, />\s*Setujui\s*</);
+  assert.doesNotMatch(operatorPicketSource, />\s*Tolak\s*</);
+  assert.match(studentPicketSource, /approvedLeaveForToday\.replacementDate/);
+  assert.match(studentPicketSource, /disabled=\{shouldDisablePicketLeaveSubmit\(saving, reason\)\}/);
 });
 
 test("mapPicketStudentDay normalizes fixed weekday response", () => {
