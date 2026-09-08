@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  getDuplicatePicketTaskAssignments,
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
+  getPicketTaskConflict,
   getPicketScheduleGeneratePayload,
   getPicketAssignmentStatus,
   getPicketHolidayFromTodayResponse,
@@ -417,4 +419,62 @@ test("getManualPicketTaskPayload trims manual task input", () => {
     description: "Setelah jam piket selesai",
     active: true,
   });
+});
+
+test("getPicketTaskConflict finds a task already assigned on the same date", () => {
+  const assignments = [
+    mapPicketAssignment({
+      schedule_id: "SCH-1",
+      schedule_date: "2026-06-10",
+      student_id: "S1",
+      student_name: "Ani",
+      task_id: "T1",
+      task_name: "Bersihkan meja lab",
+    }),
+  ];
+
+  assert.equal(getPicketTaskConflict(assignments, {
+    scheduleDate: "2026-06-10",
+    taskId: "T1",
+    taskName: "Bersihkan meja lab",
+  })?.studentId, "S1");
+  assert.equal(getPicketTaskConflict(assignments, {
+    scheduleDate: "2026-06-11",
+    taskId: "T1",
+    taskName: "Bersihkan meja lab",
+  }), null);
+});
+
+test("getPicketTaskConflict ignores the schedule being edited and normalizes task names", () => {
+  const assignments = [
+    mapPicketAssignment({
+      schedule_id: "SCH-1",
+      schedule_date: "2026-06-10",
+      student_id: "S1",
+      task_id: "T1",
+      task_name: "Bersihkan   Meja Lab",
+    }),
+  ];
+
+  assert.equal(getPicketTaskConflict(assignments, {
+    scheduleDate: "2026-06-10",
+    taskName: "  bersihkan meja lab ",
+    excludeScheduleId: "SCH-1",
+  }), null);
+  assert.equal(getPicketTaskConflict(assignments, {
+    scheduleDate: "2026-06-10",
+    taskName: "  bersihkan meja lab ",
+  })?.scheduleId, "SCH-1");
+});
+
+test("getDuplicatePicketTaskAssignments groups duplicate tasks per date", () => {
+  const assignments = [
+    mapPicketAssignment({ schedule_id: "SCH-1", schedule_date: "2026-06-10", student_id: "S1", task_id: "T1", task_name: "Sapu Lab" }),
+    mapPicketAssignment({ schedule_id: "SCH-2", schedule_date: "2026-06-10", student_id: "S2", task_id: "T1", task_name: "Sapu Lab" }),
+    mapPicketAssignment({ schedule_id: "SCH-3", schedule_date: "2026-06-11", student_id: "S3", task_id: "T1", task_name: "Sapu Lab" }),
+  ];
+
+  const groups = getDuplicatePicketTaskAssignments(assignments);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].map((item) => item.scheduleId), ["SCH-1", "SCH-2"]);
 });

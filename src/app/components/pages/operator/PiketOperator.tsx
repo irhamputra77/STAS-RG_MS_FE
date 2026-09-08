@@ -26,11 +26,13 @@ import {
   PicketStudentDay,
   PicketSubmission,
   PicketTask,
+  getDuplicatePicketTaskAssignments,
   getJakartaDateKey,
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
   getPicketAssignmentStatus,
   getPicketScheduleGeneratePayload,
+  getPicketTaskConflict,
   isPicketAssignmentSubmitted,
   mapPicketAssignment,
   mapPicketHoliday,
@@ -142,6 +144,12 @@ function getPicketScheduleErrorMessage(err: any, fallback: string) {
   const message = String(err?.body?.message || err?.message || "").trim();
   if (/belum ada tugas piket aktif/i.test(message)) {
     return "Tambahkan atau aktifkan tugas piket terlebih dahulu sebelum resync.";
+  }
+  if (err?.status === 409 && (err?.body?.code === "PICKET_TASK_ALREADY_ASSIGNED" || /tugas.*(?:sudah|telah).*digunakan/i.test(message))) {
+    return message || "Tugas piket tersebut sudah diberikan kepada mahasiswa lain pada tanggal yang sama.";
+  }
+  if (err?.status === 409 && err?.body?.code === "PICKET_STUDENT_ALREADY_SCHEDULED") {
+    return message || "Mahasiswa tersebut sudah memiliki jadwal piket pada tanggal yang sama.";
   }
   return message || fallback;
 }
@@ -384,8 +392,8 @@ export default function PiketOperator() {
       setError("");
       const payload = getPicketScheduleGeneratePayload(targetDate);
       await apiPost("/picket/schedules/generate", payload);
-      setInfo(`Jadwal tanggal ${targetDate} disinkronkan dari hari piket tetap. Jenis tugas untuk jadwal baru dipilih secara acak.`);
       await loadData();
+      setInfo(`Jadwal tanggal ${targetDate} disinkronkan dari hari piket tetap. Setiap mahasiswa harus memperoleh tugas yang berbeda pada tanggal tersebut.`);
     } catch (err: any) {
       setError(getPicketScheduleErrorMessage(err, "Gagal generate jadwal piket."));
     } finally {
@@ -439,6 +447,30 @@ export default function PiketOperator() {
     const useManualTask = scheduleTaskMode === "manual";
     if (!scheduleForm.studentId || (!useManualTask && !scheduleForm.taskId) || (useManualTask && !manualScheduleTaskName.trim())) {
       setError("Pilih mahasiswa dan isi tugas piket terlebih dahulu.");
+      return;
+    }
+
+    const currentScheduleId = editingScheduleId || "";
+    const studentConflict = assignments.find((item) => (
+      item.scheduleDate === date &&
+      item.studentId === scheduleForm.studentId &&
+      String(item.scheduleId || item.id) !== currentScheduleId
+    ));
+    if (studentConflict) {
+      setError(`${studentConflict.studentName} sudah memiliki jadwal piket pada ${date}.`);
+      return;
+    }
+
+    const selectedTask = useManualTask ? null : tasks.find((task) => task.id === scheduleForm.taskId);
+    const taskConflict = getPicketTaskConflict(assignments, {
+      scheduleDate: date,
+      taskId: useManualTask ? null : scheduleForm.taskId,
+      taskName: useManualTask ? manualScheduleTaskName : selectedTask?.name,
+      excludeScheduleId: editingScheduleId,
+    });
+    if (taskConflict) {
+      const taskLabel = useManualTask ? manualScheduleTaskName.trim() : selectedTask?.name || taskConflict.taskName;
+      setError(`Tugas “${taskLabel}” sudah diberikan kepada ${taskConflict.studentName} pada ${date}. Pilih tugas lain.`);
       return;
     }
 
@@ -681,6 +713,7 @@ export default function PiketOperator() {
   };
 
   const selectedHoliday = holidays.find((holiday) => holiday.date === date) || assignments.find((item) => item.isHoliday)?.holiday || null;
+  const duplicateTaskAssignments = getDuplicatePicketTaskAssignments(assignments);
   const missingAssignments = assignments.filter((item) => !item.isHoliday && !item.isExempt && !isPicketAssignmentSubmitted(item));
   const waitingReviewSubmissions = submissions.filter((item) => !["valid", "bermasalah", "ditolak", "disetujui"].includes(String(item.status || "").toLowerCase()));
   const waitingReviewNames = Array.from(new Set(waitingReviewSubmissions.map((item) => item.studentName).filter(Boolean))).slice(0, 3);
@@ -975,7 +1008,7 @@ export default function PiketOperator() {
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <h2 className="text-sm font-black text-foreground">Jadwal dan Status Hari Ini</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">Tambah, edit, atau hapus jadwal piket tanggal {date}; tugas bisa dipilih atau ditulis manual.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Tambah, edit, atau hapus jadwal piket tanggal {date}; setiap tugas hanya boleh diberikan kepada satu mahasiswa.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-9 rounded-[9px] border border-border bg-white px-3 text-xs font-black outline-none" />
@@ -988,6 +1021,17 @@ export default function PiketOperator() {
                   )}
                 </div>
 
+                {duplicateTaskAssignments.length > 0 && (
+                  <div className="mt-4 rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                    <p className="font-black">Terdeteksi tugas piket ganda pada data backend.</p>
+                    {duplicateTaskAssignments.map((group) => (
+                      <p key={`${group[0].scheduleDate}-${group[0].taskId || group[0].taskName}`} className="mt-1">
+                        {group[0].taskName}: {group.map((item) => item.studentName).join(", ")}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-6">
                   <select
                     value={scheduleForm.studentId}
@@ -995,9 +1039,18 @@ export default function PiketOperator() {
                     className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none lg:col-span-2"
                   >
                     <option value="">Pilih mahasiswa</option>
-                    {students.map((student) => (
-                      <option key={student.id} value={student.id}>{student.name} {student.nim ? `- ${student.nim}` : ""}</option>
-                    ))}
+                    {students.map((student) => {
+                      const usedByAnotherSchedule = assignments.some((item) => (
+                        item.scheduleDate === date &&
+                        item.studentId === student.id &&
+                        String(item.scheduleId || item.id) !== String(editingScheduleId || "")
+                      ));
+                      return (
+                        <option key={student.id} value={student.id} disabled={usedByAnotherSchedule}>
+                          {student.name} {student.nim ? `- ${student.nim}` : ""}{usedByAnotherSchedule ? " (sudah dijadwalkan)" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                   <div className="flex min-w-0 flex-col gap-2 lg:col-span-4">
                     <div className="grid grid-cols-2 gap-2 rounded-[10px] border border-border bg-slate-50 p-1">
@@ -1023,9 +1076,19 @@ export default function PiketOperator() {
                         className="h-10 min-w-0 rounded-[10px] border border-border bg-white px-3 text-sm font-bold outline-none"
                       >
                         <option value="">Pilih tugas</option>
-                        {tasks.map((task) => (
-                          <option key={task.id} value={task.id}>{task.name}{task.active ? "" : " (nonaktif)"}</option>
-                        ))}
+                        {tasks.map((task) => {
+                          const conflict = getPicketTaskConflict(assignments, {
+                            scheduleDate: date,
+                            taskId: task.id,
+                            taskName: task.name,
+                            excludeScheduleId: editingScheduleId,
+                          });
+                          return (
+                            <option key={task.id} value={task.id} disabled={Boolean(conflict)}>
+                              {task.name}{task.active ? "" : " (nonaktif)"}{conflict ? ` (dipakai ${conflict.studentName})` : ""}
+                            </option>
+                          );
+                        })}
                       </select>
                     ) : (
                       <div className="grid grid-cols-1 gap-2">
