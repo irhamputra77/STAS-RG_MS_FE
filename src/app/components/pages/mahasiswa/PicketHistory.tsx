@@ -49,7 +49,10 @@ function formatDateTime(value?: string | null) {
 }
 
 function getSubmissionStatus(item: PicketAssignment) {
-  return getPicketAssignmentStatus(item, "Dijadwalkan");
+  if (item.autoCompletedByWfh || item.isHoliday || item.isExempt) {
+    return getPicketAssignmentStatus(item, "Dijadwalkan");
+  }
+  return item.submissionStatus || (isPicketAssignmentSubmitted(item) ? "Terkirim" : item.status || "Dijadwalkan");
 }
 
 function normalizeStudent(row: any): StudentOption {
@@ -136,7 +139,7 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
   }, [loadData]);
 
   const submittedHistory = history.filter((item) => item.isHoliday || item.isExempt || isPicketAssignmentSubmitted(item));
-  const waitingReviewHistory = submittedHistory.filter((item) => getSubmissionStatus(item) === "Terkirim");
+  const legacySubmittedHistory = submittedHistory.filter((item) => getSubmissionStatus(item) === "Terkirim");
   const filteredHistory = submittedHistory.filter((item) => {
     const status = getSubmissionStatus(item);
     const haystack = `${item.studentName} ${item.nim || ""} ${item.taskName} ${item.taskDescription || ""} ${item.date} ${status}`.toLowerCase();
@@ -149,11 +152,11 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
   const summary = {
     total: submittedHistory.length,
     valid: submittedHistory.filter((item) => getSubmissionStatus(item) === "Valid").length,
-    pending: waitingReviewHistory.length,
+    submitted: legacySubmittedHistory.length,
     problem: submittedHistory.filter((item) => getSubmissionStatus(item) === "Bermasalah").length,
   };
-  const waitingReviewNames = Array.from(new Set(waitingReviewHistory.map((item) => item.studentName).filter(Boolean))).slice(0, 3);
-  const remainingWaitingReview = Math.max(0, waitingReviewHistory.length - waitingReviewNames.length);
+  const legacySubmittedNames = Array.from(new Set(legacySubmittedHistory.map((item) => item.studentName).filter(Boolean))).slice(0, 3);
+  const remainingLegacySubmitted = Math.max(0, legacySubmittedHistory.length - legacySubmittedNames.length);
 
   const focusHistoryList = (status: string) => {
     setQuery("");
@@ -193,7 +196,7 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
           {[
             { label: "Total Submit", value: summary.total, icon: <History size={18} />, tone: "bg-slate-100 text-slate-700", filter: "all" },
             { label: "Valid", value: summary.valid, icon: <CheckCircle2 size={18} />, tone: "bg-emerald-100 text-emerald-700", filter: "Valid" },
-            { label: "Menunggu", value: summary.pending, icon: <ImageIcon size={18} />, tone: "bg-blue-100 text-blue-700", filter: "Terkirim", helper: management && waitingReviewNames.length > 0 ? `${waitingReviewNames.join(", ")}${remainingWaitingReview > 0 ? ` +${remainingWaitingReview} lainnya` : ""}` : "Klik untuk lihat yang sudah upload" },
+            { label: "Terkirim", value: summary.submitted, icon: <ImageIcon size={18} />, tone: "bg-blue-100 text-blue-700", filter: "Terkirim", helper: management && legacySubmittedNames.length > 0 ? `${legacySubmittedNames.join(", ")}${remainingLegacySubmitted > 0 ? ` +${remainingLegacySubmitted} lainnya` : ""}` : "Status historis submission" },
             { label: "Bermasalah", value: summary.problem, icon: <XCircle size={18} />, tone: "bg-red-100 text-red-700", filter: "Bermasalah" },
             ...(management ? [{ label: "Mahasiswa", value: students.length, icon: <Users size={18} />, tone: "bg-amber-100 text-amber-700", filter: "all" }] : []),
           ].map((item) => (
@@ -278,13 +281,13 @@ export default function PicketHistory({ management = false }: PicketHistoryProps
                       <>
                         <p className="mt-1 text-xs font-bold text-emerald-700">Submit: {formatDateTime(item.submittedAt)}</p>
                         <p className="mt-1 text-xs font-bold text-blue-700">
-                          {item.reviewedAt ? `Direview: ${formatDateTime(item.reviewedAt)}${item.reviewedBy ? ` oleh ${item.reviewedBy}` : ""}` : "Menunggu review operator"}
+                          {item.reviewedAt ? `Divalidasi: ${formatDateTime(item.reviewedAt)}${item.reviewedBy ? ` oleh ${item.reviewedBy}` : ""}` : "Belum memiliki catatan validasi"}
                         </p>
                       </>
                     )}
                     {item.reviewNote && (
                       <div className="mt-3 rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-700">
-                        <span className="font-black text-slate-900">Catatan review:</span> {item.reviewNote}
+                        <span className="font-black text-slate-900">Catatan validasi:</span> {item.reviewNote}
                       </div>
                     )}
                   </div>

@@ -2,7 +2,7 @@ import { resolveApiAssetUrl } from "./api";
 
 export const PICKET_BLOCK_REASON = "PICKET_SUBMISSION_INVALID";
 export const PICKET_AUTO_WFH_STATUS = "Selesai Otomatis — WFH";
-export const PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE = "Izin piket berhasil diproses dan jadwal pengganti telah dibuat.";
+export const PICKET_AUTO_VALIDATED_SUCCESS_MESSAGE = "Piket berhasil diselesaikan dan divalidasi otomatis.";
 export const MAX_PICKET_PHOTO_BYTES = 5 * 1024 * 1024;
 const PICKET_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const PICKET_PHOTO_EXTENSION_TYPES: Record<string, string> = {
@@ -75,6 +75,7 @@ export type PicketSubmission = {
   photoUrl?: string | null;
   submittedAt?: string | null;
   status: string;
+  reviewedAt?: string | null;
   reviewNote?: string | null;
 };
 
@@ -84,6 +85,8 @@ export type PicketSubmissionResult = {
   assignmentStatus?: string | null;
   photoUrl?: string | null;
   submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
 };
 
 export type PicketLeaveRequest = {
@@ -192,21 +195,16 @@ export function getManualPicketTaskPayload(input: ManualPicketTaskInput) {
   };
 }
 
-export function shouldDisablePicketLeaveSubmit(saving: boolean, reason: string) {
-  return saving || !String(reason || "").trim();
+export function shouldDisablePicketSubmissionSubmit(saving: boolean, hasPhoto: boolean) {
+  return saving || !hasPhoto;
 }
 
-export function getPicketLeaveSubmitErrorMessage(error: any) {
+export function getPicketSubmissionErrorMessage(error: any) {
   const status = Number(error?.status || 0);
-  const code = String(error?.body?.code || error?.code || "").trim();
   const message = String(error?.body?.message || error?.message || "").trim();
 
-  if (code === "PICKET_REPLACEMENT_DATE_UNAVAILABLE") {
-    return message || "Tidak ditemukan jadwal pengganti dengan tugas yang tersedia dalam 14 hari ke depan.";
-  }
-  if (status === 409) return message || "Pengajuan izin piket mengalami konflik dengan data yang sudah ada.";
-  if (status === 422) return message || "Pengajuan izin piket tidak dapat diproses karena data belum memenuhi ketentuan.";
-  return "Gagal memproses izin piket. Silakan coba lagi.";
+  if ([400, 409, 422, 500].includes(status) && message) return message;
+  return "Gagal mengirim bukti piket. Silakan coba lagi.";
 }
 
 function normalizePicketTaskName(value?: string | null) {
@@ -459,6 +457,7 @@ export function mapPicketSubmission(row: any): PicketSubmission {
     photoUrl: resolveApiAssetUrl(row?.photo_url || row?.photoUrl || row?.file_url || row?.fileUrl || null),
     submittedAt: row?.submitted_at || row?.submittedAt || null,
     status: text(row?.status || row?.review_status || row?.reviewStatus, "Terkirim"),
+    reviewedAt: row?.reviewed_at || row?.reviewedAt || null,
     reviewNote: row?.review_note || row?.reviewNote || null,
   };
 }
@@ -485,6 +484,7 @@ export function shouldRequirePicketPhoto(
 export function getPicketAssignmentStatus(item: PicketAssignment, fallback = "Ditugaskan") {
   if (item.autoCompletedByWfh) return PICKET_AUTO_WFH_STATUS;
   if (item.isHoliday || item.isExempt) return "Libur";
+  if (item.status === "Selesai") return "Selesai";
   if (isPicketAssignmentSubmitted(item)) return item.submissionStatus || "Terkirim";
   return item.status || fallback;
 }
@@ -520,6 +520,8 @@ export function mapPicketSubmissionResult(value: any): PicketSubmissionResult {
     assignmentStatus: assignment?.status || value?.assignmentStatus || value?.assignment_status || null,
     photoUrl: resolveApiAssetUrl(value?.photoUrl || value?.photo_url || row?.photo_url || row?.photoUrl || row?.file_url || row?.fileUrl || null),
     submittedAt: value?.submittedAt || value?.submitted_at || row?.submitted_at || row?.submittedAt || row?.created_at || row?.createdAt || null,
+    reviewedAt: value?.reviewedAt || value?.reviewed_at || row?.reviewed_at || row?.reviewedAt || null,
+    reviewNote: value?.reviewNote || value?.review_note || row?.review_note || row?.reviewNote || null,
   };
 }
 

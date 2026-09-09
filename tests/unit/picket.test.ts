@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE,
+  PICKET_AUTO_VALIDATED_SUCCESS_MESSAGE,
   getDuplicatePicketTaskAssignments,
   getManualPicketSchedulePayloads,
   getManualPicketTaskPayload,
-  getPicketLeaveSubmitErrorMessage,
+  getPicketSubmissionErrorMessage,
   getPicketTaskConflict,
   getPicketScheduleGeneratePayload,
   getPicketAssignmentStatus,
@@ -22,7 +22,7 @@ import {
   mapPicketStudentDay,
   mapPicketTask,
   mapPicketTodayAssignment,
-  shouldDisablePicketLeaveSubmit,
+  shouldDisablePicketSubmissionSubmit,
   shouldRequirePicketPhoto,
   validatePicketPhoto,
 } from "../../src/app/lib/picket";
@@ -279,61 +279,56 @@ test("mapPicketLeaveRequest reads replacement schedule aliases", () => {
   assert.equal(snake.replacementDate, "2026-05-27");
 });
 
-test("automatic picket leave response keeps backend approval status and replacement date", () => {
-  const item = mapPicketLeaveRequest({
-    id: "LV-AUTO-1",
-    scheduleId: "SCH-ORIGINAL-1",
-    date: "2026-09-08",
-    reason: "Sakit",
-    status: "Disetujui",
-    replacementScheduleId: "SCH-REPLACEMENT-1",
-    replacementDate: "2026-09-10",
-  });
-
-  assert.equal(item.status, "Disetujui");
-  assert.equal(item.replacementScheduleId, "SCH-REPLACEMENT-1");
-  assert.equal(item.replacementDate, "2026-09-10");
-  assert.equal(PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE, "Izin piket berhasil diproses dan jadwal pengganti telah dibuat.");
-});
-
 test("mapPicketLeaveRequest preserves historical picket leave statuses", () => {
   for (const status of ["Menunggu", "Disetujui", "Ditolak"]) {
     assert.equal(mapPicketLeaveRequest({ id: `LV-${status}`, status }).status, status);
   }
 });
 
-test("picket leave submit stays disabled while saving or without a reason", () => {
-  assert.equal(shouldDisablePicketLeaveSubmit(true, "Ada kegiatan kampus"), true);
-  assert.equal(shouldDisablePicketLeaveSubmit(false, "   "), true);
-  assert.equal(shouldDisablePicketLeaveSubmit(false, "Ada kegiatan kampus"), false);
+test("new picket leave remains pending without a replacement schedule", () => {
+  const item = mapPicketLeaveRequest({
+    id: "LV-PENDING-1",
+    status: "Menunggu",
+    replacementScheduleId: null,
+    replacementDate: null,
+  });
+
+  assert.equal(item.status, "Menunggu");
+  assert.equal(item.replacementScheduleId, null);
+  assert.equal(item.replacementDate, null);
 });
 
-test("picket leave submit shows backend conflict and capacity messages", () => {
-  assert.equal(getPicketLeaveSubmitErrorMessage({
-    status: 409,
-    body: {
-      code: "PICKET_REPLACEMENT_DATE_UNAVAILABLE",
-      message: "Tidak ditemukan jadwal pengganti dengan tugas yang tersedia dalam 14 hari ke depan.",
-    },
-  }), "Tidak ditemukan jadwal pengganti dengan tugas yang tersedia dalam 14 hari ke depan.");
-  assert.equal(getPicketLeaveSubmitErrorMessage({ status: 409, body: { message: "Jadwal sudah digunakan." } }), "Jadwal sudah digunakan.");
-  assert.equal(getPicketLeaveSubmitErrorMessage({ status: 422, body: { message: "Kapasitas jadwal penuh." } }), "Kapasitas jadwal penuh.");
-  assert.equal(getPicketLeaveSubmitErrorMessage({ status: 500, message: "Database error" }), "Gagal memproses izin piket. Silakan coba lagi.");
-  assert.equal(getPicketLeaveSubmitErrorMessage(new TypeError("Failed to fetch")), "Gagal memproses izin piket. Silakan coba lagi.");
+test("picket submission submit stays disabled while uploading or without a photo", () => {
+  assert.equal(shouldDisablePicketSubmissionSubmit(true, true), true);
+  assert.equal(shouldDisablePicketSubmissionSubmit(false, false), true);
+  assert.equal(shouldDisablePicketSubmissionSubmit(false, true), false);
 });
 
-test("operator picket UI no longer exposes manual leave approval", () => {
+test("picket submission errors use backend messages for supported HTTP statuses", () => {
+  for (const status of [400, 409, 422, 500]) {
+    assert.equal(getPicketSubmissionErrorMessage({ status, body: { message: `Backend ${status}` } }), `Backend ${status}`);
+  }
+  assert.equal(getPicketSubmissionErrorMessage(new TypeError("Failed to fetch")), "Gagal mengirim bukti piket. Silakan coba lagi.");
+});
+
+test("submission review is removed while leave approval remains available", () => {
   const studentPicketSource = readFileSync(join(process.cwd(), "src/app/components/pages/mahasiswa/Piket.tsx"), "utf8");
+  const submissionHistorySource = readFileSync(join(process.cwd(), "src/app/components/pages/mahasiswa/PicketHistory.tsx"), "utf8");
   const operatorPicketSource = readFileSync(join(process.cwd(), "src/app/components/pages/operator/PiketOperator.tsx"), "utf8");
-  const dashboardSource = readFileSync(join(process.cwd(), "src/app/components/pages/operator/OperatorDashboard.tsx"), "utf8");
-  const picketSources = `${studentPicketSource}\n${operatorPicketSource}\n${dashboardSource}`;
+  const submissionSectionSource = operatorPicketSource.split("Riwayat Submission Piket")[1]?.split("Pengajuan Izin Piket")[0] || "";
 
-  assert.doesNotMatch(picketSources, /picket\/leave-requests\/[^\s`"']+\/status/);
-  assert.doesNotMatch(operatorPicketSource, /reviewLeave/);
-  assert.doesNotMatch(operatorPicketSource, />\s*Setujui\s*</);
-  assert.doesNotMatch(operatorPicketSource, />\s*Tolak\s*</);
-  assert.match(studentPicketSource, /approvedLeaveForToday\.replacementDate/);
-  assert.match(studentPicketSource, /disabled=\{shouldDisablePicketLeaveSubmit\(saving, reason\)\}/);
+  assert.doesNotMatch(operatorPicketSource, /picket\/submissions\/[^\s`"']+\/review/);
+  assert.doesNotMatch(operatorPicketSource, /reviewSubmission|markProblemAndBlock/);
+  assert.doesNotMatch(submissionSectionSource, /<button/);
+  assert.match(operatorPicketSource, />\s*Setujui\s*</);
+  assert.match(operatorPicketSource, />\s*Tolak\s*</);
+  assert.match(operatorPicketSource, /picket\/leave-requests\/\$\{encodeURIComponent\(request\.id\)\}\/status/);
+  assert.match(studentPicketSource, /PICKET_AUTO_VALIDATED_SUCCESS_MESSAGE/);
+  assert.match(studentPicketSource, /shouldDisablePicketSubmissionSubmit\(saving, Boolean\(photoFile\)\)/);
+  assert.doesNotMatch(submissionHistorySource, /Menunggu review operator/);
+  assert.match(submissionHistorySource, /<option value="Terkirim">Terkirim<\/option>/);
+  assert.match(submissionHistorySource, /<option value="Valid">Valid<\/option>/);
+  assert.match(submissionHistorySource, /<option value="Bermasalah">Bermasalah<\/option>/);
 });
 
 test("mapPicketStudentDay normalizes fixed weekday response", () => {
@@ -400,6 +395,7 @@ test("mapPicketSubmission reads approval endpoint response", () => {
     photoUrl: "https://ms-api.stas-rg.com/uploads/piket/sub-1.jpg",
     submittedAt: "2026-08-17T01:00:00.000Z",
     status: "Terkirim",
+    reviewedAt: null,
     reviewNote: null,
   });
 });
@@ -418,7 +414,42 @@ test("mapPicketSubmissionResult reads nested submission response", () => {
     assignmentStatus: null,
     photoUrl: "https://ms-api.stas-rg.com/uploads/piket.jpg",
     submittedAt: "2026-06-11T03:00:00.000Z",
+    reviewedAt: null,
+    reviewNote: null,
   });
+});
+
+test("automatic submission response maps Valid submission and Selesai assignment statuses", () => {
+  const result = mapPicketSubmissionResult({
+    submissionStatus: "Valid",
+    submission: {
+      id: "SUB-AUTO-1",
+      status: "Valid",
+      reviewedAt: "2026-09-08T02:00:00.000Z",
+      reviewNote: "Divalidasi otomatis oleh sistem.",
+    },
+    assignment: {
+      status: "Selesai",
+    },
+  });
+
+  assert.equal(result.status, "Valid");
+  assert.equal(result.assignmentStatus, "Selesai");
+  assert.equal(result.reviewedAt, "2026-09-08T02:00:00.000Z");
+  assert.equal(result.reviewNote, "Divalidasi otomatis oleh sistem.");
+  assert.equal(PICKET_AUTO_VALIDATED_SUCCESS_MESSAGE, "Piket berhasil diselesaikan dan divalidasi otomatis.");
+  assert.equal(getPicketAssignmentStatus(mapPicketAssignment({
+    schedule_id: "SCH-AUTO-1",
+    status: result.assignmentStatus,
+    submitted: true,
+    submission_status: result.status,
+  })), "Selesai");
+});
+
+test("historical submission statuses remain mapped", () => {
+  for (const status of ["Terkirim", "Valid", "Bermasalah"]) {
+    assert.equal(mapPicketSubmission({ id: `SUB-${status}`, status }).status, status);
+  }
 });
 
 test("validatePicketPhoto rejects oversized images", () => {

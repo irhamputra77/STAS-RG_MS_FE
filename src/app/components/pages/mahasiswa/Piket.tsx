@@ -7,7 +7,7 @@ import { useAuth } from "../../../context/AuthContext";
 import {
   PicketAssignment,
   PicketHoliday,
-  PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE,
+  PICKET_AUTO_VALIDATED_SUCCESS_MESSAGE,
   PicketLeaveRequest,
   PicketStudentDay,
   ensurePicketPhotoPreviewable,
@@ -15,7 +15,7 @@ import {
   getJakartaDateKey,
   getPicketAssignmentStatus,
   getPicketHolidayFromTodayResponse,
-  getPicketLeaveSubmitErrorMessage,
+  getPicketSubmissionErrorMessage,
   getPicketStudentDayFromTodayResponse,
   hasPicketPhotoSubmission,
   isPicketAssignmentSubmitted,
@@ -25,7 +25,7 @@ import {
   mapPicketTodayAssignment,
   mapPicketLeaveRequest,
   mapPicketSubmissionResult,
-  shouldDisablePicketLeaveSubmit,
+  shouldDisablePicketSubmissionSubmit,
   validatePicketPhoto,
 } from "../../../lib/picket";
 
@@ -51,7 +51,6 @@ export default function Piket() {
   const [todayAssignment, setTodayAssignment] = React.useState<PicketAssignment | null>(null);
   const [history, setHistory] = React.useState<PicketAssignment[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<PicketLeaveRequest[]>([]);
-  const [lastProcessedLeave, setLastProcessedLeave] = React.useState<PicketLeaveRequest | null>(null);
   const [fixedDay, setFixedDay] = React.useState<PicketStudentDay | null>(null);
   const [isManager, setIsManager] = React.useState(false);
   const [reason, setReason] = React.useState("");
@@ -158,6 +157,7 @@ export default function Piket() {
   };
 
   const submitPicketPhoto = async () => {
+    if (saving) return;
     if (!todayAssignment) {
       setError("Bukti piket hanya dapat dikirim saat Anda punya jadwal piket hari ini.");
       return;
@@ -182,6 +182,7 @@ export default function Piket() {
     try {
       setSaving(true);
       setError("");
+      setInfo("");
       const result = await apiPost<any>("/picket/submissions", {
         scheduleId: todayAssignment.scheduleId || todayAssignment.id,
         assignmentId: todayAssignment.assignmentId || todayAssignment.id,
@@ -195,20 +196,22 @@ export default function Piket() {
       const submission = mapPicketSubmissionResult(result);
       setTodayAssignment((prev) => prev ? {
         ...prev,
-        submitted: true,
+        submitted: Boolean(submission.id || submission.photoUrl || submission.submittedAt),
         submissionId: submission.id || prev.submissionId,
-        submissionStatus: submission.status || "Terkirim",
-        status: submission.assignmentStatus || "Selesai",
+        submissionStatus: submission.status || prev.submissionStatus,
+        status: submission.assignmentStatus || prev.status,
         photoUrl: submission.photoUrl || prev.photoUrl,
-        submittedAt: submission.submittedAt || new Date().toISOString(),
+        submittedAt: submission.submittedAt || prev.submittedAt,
+        reviewedAt: submission.reviewedAt || prev.reviewedAt,
+        reviewNote: submission.reviewNote || prev.reviewNote,
       } : prev);
       clearPhoto();
-      setInfo("Bukti piket berhasil dikirim.");
+      setInfo(PICKET_AUTO_VALIDATED_SUCCESS_MESSAGE);
       window.dispatchEvent(new Event("stas:access-lock-refresh"));
       window.dispatchEvent(new Event("stas:picket-refresh"));
       await loadData();
     } catch (err: any) {
-      setError(err?.message || "Gagal mengirim bukti piket.");
+      setError(getPicketSubmissionErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -236,7 +239,6 @@ export default function Piket() {
       setSaving(true);
       setError("");
       setInfo("");
-      setLastProcessedLeave(null);
       const response = await apiPost<any>("/picket/leave-requests", {
         scheduleId: todayAssignment.scheduleId || todayAssignment.id,
         assignmentId: todayAssignment.assignmentId || todayAssignment.id,
@@ -244,29 +246,19 @@ export default function Piket() {
         date: todayAssignment.date || getJakartaDateKey(),
         reason: reason.trim(),
       });
-      const processedLeave = mapPicketLeaveRequest(response);
-      setLastProcessedLeave(processedLeave);
+      const pendingLeave = mapPicketLeaveRequest(response);
+      setLeaveRequests((prev) => [pendingLeave, ...prev.filter((item) => item.id !== pendingLeave.id)]);
       setReason("");
-      setInfo(PICKET_LEAVE_AUTO_APPROVED_SUCCESS_MESSAGE);
+      setInfo("Pengajuan izin piket berhasil dikirim dan menunggu persetujuan operator/PIC.");
       window.dispatchEvent(new Event("stas:picket-refresh"));
       window.dispatchEvent(new Event("stas:access-lock-refresh"));
       await loadData();
     } catch (err: any) {
-      setError(getPicketLeaveSubmitErrorMessage(err));
+      setError(err?.message || "Gagal mengajukan izin tidak piket.");
     } finally {
       setSaving(false);
     }
   };
-
-  const approvedLeaveForToday = [lastProcessedLeave, ...leaveRequests].find((item) => (
-    item?.status === "Disetujui" &&
-    Boolean(todayAssignment) &&
-    (
-      item.scheduleId === todayAssignment?.scheduleId ||
-      item.assignmentId === todayAssignment?.assignmentId ||
-      item.date === todayAssignment?.date
-    )
-  )) || null;
 
   return (
     <Layout title="Piket">
@@ -402,7 +394,7 @@ export default function Piket() {
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
                           className="hidden"
-                          disabled={String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
+                          disabled={saving || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
                           onChange={(event) => {
                             void pickPhoto(event.target.files?.[0] || null);
                             event.currentTarget.value = "";
@@ -426,7 +418,7 @@ export default function Piket() {
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             className="hidden"
-                            disabled={String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
+                            disabled={saving || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
                             onChange={(event) => {
                               void pickPhoto(event.target.files?.[0] || null);
                               event.currentTarget.value = "";
@@ -436,7 +428,7 @@ export default function Piket() {
                       )}
                       <button
                         onClick={submitPicketPhoto}
-                        disabled={saving || !photoFile || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
+                        disabled={shouldDisablePicketSubmissionSubmit(saving, Boolean(photoFile)) || String(todayAssignment.leaveStatus || "").toLowerCase() === "disetujui"}
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
                       >
                         {saving ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {hasPicketPhotoSubmission(todayAssignment) ? "Kirim Ulang" : "Kirim Bukti"}
@@ -446,27 +438,11 @@ export default function Piket() {
 
                   {!todayAssignment.autoCompletedByWfh && !todayAssignment.isExempt && !todayAssignment.isHoliday && <div className="rounded-[14px] border border-border p-4">
                     <h3 className="text-sm font-black text-foreground">Izin Tidak Piket</h3>
-                    {approvedLeaveForToday ? (
-                      <div className="mt-3 rounded-[12px] border border-emerald-200 bg-emerald-50 px-4 py-3">
-                        <div className="flex items-start gap-2">
-                          <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-600" />
-                          <div>
-                            <p className="text-sm font-black text-emerald-800">Izin piket telah diproses otomatis.</p>
-                            {approvedLeaveForToday.replacementDate && (
-                              <p className="mt-1 text-xs font-bold text-emerald-700">Jadwal pengganti: {approvedLeaveForToday.replacementDate}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Pengajuan izin akan diproses otomatis. Jadwal pengganti akan diberikan pada tanggal yang tersedia dalam 14 hari berikutnya.</p>
-                        <textarea value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Tulis alasan izin..." className="mt-3 w-full rounded-[10px] border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20 disabled:bg-slate-50 disabled:opacity-70" />
-                        <button onClick={submitLeave} disabled={shouldDisablePicketLeaveSubmit(saving, reason)} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60">
-                          {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {saving ? "Memproses..." : "Ajukan Izin"}
-                        </button>
-                      </>
-                    )}
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Pengajuan izin akan diperiksa oleh operator/PIC. Jadwal pengganti diberikan setelah izin disetujui.</p>
+                    <textarea value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Tulis alasan izin..." className="mt-3 w-full rounded-[10px] border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0AB600]/20 disabled:bg-slate-50 disabled:opacity-70" />
+                    <button onClick={submitLeave} disabled={saving || !reason.trim()} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[10px] bg-[#0AB600] text-sm font-black text-white hover:bg-[#099800] disabled:opacity-60">
+                      {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {saving ? "Mengirim..." : "Ajukan Izin"}
+                    </button>
                   </div>}
                 </div>
               ) : (

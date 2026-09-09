@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   CalendarDays,
   CalendarOff,
-  Check,
   History,
   ImageIcon,
   Loader2,
@@ -229,7 +228,7 @@ export default function PiketOperator() {
         apiGet<any>(`/picket/schedules?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/leave-requests?_=${Date.now()}`),
         apiGet<any>(`/picket/holidays?startDate=${holidayRange.startDate}&endDate=${holidayRange.endDate}&_=${Date.now()}`),
-        apiGet<any>(`/picket/submissions?date=${encodeURIComponent(date)}&status=${encodeURIComponent("Menunggu")}&_=${Date.now()}`),
+        apiGet<any>(`/picket/submissions?date=${encodeURIComponent(date)}&_=${Date.now()}`),
         apiGet<any>(`/picket/student-days?_=${Date.now()}`),
       ]);
       let overviewAssignmentRowsLoaded = false;
@@ -304,10 +303,10 @@ export default function PiketOperator() {
         const rows = Array.isArray(submissionsRes.value)
           ? submissionsRes.value
           : submissionsRes.value?.submissions || submissionsRes.value?.items || [];
-        const reviewSubmissions = rows.map(mapPicketSubmission);
-        setSubmissions(reviewSubmissions);
+        const mappedSubmissions = rows.map(mapPicketSubmission);
+        setSubmissions(mappedSubmissions);
         if (overviewAssignments) {
-          setAssignments(mergePicketAssignmentsWithSubmissions(overviewAssignments, overviewSubmissions || reviewSubmissions));
+          setAssignments(mergePicketAssignmentsWithSubmissions(overviewAssignments, overviewSubmissions || mappedSubmissions));
         }
       } else {
         setSubmissions(overviewSubmissions || []);
@@ -554,31 +553,60 @@ export default function PiketOperator() {
     }
   };
 
-  const reviewSubmission = async (submission: PicketSubmission, status: "Valid" | "Bermasalah") => {
+  const reviewLeave = async (request: PicketLeaveRequest, status: "Menunggu" | "Disetujui" | "Ditolak") => {
+    if (status === "Menunggu" && request.status === "Disetujui") {
+      const approved = await confirm({
+        title: "Batalkan persetujuan izin?",
+        description: "Jadwal pengganti akan dihapus dan jadwal asal kembali menjadi Ditugaskan. Pembatalan akan ditolak jika jadwal pengganti sudah memiliki submission.",
+        confirmLabel: "Batalkan Persetujuan",
+        variant: "danger",
+      });
+      if (!approved) return;
+    }
     try {
       setSaving(true);
       setError("");
-      await apiPatch(`/picket/submissions/${encodeURIComponent(submission.id)}/review`, {
+      const response = await apiPatch<any>(`/picket/leave-requests/${encodeURIComponent(request.id)}/status`, {
         status,
-        reviewNote: null,
-        reviewedBy: user?.id,
+        reviewNote: status === "Disetujui"
+          ? "Izin disetujui"
+          : status === "Ditolak"
+            ? "Izin ditolak"
+            : "Persetujuan izin dibatalkan",
       });
-      setSubmissions((prev) => prev.map((item) => item.id === submission.id ? { ...item, status } : item));
+      const reviewed = mapPicketLeaveRequest(response);
+      const replacementDate = reviewed.replacementDate || request.replacementDate;
+      await Promise.allSettled([
+        apiGet<any>(`/picket/leave-requests?_=${Date.now()}`),
+        apiGet<any>(`/picket/schedules?date=${encodeURIComponent(request.date)}&_=${Date.now()}`),
+        replacementDate
+          ? apiGet<any>(`/picket/schedules?date=${encodeURIComponent(replacementDate)}&_=${Date.now()}`)
+          : Promise.resolve(null),
+        request.studentId
+          ? apiGet<any>(`/picket/history?studentId=${encodeURIComponent(request.studentId)}&_=${Date.now()}`)
+          : Promise.resolve(null),
+        request.studentId
+          ? apiGet<any>(`/picket/today?studentId=${encodeURIComponent(request.studentId)}&_=${Date.now()}`)
+          : Promise.resolve(null),
+      ]);
       await loadData();
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("stas:access-lock-refresh"));
+      window.dispatchEvent(new Event("stas:picket-refresh"));
+      if (status === "Disetujui") {
+        setInfo(reviewed.replacementDate
+          ? `Izin disetujui. Jadwal pengganti dibuat pada ${reviewed.replacementDate}.`
+          : "Izin disetujui. Jadwal pengganti sedang diproses backend.");
+      } else if (status === "Menunggu") {
+        setInfo("Persetujuan izin dibatalkan. Jadwal asal kembali Ditugaskan dan jadwal pengganti dihapus.");
+      } else {
+        setInfo("Izin tidak piket ditolak.");
       }
-      setInfo(status === "Valid" ? "Foto piket ditandai valid." : "Foto piket ditandai bermasalah.");
     } catch (err: any) {
-      setError(err?.message || "Gagal review foto piket.");
+      setError(err?.status === 409
+        ? err?.message || "Status izin tidak dapat dibatalkan karena jadwal pengganti sudah memiliki submission."
+        : err?.message || "Gagal memproses izin tidak piket.");
     } finally {
       setSaving(false);
     }
-  };
-
-  const markProblemAndBlock = async (submission: PicketSubmission) => {
-    await reviewSubmission(submission, "Bermasalah");
-    setInfo(`Submission ${submission.studentName} ditandai bermasalah. Backend akan membuat access lock otomatis.`);
   };
 
   const resetHolidayForm = () => {
@@ -659,9 +687,6 @@ export default function PiketOperator() {
   const selectedHoliday = holidays.find((holiday) => holiday.date === date) || assignments.find((item) => item.isHoliday)?.holiday || null;
   const duplicateTaskAssignments = getDuplicatePicketTaskAssignments(assignments);
   const missingAssignments = assignments.filter((item) => !item.isHoliday && !item.isExempt && !isPicketAssignmentSubmitted(item));
-  const waitingReviewSubmissions = submissions.filter((item) => !["valid", "bermasalah", "ditolak", "disetujui"].includes(String(item.status || "").toLowerCase()));
-  const waitingReviewNames = Array.from(new Set(waitingReviewSubmissions.map((item) => item.studentName).filter(Boolean))).slice(0, 3);
-  const remainingWaitingReview = Math.max(0, waitingReviewSubmissions.length - waitingReviewNames.length);
   const filteredSubmissions = submissions.filter((item) => {
     const haystack = `${item.studentName} ${item.nim || ""} ${item.taskName} ${item.status}`.toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
@@ -692,7 +717,7 @@ export default function PiketOperator() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-black text-foreground">Piket Harian</h1>
-            <p className="mt-1 text-sm font-medium text-muted-foreground">Atur random picker, tugas, penanggung jawab, dan review bukti foto piket.</p>
+            <p className="mt-1 text-sm font-medium text-muted-foreground">Atur random picker, tugas, penanggung jawab, dan lihat riwayat bukti piket.</p>
           </div>
           <Link
             to={isStudentPicShell ? "/picket/manage/history" : "/operator/piket/history"}
@@ -706,12 +731,12 @@ export default function PiketOperator() {
           {[
             { label: "Piket Hari Ini", value: assignments.length, icon: <CalendarDays size={18} />, tone: "blue" },
             {
-              label: "Menunggu Review",
-              value: waitingReviewSubmissions.length,
+              label: "Submission Hari Ini",
+              value: submissions.length,
               icon: <ImageIcon size={18} />,
               tone: "emerald",
               onClick: scrollToReviewSubmissions,
-              helper: waitingReviewNames.length > 0 ? `${waitingReviewNames.join(", ")}${remainingWaitingReview > 0 ? ` +${remainingWaitingReview} lainnya` : ""}` : "Klik untuk buka approval foto",
+              helper: "Submission baru divalidasi otomatis oleh sistem",
             },
             { label: "Belum Piket", value: missingAssignments.length, icon: <AlertTriangle size={18} />, tone: "red" },
             { label: "PIC Piket", value: managerIds.length, icon: <UserCog size={18} />, tone: "amber" },
@@ -1111,8 +1136,8 @@ export default function PiketOperator() {
             <section ref={reviewSectionRef} id="review-foto-piket" className="scroll-mt-24 rounded-[16px] border border-border bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h2 className="text-sm font-black text-foreground">Review Foto Piket</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">Validasi bukti foto dan blokir jika tidak sesuai.</p>
+                  <h2 className="text-sm font-black text-foreground">Riwayat Submission Piket</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Submission baru divalidasi otomatis. Status data historis tetap ditampilkan.</p>
                 </div>
                 <div className="flex h-10 items-center gap-2 rounded-[10px] border border-border bg-white px-3">
                   <Search size={15} className="text-muted-foreground" />
@@ -1139,11 +1164,12 @@ export default function PiketOperator() {
                       ) : (
                         <div className="flex h-48 items-center justify-center rounded-[12px] border border-dashed border-border bg-slate-50 text-sm font-semibold text-muted-foreground">Foto tidak tersedia</div>
                       )}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button disabled={saving} onClick={() => reviewSubmission(item, "Valid")} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-emerald-500 px-3 text-xs font-black text-white disabled:opacity-60"><Check size={14} /> Valid</button>
-                        <button disabled={saving} onClick={() => reviewSubmission(item, "Bermasalah")} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-amber-500 px-3 text-xs font-black text-white disabled:opacity-60"><AlertTriangle size={14} /> Tidak Sesuai</button>
-                        <button disabled={saving} onClick={() => markProblemAndBlock(item)} className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-red-600 px-3 text-xs font-black text-white disabled:opacity-60"><X size={14} /> Bermasalah & Block</button>
-                      </div>
+                      {(item.reviewedAt || item.reviewNote) && (
+                        <div className="mt-3 rounded-[10px] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                          {item.reviewNote || "Status submission telah diperbarui."}
+                          {item.reviewedAt && <span className="mt-1 block text-[10px] text-muted-foreground">{new Date(item.reviewedAt).toLocaleString("id-ID")}</span>}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1152,8 +1178,8 @@ export default function PiketOperator() {
 
             <section className="rounded-[16px] border border-border bg-white shadow-sm">
               <div className="border-b border-border px-5 py-4">
-                <h2 className="text-sm font-black text-foreground">Riwayat Izin Piket</h2>
-                <p className="mt-1 text-xs text-muted-foreground">Pengajuan diproses otomatis oleh sistem. Status historis tetap ditampilkan sebagai arsip.</p>
+                <h2 className="text-sm font-black text-foreground">Pengajuan Izin Piket</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Operator/PIC menyetujui atau menolak pengajuan. Status historis tetap ditampilkan.</p>
               </div>
               {leaveRequests.length === 0 ? (
                 <div className="p-8 text-center text-sm font-semibold text-muted-foreground">Belum ada riwayat izin piket.</div>
@@ -1170,6 +1196,15 @@ export default function PiketOperator() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge status={item.status} />
+                        {item.status === "Menunggu" && (
+                          <>
+                            <button disabled={saving} onClick={() => void reviewLeave(item, "Disetujui")} className="h-8 rounded-[8px] bg-emerald-500 px-3 text-xs font-black text-white disabled:opacity-60">Setujui</button>
+                            <button disabled={saving} onClick={() => void reviewLeave(item, "Ditolak")} className="h-8 rounded-[8px] bg-red-500 px-3 text-xs font-black text-white disabled:opacity-60">Tolak</button>
+                          </>
+                        )}
+                        {item.status === "Disetujui" && (
+                          <button disabled={saving} onClick={() => void reviewLeave(item, "Menunggu")} className="h-8 rounded-[8px] border border-red-200 bg-red-50 px-3 text-xs font-black text-red-600 disabled:opacity-60">Batalkan Persetujuan</button>
+                        )}
                       </div>
                     </div>
                   ))}
